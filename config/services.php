@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'shopify' => [
+        'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET', ''),
+        'api_key' => env('SHOPIFY_API_KEY', ''),
+        'api_password' => env('SHOPIFY_API_PASSWORD', ''),
+    ],
+
 ];
