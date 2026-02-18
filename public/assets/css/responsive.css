@@ -1,0 +1,466 @@
+/* ============================================
+   DTFTA CRM - Responsive Stylesheet
+   All responsive media queries
+   ============================================ */
+
+/* ============================================
+   Tablet Styles (max-width: 1024px)
+   ============================================ */
+
+/* Tablet behavior: hide sidebar by default and enable toggle */
+@media (max-width: 1199px) {
+    .ld-right-header {
+        flex-wrap: wrap;
+    }
+
+    .ld-right-header-block {
+        width: 48%;
+    }
+
+    .ld-right-header .ld-right-header-block:nth-child(3) {
+        width: 100% !important;
+    }
+}
+
+
+@media (max-width: 1024px) {
+    .menu-toggle {
+        display: flex;
+    }
+
+    /* show close button inside sidebar on tablet/mobile (when menu-toggle exists) */
+    .sidebar-close {
+        display: flex;
+    }
+
+    /* When sidebar is open, hide the menu toggle (prevents duplicate 'X' icon) */
+    .sidebar.active~.main-content .menu-toggle {
+        display: none;
+    }
+
+    /* extra safety: hide the transformed hamburger 'X' when active so it won't overlap sidebar */
+    .menu-toggle.active {
+        display: none !important;
+    }
+
+    .sidebar {
+        width: 270px;
+        height: 100vh;
+        position: fixed;
+        left: 0;
+        top: 0;
+        transform: translateX(-100%);
+        border-right: 1px solid var(--border-color);
+        z-index: 1000;
+    }
+
+    .sidebar.active {
+        transform: translateX(0);
+    }
+
+    .main-content {
+        margin-left: 0;
+    }
+
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .job-details-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Typography & spacing tweaks for tablet */
+    .page-header h1 {
+        font-size: 24px;
+    }
+
+    .card {
+        padding: 20px;
+        gap: 16px;
+    }
+
+    .card-value {
+        font-size: 28px;
+    }
+
+    .card-content h3 {
+        font-size: 13px;
+    }
+
+    .chart-card h3 {
+        font-size: 16px;
+        margin-bottom: 16px;
+    }
+
+    .ld-page {
+        grid-template-columns: 300px 1fr;
+    }
+
+    .ld-left-panel {
+        padding: 18px;
+    }
+
+    .ld-right-panel {
+        padding: 20px;
+    }
+}
+
+/* stronger overrides to ensure sidebar stays hidden on tablet/mobile */
+@media (max-width: 1024px) {
+    .sidebar {
+        transform: translateX(-100%) !important;
+        transition: transform 0.28s ease !important;
+    }
+
+    .sidebar.active {
+        transform: translateX(0) !important;
+    }
+
+    .sidebar-overlay {
+        display: none;
+        opacity: 0;
+    }
+
+    .sidebar-overlay.active {
+        display: block;
+        opacity: 1;
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+    }
+
+    .menu-toggle {
+        display: flex !important;
+    }
+}
+
+@media screen and (max-width: 991px) {
+
+    .ld-page {
+        grid-template-columns: 260px 1fr;
+    }
+
+    .ld-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .ld-stepper {
+        flex-wrap: wrap;
+    }
+
+
+
+}
+
+/* Leads board: make horizontally scrollable on tablets */
+@media (max-width: 1024px) {
+    .leads-board {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .lead-column {
+        flex: 0 0 260px;
+        width: 260px;
+    }
+}
+
+/* ============================================
+   Mobile Styles (max-width: 768px)
+   ============================================ */
+
+@media (max-width: 768px) {
+    .menu-toggle {
+        display: flex;
+    }
+
+    .sidebar-close {
+        display: flex;
+    }
+
+    .sidebar {
+        width: 280px;
+        height: 100vh;
+        position: fixed;
+        left: 0;
+        top: 0;
+        transform: translateX(-100%);
+        border-right: 1px solid var(--border-color);
+        border-bottom: none;
+    }
+
+    .sidebar.active {
+        transform: translateX(0);
+    }
+
+    .notification-dropdown-menu {
+        right: auto;
+        left: 0;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 16px;
+    }
+
+    .cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .page-heading {
+        width: 100%;
+    }
+
+    .page-breadcrumbs {
+        font-size: 12px;
+        white-space: normal;
+        row-gap: 4px;
+    }
+
+    .filters-section {
+        flex-direction: column;
+    }
+
+    .filter-group {
+        width: 100%;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .jobs-table {
+        min-width: 800px;
+    }
+
+    .stepper {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .stepper-line {
+        width: 3px;
+        height: 40px;
+        margin: 0;
+        margin-left: 24px;
+        margin-top: 0;
+    }
+
+    .action-buttons-section {
+        flex-direction: column;
+    }
+
+    .action-buttons-section button {
+        width: 100%;
+    }
+
+    /* Mobile: stack columns vertically */
+    .leads-board {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+
+    .lead-column {
+        width: 100%;
+        flex: 1 1 auto;
+    }
+
+    .lead-column-body {
+        max-height: 420px;
+    }
+
+    /* Typography & spacing for mobile (<=768px) */
+    .page-header h1 {
+        font-size: 22px;
+    }
+
+    .ld-header-panel {
+        padding: 0;
+           }
+
+    .card {
+        padding: 18px;
+        gap: 12px;
+    }
+
+    .card-value {
+        font-size: 26px;
+    }
+
+    .card-content h3 {
+        font-size: 13px;
+    }
+
+    .chart-card h3 {
+        font-size: 15px;
+    }
+
+    .ld-page {
+        grid-template-columns: 1fr;
+    }
+
+    .ld-left-panel {
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .ld-right-panel {
+        padding: 18px;
+    }
+
+    /* Tabs scroll horizontally */
+    .ld-tabs {
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: none;
+    }
+
+    .ld-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab {
+        flex-shrink: 0;
+    }
+
+    /* Stepper scroll */
+    .ld-stepper {
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 6px;
+    }
+
+    .step {
+        flex-shrink: 0;
+    }
+
+    .settings-sections {
+        grid-template-columns: 100%;
+    }
+}
+
+/* ============================================
+   Small Mobile Styles (max-width: 480px)
+   ============================================ */
+
+
+@media (max-width: 575px) {
+    .ld-right-header-block {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .main-content {
+        padding: 12px;
+    }
+
+    .card {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .job-header {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    /* .pagination {
+        flex-direction: column;
+    } */
+
+}
+
+/* Small mobile typography/spacing overrides */
+@media (max-width: 480px) {
+    .page-header h1 {
+        font-size: 20px;
+    }
+
+    .card {
+        padding: 14px;
+        gap: 10px;
+    }
+
+    .card-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 32px;
+    }
+
+    .card-value {
+        font-size: 24px;
+    }
+
+    .card-content h3 {
+        font-size: 12px;
+    }
+
+    .chart-card h3 {
+        font-size: 14px;
+    }
+}
+
+/* ============================================
+   Tables: ensure horizontal scrolling on narrow screens
+   Applies to any table wrapped by .table-container or .table-responsive
+   ============================================ */
+@media (max-width: 991px) {
+
+    .table-container,
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        width: 100%;
+    }
+
+    /* Prevent tables from squishing — allow horizontal scroll instead */
+    .table-container table,
+    .table-responsive table {
+        min-width: 760px;
+    }
+
+    /* Themed horizontal scrollbar for table containers */
+    .table-container,
+    .table-responsive {
+        /* Firefox */
+        scrollbar-width: thin;
+        scrollbar-color: var(--accent-blue) var(--bg-card);
+    }
+
+    /* WebKit browsers */
+    .table-container::-webkit-scrollbar,
+    .table-responsive::-webkit-scrollbar {
+        height: 10px;
+    }
+
+    .table-container::-webkit-scrollbar-track,
+    .table-responsive::-webkit-scrollbar-track {
+        background: var(--bg-card);
+    }
+
+    .table-container::-webkit-scrollbar-thumb,
+    .table-responsive::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, var(--accent-blue), #2563eb);
+        border-radius: 8px;
+        border: 2px solid var(--bg-card);
+    }
+
+    .table-container::-webkit-scrollbar-thumb:hover,
+    .table-responsive::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #60a5fa, #3b82f6);
+    }
+}

@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'shopify' => [
+        'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET', ''),
+        'api_key' => env('SHOPIFY_API_KEY', ''),
+        'api_password' => env('SHOPIFY_API_PASSWORD', ''),
+        'api_secret' => env('SHOPIFY_API_SECRET', env('SHOPIFY_API_PASSWORD', '')),
+        'api_version' => env('SHOPIFY_API_VERSION', '2025-10'),
+        'scopes' => env('SHOPIFY_SCOPES', 'read_orders,write_fulfillments,write_assigned_fulfillment_orders,write_third_party_fulfillment_orders'),
+    ],
+
 ];

@@ -1,0 +1,396 @@
+{
+  "info": {
+    "_postman_id": "8f0f7d21-c771-4d34-b43a-71b3e5ca7aaf",
+    "name": "DTFTA Webhooks Only",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Webhook-only Postman collection for DTFTA Shopify integration. Includes HMAC pre-request signing and ready payloads."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const method = (pm.request.method || '').toUpperCase();",
+          "if (method !== 'POST' && method !== 'PUT') {",
+          "    return;",
+          "}",
+          "",
+          "const secret = pm.environment.get('SHOPIFY_WEBHOOK_SECRET') || pm.collectionVariables.get('webhook_secret');",
+          "if (!secret) {",
+          "    console.warn('Missing SHOPIFY_WEBHOOK_SECRET in environment/collection variables.');",
+          "    return;",
+          "}",
+          "",
+          "const topic = pm.request.headers.get('X-Shopify-Topic') || pm.collectionVariables.get('topic') || '';",
+          "const shopDomain = pm.request.headers.get('X-Shopify-Shop-Domain') || pm.environment.get('shop_domain') || pm.collectionVariables.get('shop_domain') || '';",
+          "const webhookId = pm.request.headers.get('X-Shopify-Webhook-Id') || pm.variables.replaceIn('{{$guid}}');",
+          "",
+          "const bodyRaw = pm.request.body && pm.request.body.mode === 'raw'",
+          "  ? pm.variables.replaceIn(pm.request.body.raw || '')",
+          "  : '';",
+          "",
+          "const signature = CryptoJS.enc.Base64.stringify(",
+          "  CryptoJS.HmacSHA256(bodyRaw, CryptoJS.enc.Utf8.parse(secret))",
+          ");",
+          "",
+          "pm.request.headers.upsert({ key: 'Accept', value: 'application/json' });",
+          "pm.request.headers.upsert({ key: 'Content-Type', value: 'application/json' });",
+          "if (topic) pm.request.headers.upsert({ key: 'X-Shopify-Topic', value: topic });",
+          "if (shopDomain) pm.request.headers.upsert({ key: 'X-Shopify-Shop-Domain', value: shopDomain });",
+          "if (webhookId) pm.request.headers.upsert({ key: 'X-Shopify-Webhook-Id', value: webhookId });",
+          "pm.request.headers.upsert({ key: 'X-Shopify-Hmac-SHA256', value: signature });"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "shop_domain",
+      "value": "photo-printers-2728.myshopify.com",
+      "type": "string"
+    },
+    {
+      "key": "topic",
+      "value": "orders/create",
+      "type": "string"
+    },
+    {
+      "key": "webhook_secret",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "10001234",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Webhook Health",
+      "item": [
+        {
+          "name": "[GET] Webhook Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Shopify Webhooks",
+      "item": [
+        {
+          "name": "[POST] orders/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Shopify-Topic",
+                "value": "orders/create",
+                "type": "text"
+              },
+              {
+                "key": "X-Shopify-Shop-Domain",
+                "value": "{{shop_domain}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/shopify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "shopify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": {{order_id}},\n  \"order_number\": \"#1001\",\n  \"created_at\": \"2026-02-18T10:00:00Z\",\n  \"updated_at\": \"2026-02-18T10:00:00Z\",\n  \"currency\": \"USD\",\n  \"total_price\": \"149.99\",\n  \"financial_status\": \"paid\",\n  \"fulfillment_status\": \"in_production\",\n  \"shop_domain\": \"{{shop_domain}}\",\n  \"customer\": {\n    \"first_name\": \"Test\",\n    \"last_name\": \"User\",\n    \"email\": \"test@example.com\"\n  },\n  \"line_items\": [\n    {\n      \"id\": 111,\n      \"sku\": \"DTFTA-APP-TSHIRT\",\n      \"title\": \"T-Shirt\",\n      \"variant_title\": \"Black / L\",\n      \"quantity\": 1,\n      \"price\": \"149.99\",\n      \"properties\": [\n        { \"name\": \"dtfta_type\", \"value\": \"APPAREL_POD\" },\n        { \"name\": \"dtfta_garment_brand\", \"value\": \"Gildan\" },\n        { \"name\": \"dtfta_garment_style\", \"value\": \"5000\" },\n        { \"name\": \"dtfta_garment_color\", \"value\": \"Black\" },\n        { \"name\": \"dtfta_garment_size\", \"value\": \"L\" },\n        { \"name\": \"dtfta_print_plan\", \"value\": \"front\" },\n        { \"name\": \"dtfta_artwork_front\", \"value\": \"https://example.com/artwork-front.png\" }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[POST] orders/updated",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Shopify-Topic",
+                "value": "orders/updated",
+                "type": "text"
+              },
+              {
+                "key": "X-Shopify-Shop-Domain",
+                "value": "{{shop_domain}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/shopify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "shopify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": {{order_id}},\n  \"updated_at\": \"2026-02-18T11:10:00Z\",\n  \"fulfillment_status\": \"shipped\",\n  \"financial_status\": \"paid\",\n  \"shop_domain\": \"{{shop_domain}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[POST] orders/cancelled",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Shopify-Topic",
+                "value": "orders/cancelled",
+                "type": "text"
+              },
+              {
+                "key": "X-Shopify-Shop-Domain",
+                "value": "{{shop_domain}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/shopify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "shopify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": {{order_id}},\n  \"updated_at\": \"2026-02-18T11:25:00Z\",\n  \"cancelled_at\": \"2026-02-18T11:24:00Z\",\n  \"fulfillment_status\": \"cancelled\",\n  \"shop_domain\": \"{{shop_domain}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[POST] orders/deleted",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Shopify-Topic",
+                "value": "orders/deleted",
+                "type": "text"
+              },
+              {
+                "key": "X-Shopify-Shop-Domain",
+                "value": "{{shop_domain}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/shopify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "shopify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": {{order_id}},\n  \"shop_domain\": \"{{shop_domain}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[POST] fulfillments/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Shopify-Topic",
+                "value": "fulfillments/create",
+                "type": "text"
+              },
+              {
+                "key": "X-Shopify-Shop-Domain",
+                "value": "{{shop_domain}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/shopify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "shopify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 900001,\n  \"order_id\": {{order_id}},\n  \"status\": \"success\",\n  \"tracking_company\": \"UPS\",\n  \"tracking_number\": \"1Z999AA10123456784\",\n  \"tracking_url\": \"https://www.ups.com/track?tracknum=1Z999AA10123456784\",\n  \"shop_domain\": \"{{shop_domain}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "[POST] fulfillments/update",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Shopify-Topic",
+                "value": "fulfillments/update",
+                "type": "text"
+              },
+              {
+                "key": "X-Shopify-Shop-Domain",
+                "value": "{{shop_domain}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/webhooks/shopify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "shopify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": 900001,\n  \"order_id\": {{order_id}},\n  \"status\": \"in_transit\",\n  \"tracking_company\": \"UPS\",\n  \"tracking_number\": \"1Z999AA10123456784\",\n  \"tracking_url\": \"https://www.ups.com/track?tracknum=1Z999AA10123456784\",\n  \"shop_domain\": \"{{shop_domain}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Fulfillment Service Callback",
+      "item": [
+        {
+          "name": "[POST] fulfillment_order_notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Shopify-Topic",
+                "value": "fulfillment_orders/notification",
+                "type": "text"
+              },
+              {
+                "key": "X-Shopify-Shop-Domain",
+                "value": "{{shop_domain}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/fulfillment_order_notification",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fulfillment_order_notification"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fulfillment_order\": {\n    \"id\": 77112233,\n    \"order_id\": {{order_id}},\n    \"status\": \"open\"\n  },\n  \"shop_domain\": \"{{shop_domain}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
