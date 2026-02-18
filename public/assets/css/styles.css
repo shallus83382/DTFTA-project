@@ -221,6 +221,16 @@ body {
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='20' x2='18' y2='10'/%3E%3Cline x1='12' y1='20' x2='12' y2='4'/%3E%3Cline x1='6' y1='20' x2='6' y2='14'/%3E%3C/svg%3E");
 }
 
+.nav-icon-notifications {
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'/%3E%3Cpath d='M13.73 21a2 2 0 0 1-3.46 0'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'/%3E%3Cpath d='M13.73 21a2 2 0 0 1-3.46 0'/%3E%3C/svg%3E");
+}
+
+.nav-icon-users {
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+}
+
 .sidebar-footer {
     padding: 20px;
     border-top: 1px solid var(--border-color);
@@ -314,6 +324,43 @@ body {
 .page-header h1 {
     font-size: 28px;
     font-weight: 700;
+    color: var(--text-primary);
+}
+
+.page-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.page-breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.page-breadcrumbs a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.page-breadcrumbs a:hover {
+    color: var(--text-primary);
+}
+
+.page-breadcrumbs .separator {
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.page-breadcrumbs .current {
     color: var(--text-primary);
 }
 
@@ -1202,8 +1249,16 @@ select.filter-select:focus {
     align-items: flex-start;
     margin-top: 16px;
     height: calc(100vh - 250px);
+    overflow-x: scroll;
+}
+.leads-board::-webkit-scrollbar {
+    height: 6px;   
 }
 
+.leads-board::-webkit-scrollbar-thumb {
+    background: #bbb;
+    border-radius: 10px;
+}
 .lead-column {
     flex: 1;
     padding: 10px;
@@ -1608,13 +1663,13 @@ select.filter-select:focus {
    Lead Detail Page - DTFTA Dark Theme
    ============================================ */
 
-.ld-page {
+/* .ld-page {
     display: grid;
     grid-template-columns: 360px 1fr;
     min-height: 100vh;
     background: var(--bg-primary);
     color: var(--text-primary);
-}
+} */
 
 /* LEFT PANEL */
 .ld-left-panel {
@@ -1778,11 +1833,18 @@ select.filter-select:focus {
 }
 
 /* RIGHT PANEL */
-.ld-right-panel {
+.ld-header-panel {
     padding:0 24px;
     overflow-y: auto;
 }
-
+.ld-right-header{
+    display: flex;
+    justify-content: space-between;
+    gap:20px;
+}
+.ld-right-header-block{
+    width:50%;
+}
 /* ============================================
    DARK THEME CHEVRON STEPPER (REFERENCE STYLE)
    ============================================ */
@@ -2143,8 +2205,8 @@ select.filter-select:focus {
     border: 1px solid var(--border-color);
     border-radius: 14px;
     padding: 16px;
-    margin-bottom: 18px;
-    box-shadow: var(--shadow-sm);
+     box-shadow: var(--shadow-sm);
+    height:100%;
 }
 
 .ld-card h3 {
@@ -2712,6 +2774,18 @@ a.btn-icon {
 
 .notification-dropdown-item:hover {
   background: var(--bg-secondary);
+}
+
+.notification-dropdown-item.unread {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.notification-dropdown-item.unread:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.notification-dropdown-item.unread .notification-item-text {
+  font-weight: 600;
 }
 
 .notification-item-avatar {

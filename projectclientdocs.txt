@@ -1,0 +1,305 @@
+DTF Transfer Authority (DTFTA) Shopify POD Fulfillment System
+1. Introduction
+This document explains what we need to build for the DTFTA system in simple terms. It's like a
+blueprint for the software. The goal is to make it easy for everyone – the client and the
+developers – to understand what the system does, how it works, and what's required.
+1.1 Purpose
+We are building a system that helps DTFTA act as a hidden (white-label) partner for Shopify
+store owners (called merchants or partners). DTFTA will print and ship custom clothing items
+(like t-shirts and hoodies) on demand when customers order them from these stores.
+Shopify App: A tool that merchants install in their Shopify store to connect to DTFTA.
+DTFTA CRM (Dashboard): A separate online tool for DTFTA's team to manage orders, print
+items, ship them, and track everything. It's like a control center.
+This system is similar to Printify: Merchants design and sell custom products in their stores,
+but DTFTA handles the making and shipping without showing their own brand. The app will be
+public (anyone can install it), charge monthly fees, and bill per order/store.
+1.2 Scope
+What we will build:
+A Shopify embedded app (it opens inside the Shopify admin panel).
+A separate CRM/dashboard for DTFTA to handle production, shipping, and analytics.
+Connections between Shopify stores, the app, and the CRM using APIs (like digital
+bridges for data).
+Support for print-on-demand (POD) for specific clothing items.
+White-label shipping (packages look like they come from the merchant, not DTFTA).
+Handling orders from multiple stores, partial fulfillments, cancellations, and errors.
+What we won't build (out of scope):
+The merchant's storefront customization tools (merchants handle that in their own
+Shopify store).
+Inventory storage (since it's POD, items are made only after an order).
+Payment processing for DTFTA's fees (assume it's handled separately, like via Stripe).
+1.3 Definitions (Simple Explanations)
+DTF (Direct-to-Film): A printing method for custom designs on clothes.
+POD (Print-on-Demand): Making products only when ordered, no pre-stocking.
+White-Label: DTFTA stays invisible – packages, slips, and labels use the merchant's brand.
+SKU: A unique code for each product variant (e.g., DTFTA-APP-TEE-NL-6210-BLK-XL
+means a black XL unisex tee from Next Level).
+Fulfillment: The process of making, packing, and shipping an order.
+App: The software merchants install in Shopify.
+CRM/Dashboard: DTFTA's private tool to see and manage all orders.
+Merchant/Partner: Shopify store owners who use DTFTA for fulfillment.
+Job: An internal task in DTFTA's system for processing one order (like "print this design on
+a tee").
+API: A way for software to talk to each other (e.g., Shopify sends order info to DTFTA).
+Webhook/Callback: Automatic notifications when something happens (e.g., new order
+alert)
+2. Overall Description
+2.1 How the System Works (High-Level Overview)
+Imagine a merchant sells custom t-shirts in their Shopify store. Here's the flow:
+1.  Setup: Merchant installs the app. It creates a "DTFTA location" in their Shopify (set to US
+for deliveries). They set up their brand info (like return address and support contact).
+2.  Product Listing: The app shows DTFTA's products (e.g., tees, hoodies). Merchants add
+these to their store with custom designs. All products are customizable (images, text, full
+options like Printify).
+3.  Order Comes In: Customer buys a custom item. Shopify creates a "fulfillment order" and
+assigns it to DTFTA.
+4.  Notification to DTFTA: Shopify sends an alert (via webhook/callback) to the app/CRM.
+5.  DTFTA Processes:
+CRM fetches order details.
+Validates (checks if SKU is correct, artwork is provided, etc.).
+If good, creates a "job" in the dashboard.
+DTFTA team prints the design on the clothing.
+Generates shipping label and packing slip (with merchant's brand).
+Ships the item.
+6.  Update Shopify: CRM sends back tracking info to Shopify. Order marked as fulfilled,
+customer gets notified.
+7.  Other Features:
+Merchants can partially fulfill (e.g., they ship some items, DTFTA does others).
+Cancellations: If merchant cancels, DTFTA stops the job.
+Analytics: Dashboard shows pending/fulfilled orders, stock levels (if any), and storewise reports.
+Billing: Monthly subscriptions + per-order fees, invoiced per store.
+DTFTA provides the blank clothes and does the printing/shipping. Merchants provide
+designs/artwork. Inventory is managed by DTFTA (but minimal since POD).
+2.2 Users and Roles
+Merchants (Store Owners): Install app, set up products, monitor orders in Shopify. They
+don't access DTFTA's CRM.
+DTFTA Team (Ops/Admin): Use CRM/dashboard to view orders, process jobs, ship, and
+see analytics.
+Customers: End-buyers on merchant's store – they see nothing about DTFTA.
+2.3 Assumptions
+DTFTA is based in the US and handles only US deliveries.
+Merchants handle customer support and returns.
+All products are POD – made after order.
+SKUs are defined and owned by DTFTA.
+The app syncs DTFTA's products to merchants' stores, but not vice versa.
+For validations/errors: If something's missing (e.g., no artwork), flag it and notify
+merchant.
+Shipping: DTFTA chooses methods (e.g., USPS, UPS) and generates labels. Needs
+customer address and method from order.
+3. Functional Requirements (What the System Must Do)
+These are the main features, explained step-by-step.
+3.1 App Installation and Setup
+When a merchant installs the app (via Shopify App Store):
+Ask for permission (OAuth) to access their store.
+Create a "Fulfillment Service" and "Location" in Shopify (named DTFTA, location: US).
+Store secure access token.
+Merchant sets up profile: Brand name, return address, support contact (for packing
+slips).
+App can be installed on multiple stores.
+On uninstall: Clean up everything (remove location, delete data).
+3.2 Product Management
+App lists DTFTA's products:
+Unisex Tee (Next Level 6210)
+Long Sleeve Tee (Next Level 3601)
+Heavy Blend Hoodie (Gildan 18500)
+Heavyweight Hoodie (Cotton Heritage M2650CH)
+Each has variants (colors, sizes) with DTFTA SKUs (e.g., DTFTA-APP-TEE-NL-6210-BLK-XL).
+Merchants can add these to their store.
+All products support full customization: Image upload, text fields, placements
+(front/back, e.g., 12x16 inches).
+Sync DTFTA products into the app (not merchant's products into app).
+No inventory tracking in app (POD model).
+3.3 Order Handling
+When order placed in merchant's store:
+If item has DTFTA SKU and properties (e.g., dtfta_type=APPAREL_POD, garment details,
+print plan, artwork URLs).
+Shopify sends notification to app/CRM.
+CRM fetches order via API.
+Validate: Check SKU matches, artwork provided, sizes/colors valid, print dimensions okay.
+If fails (e.g., missing artwork, invalid SKU like wrong size): Set status to "Exception" or
+"Artwork Needed", notify merchant via email or Shopify note.
+Create "Job" in CRM: Shows order details, status (New, In Production, Shipped).
+Support partial fulfillments: Merchant can fulfill some items themselves.
+3.4 Production and Shipping
+In CRM Dashboard:
+List all pending/fulfilled orders from all stores.
+Show details: Garment, design, customer address.
+Team marks job as "In Production" when printing.
+Generate white-label packing slip (merchant's brand, support info).
+Generate shipping label (DTFTA handles, using address and method from order).
+Ship item, add tracking number.
+Push updates to Shopify: Mark as fulfilled, add tracking.
+3.5 Cancellations and Exceptions
+If merchant cancels in Shopify: Notify CRM, cancel job (or flag if already printing).
+Handle duplicates: Ignore repeat notifications.
+Exceptions: Missing data → Notify merchant to fix.
+3.6 Analytics and Reporting
+In CRM:
+View orders by store.
+Pending, fulfilled, stocks (if tracking blanks).
+Simple reports: Orders per store, total sales.
+3.7 Billing
+Monthly subscription for app.
+Per-order fees, invoiced store-wise.
+3.8 Security and Tech
+Secure data (encrypt tokens).
+Handle webhooks: For uninstalls, order changes.
+APIs: For fetching orders, creating fulfillments.
+Edge cases: Partial ships, post-ship tracking updates.
+4. Non-Functional Requirements (How the System Should
+Perform)
+Easy to Use: Simple interfaces, like Printify.
+Reliable: Handle many orders without crashing.
+Secure: Protect data, verify notifications.
+Fast: Respond to alerts quickly (under 5 seconds).
+Scalable: Work for multiple stores/orders.
+Mobile-Friendly: Dashboard works on phones.
+Testing: Must pass tests like install → order → ship → uninstal
+5. Dependencies
+Shopify account and APIs.
+Hosting for app/CRM (e.g., AWS or Heroku).
+Tools for printing/shipping (assume DTFTA has them).
+Reference: Printify for customization frontend behavior.
+This SRS covers everything based on the documents and Q&A. If anything changes, we can
+update it!
+
+DTF Transfer Authority
+Shopify Fulfillment App
+API & Webhook Checklist
+Purpose
+This checklist defines all required Shopify APIs, hosted endpoints, and webhooks needed to build and
+operate the DTFTA white■label, ship■only POD fulfillment service (DTF + Apparel).
+1. Authentication & Installation
+• OAuth install flow per partner store
+• Securely store Admin API access token (encrypted)
+• Track API version and granted scopes
+• Handle reauthorization gracefully if scopes change
+2. Required Shopify Scopes
+• write_assigned_fulfillment_orders or write_third_party_fulfillment_orders
+• read_orders (for shipping + ops UI)
+• write_fulfillments (create shipments & tracking)
+• Staff permission: fulfill_and_ship_orders
+3. Fulfillment Service Registration
+• Create Fulfillment Service on app install
+• Enable trackingSupport = true
+• Disable inventoryManagement (POD model)
+• Persist fulfillmentServiceId and locationId
+4. Hosted Callback Endpoints (Required)
+• POST /fulfillment_order_notification (required)
+• Respond 200 OK immediately and enqueue background sync
+• Handle FULFILLMENT_REQUEST and CANCELLATION_REQUEST
+• Verify authenticity and rate■limit endpoint
+5. Webhooks (Strongly Recommended)
+• APP_UNINSTALLED – cleanup tokens and webhooks
+• Fulfillment order lifecycle events
+• Order cancellation events
+• Verify HMAC and enforce idempotency
+6. Required Admin API Calls
+• Fetch fulfillment orders assigned to DTFTA location
+• Create fulfillments with tracking information
+• Update tracking after shipment if needed
+• Optionally create fulfillment events (in■transit, delivered)
+7. Internal DTFTA API Endpoints
+• Partner profile CRUD (white■label branding)
+• Ops job queue and job detail endpoints
+• Ship endpoint (carrier + tracking)
+• Callback handler to reconcile Shopify state
+8. Edge Cases to Handle
+• Partial fulfillments and split shipments
+• Cancellations after production start
+• Missing dtfta_ line■item properties
+• Duplicate webhook/callback events
+9. Acceptance Tests (Definition of Done)
+• Install app → fulfillment service + location created
+• Order routes to DTFTA → job created
+• Ship → tracking appears in Shopify
+• Uninstall → tokens and webhooks removed
+
+DTF Transfer Authority
+Shopify POD Fulfillment App
+Developer Guide
+Purpose
+This document defines the technical and operational specifications for building a custom Shopify
+Fulfillment Service App where DTF Transfer Authority (DTFTA) acts as a ship-only, white-label
+Print-on-Demand fulfillment center for partner Shopify stores.
+Fulfillment Model
+• Ship-only fulfillment (no pickup)
+• White-label shipping per partner store
+• DTF Transfers and Apparel POD supported
+• DTFTA registered as a Shopify Fulfillment Service + Location
+Supported Apparel Blanks (v1)
+• Next Level 6210 – Unisex Tee
+• Next Level 3601 – Long Sleeve Tee
+• Gildan 18500 – Heavy Blend Hoodie
+• Cotton Heritage M2650CH – Heavyweight Hoodie
+SKU Format (Mandatory)
+DTFTA-APP-{CATEGORY}-{BRANDCODE}-{STYLE}-{COLORCODE}-{SIZE}
+Example SKUs
+• DTFTA-APP-TEE-NL-6210-BLK-XL
+• DTFTA-APP-HOODIE-GD-18500-NAV-2XL
+• DTFTA-APP-LS-NL-3601-HGR-L
+• DTFTA-APP-HOODIE-CH-M2650CH-CHAR-XL
+Required Line Item Properties (Apparel POD)
+• dtfta_type = APPAREL_POD
+• dtfta_garment_brand, style, color, size
+• dtfta_print_plan (e.g. FRONT:12x16|BACK:12x16)
+• Artwork URL(s) for each placement
+DTF Transfer Requirements
+• Artwork upload or URL
+• Print width and height (inches)
+• Rush and background removal flags
+Core App Responsibilities
+• Create Fulfillment Service and Location on install
+• Receive Fulfillment Orders via callback endpoint
+• Create DTFTA production jobs internally
+• Generate white-label packing slips
+• Push tracking and fulfillment updates back to Shopify
+White-Label Rules
+• No DTFTA branding visible to end customer
+• Partner brand name and return address used
+• Partner support contact on packing slips
+Testing & Acceptance Criteria
+• Orders route correctly to DTFTA fulfillment location
+• Jobs created with full garment and print data
+• Packing slips show partner branding
+• Tracking syncs back to Shopify successfully
+
+DTF Transfer Authority
+Shopify POD Fulfillment App
+System Flow Diagram
+Overview
+This document visually describes the end-to-end system flow for the DTFTA Shopify Fulfillment Service
+App, from partner installation through order fulfillment and shipping updates.
+End-to-End Fulfillment Flow
+1. Partner Store Customer places order (DTF or Apparel POD)
+↓
+2. Shopify Platform Creates Fulfillment Order assigned to DTFTA location
+↓
+3. Shopify → DTFTA Callback POST /fulfillment_order_notification
+↓
+4. DTFTA Backend Fetch fulfillment orders via Admin API
+↓
+5. DTFTA Job Engine Validate SKU + dtfta_ properties
+↓
+6. DTFTA Ops Dashboard Job appears (NEW / ARTWORK_NEEDED)
+↓
+7. Production Print DTF or Apparel POD
+↓
+8. Shipping DTFTA ships using partner white-label return info
+↓
+9. DTFTA → Shopify API Create fulfillment + tracking
+↓
+10. Shopify Order marked fulfilled, customer notified
+Supporting Flows
+Install Flow
+Partner installs app → OAuth authorization → DTFTA Fulfillment Service + Location created → Partner
+configures brand profile and SKUs.
+Cancellation Flow
+Merchant cancels order → Shopify notifies DTFTA → Job cancelled or flagged if already in production.
+Exception Flow
+Missing artwork or invalid SKU → Job status set to ARTWORK_NEEDED or EXCEPTION → Partner
+notified.
+Key Principles
+• Shopify is the source of truth
+• DTFTA is a ship-only, white-label fulfillment center
+• All customer-facing branding comes from partner profiles
+• All events are idempotent and API-driven

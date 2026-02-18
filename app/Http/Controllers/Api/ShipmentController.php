@@ -183,6 +183,24 @@ class ShipmentController extends Controller
         $validated['updated_at_shopify'] = now();
         $shipment->update($validated);
 
+        try {
+            $shouldSyncTracking = isset($validated['tracking_number']) || isset($validated['tracking_company']) || isset($validated['tracking_url']) || isset($validated['carrier']);
+            if ($shouldSyncTracking && !empty($shipment->shipment_id)) {
+                $this->shopifyService->updateFulfillmentTracking(
+                    (int) $shipment->shop_id,
+                    $shipment->shipment_id,
+                    [
+                        'tracking_number' => $validated['tracking_number'] ?? $shipment->tracking_number,
+                        'tracking_company' => $validated['tracking_company'] ?? $validated['carrier'] ?? $shipment->tracking_company,
+                        'tracking_url' => $validated['tracking_url'] ?? $shipment->tracking_url,
+                        'notify_customer' => true,
+                    ]
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::error('Shopify tracking update sync failed: ' . $e->getMessage());
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Shipment updated successfully.',

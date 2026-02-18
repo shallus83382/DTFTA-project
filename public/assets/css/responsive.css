@@ -8,21 +8,36 @@
    ============================================ */
 
 /* Tablet behavior: hide sidebar by default and enable toggle */
+@media (max-width: 1199px) {
+    .ld-right-header {
+        flex-wrap: wrap;
+    }
+
+    .ld-right-header-block {
+        width: 48%;
+    }
+
+    .ld-right-header .ld-right-header-block:nth-child(3) {
+        width: 100% !important;
+    }
+}
+
+
 @media (max-width: 1024px) {
     .menu-toggle {
         display: flex;
     }
-    
+
     /* show close button inside sidebar on tablet/mobile (when menu-toggle exists) */
     .sidebar-close {
         display: flex;
     }
 
     /* When sidebar is open, hide the menu toggle (prevents duplicate 'X' icon) */
-    .sidebar.active ~ .main-content .menu-toggle {
+    .sidebar.active~.main-content .menu-toggle {
         display: none;
     }
-    
+
     /* extra safety: hide the transformed hamburger 'X' when active so it won't overlap sidebar */
     .menu-toggle.active {
         display: none !important;
@@ -54,7 +69,7 @@
     .job-details-grid {
         grid-template-columns: 1fr;
     }
-    
+
     /* Typography & spacing tweaks for tablet */
     .page-header h1 {
         font-size: 24px;
@@ -77,6 +92,7 @@
         font-size: 16px;
         margin-bottom: 16px;
     }
+
     .ld-page {
         grid-template-columns: 300px 1fr;
     }
@@ -96,20 +112,25 @@
         transform: translateX(-100%) !important;
         transition: transform 0.28s ease !important;
     }
+
     .sidebar.active {
         transform: translateX(0) !important;
     }
+
     .sidebar-overlay {
         display: none;
         opacity: 0;
     }
+
     .sidebar-overlay.active {
         display: block;
         opacity: 1;
     }
+
     .main-content {
         margin-left: 0 !important;
     }
+
     .menu-toggle {
         display: flex !important;
     }
@@ -128,6 +149,8 @@
     .ld-stepper {
         flex-wrap: wrap;
     }
+
+
 
 }
 
@@ -156,11 +179,11 @@
     .menu-toggle {
         display: flex;
     }
-    
+
     .sidebar-close {
         display: flex;
     }
-    
+
     .sidebar {
         width: 280px;
         height: 100vh;
@@ -171,51 +194,62 @@
         border-right: 1px solid var(--border-color);
         border-bottom: none;
     }
-    
+
     .sidebar.active {
         transform: translateX(0);
     }
+
     .notification-dropdown-menu {
         right: auto;
         left: 0;
     }
-    
+
     .main-content {
         margin-left: 0;
         padding: 16px;
     }
-    
+
     .cards-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .page-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 16px;
     }
-    
+
+    .page-heading {
+        width: 100%;
+    }
+
+    .page-breadcrumbs {
+        font-size: 12px;
+        white-space: normal;
+        row-gap: 4px;
+    }
+
     .filters-section {
         flex-direction: column;
     }
-    
+
     .filter-group {
         width: 100%;
     }
-    
+
     .table-container {
         overflow-x: auto;
     }
-    
+
     .jobs-table {
         min-width: 800px;
     }
-    
+
     .stepper {
         flex-direction: column;
         align-items: flex-start;
     }
-    
+
     .stepper-line {
         width: 3px;
         height: 40px;
@@ -223,14 +257,15 @@
         margin-left: 24px;
         margin-top: 0;
     }
-    
+
     .action-buttons-section {
         flex-direction: column;
     }
-    
+
     .action-buttons-section button {
         width: 100%;
     }
+
     /* Mobile: stack columns vertically */
     .leads-board {
         display: flex;
@@ -246,11 +281,15 @@
     .lead-column-body {
         max-height: 420px;
     }
-    
+
     /* Typography & spacing for mobile (<=768px) */
     .page-header h1 {
         font-size: 22px;
     }
+
+    .ld-header-panel {
+        padding: 0;
+           }
 
     .card {
         padding: 18px;
@@ -307,6 +346,7 @@
     .step {
         flex-shrink: 0;
     }
+
     .settings-sections {
         grid-template-columns: 100%;
     }
@@ -316,21 +356,28 @@
    Small Mobile Styles (max-width: 480px)
    ============================================ */
 
+
+@media (max-width: 575px) {
+    .ld-right-header-block {
+        width: 100%;
+    }
+}
+
 @media (max-width: 480px) {
     .main-content {
         padding: 12px;
     }
-    
+
     .card {
         flex-direction: column;
         text-align: center;
     }
-    
+
     .job-header {
         flex-direction: column;
         gap: 16px;
     }
-    
+
     /* .pagination {
         flex-direction: column;
     } */
@@ -372,6 +419,7 @@
    Applies to any table wrapped by .table-container or .table-responsive
    ============================================ */
 @media (max-width: 991px) {
+
     .table-container,
     .table-responsive {
         overflow-x: auto;
@@ -384,7 +432,7 @@
     .table-responsive table {
         min-width: 760px;
     }
-    
+
     /* Themed horizontal scrollbar for table containers */
     .table-container,
     .table-responsive {

@@ -107,4 +107,55 @@ class ShopController extends Controller
             'data' => $shops
         ]);
     }
+
+    /**
+     * PUT /api/v1/shops/{shop_domain}
+     * Update an existing shop by domain.
+     */
+    public function update(Request $request, $shop_domain)
+    {
+        $shop = Shop::where('shop_domain', $shop_domain)->first();
+
+        if (!$shop) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shop record not found.'
+            ], 404);
+        }
+
+        $validated = $request->validate([
+            'shopify_access_token' => 'nullable|string',
+            'shopify_scopes' => 'nullable|string',
+            'fulfillment_service_id' => 'nullable|string|max:255',
+            'location_id' => 'nullable|string|max:255',
+            'status' => 'nullable|in:active,suspended,uninstalled',
+            'installed_at' => 'nullable|date',
+            'uninstalled_at' => 'nullable|date',
+        ]);
+
+        $updateData = [];
+        if (array_key_exists('shopify_access_token', $validated)) {
+            $updateData['shopify_access_token'] = !empty($validated['shopify_access_token'])
+                ? encrypt($validated['shopify_access_token'])
+                : null;
+        }
+        if (array_key_exists('shopify_scopes', $validated)) {
+            $updateData['shopify_scopes'] = $validated['shopify_scopes'];
+        }
+        foreach (['fulfillment_service_id', 'location_id', 'status', 'installed_at', 'uninstalled_at'] as $field) {
+            if (array_key_exists($field, $validated)) {
+                $updateData[$field] = $validated[$field];
+            }
+        }
+
+        if (!empty($updateData)) {
+            $shop->update($updateData);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Shop record updated successfully.',
+            'data' => $shop->fresh()
+        ]);
+    }
 }

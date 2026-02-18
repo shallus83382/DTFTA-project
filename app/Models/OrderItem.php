@@ -23,6 +23,7 @@ class OrderItem extends Model
     ];
 
     protected $casts = [
+        'properties' => 'array',
         'payload' => 'array'
     ];
 

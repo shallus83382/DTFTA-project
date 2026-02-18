@@ -4,6 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\PartnerProfile;
+use App\Models\Order;
+use App\Models\Job;
+use App\Models\Shipment;
 
 class Shop extends Model
 {
@@ -23,5 +26,20 @@ class Shop extends Model
     public function partnerProfile()
     {
         return $this->hasOne(PartnerProfile::class);
+    }
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    public function jobs()
+    {
+        return $this->hasMany(Job::class);
+    }
+
+    public function shipments()
+    {
+        return $this->hasMany(Shipment::class);
     }
 }

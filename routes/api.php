@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Auth\LoginController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\Shopify\WebhookController;
+use App\Http\Controllers\CrmController;
 
 // ============================================
 // PUBLIC ROUTES (No Authentication Required)
@@ -27,6 +28,14 @@ Route::prefix('v1')->group(function () {
     // Public Shopify webhook endpoints
     Route::post('/webhooks/shopify', [WebhookController::class, 'handle']);
     Route::get('/webhooks/status', [WebhookController::class, 'status']);
+    Route::post('/fulfillment_order_notification', [WebhookController::class, 'fulfillmentOrderNotification'])
+        ->middleware('throttle:120,1');
+
+    // CRM utility endpoints for frontend/Postman without CSRF
+    Route::post('/update-status', [CrmController::class, 'updateStatus']);
+    Route::post('/get-activity-log', [CrmController::class, 'getActivityLog']);
+    Route::get('/get-order-status/{orderId}', [CrmController::class, 'getOrderStatus']);
+    Route::get('/notifications/recent', [CrmController::class, 'getRealtimeNotifications']);
 });
 
 // ============================================
@@ -55,6 +64,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/shops', [ShopController::class, 'store']);
     Route::get('/shops/{shop_domain}', [ShopController::class, 'show']);
     Route::get('/shops', [ShopController::class, 'index']);
+    Route::put('/shops/{shop_domain}', [ShopController::class, 'update']);
     Route::delete('/shops/{shop_domain}', [ShopController::class, 'destroy']);
 
     // Partner profile routes
@@ -111,4 +121,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::delete('/jobs/{id}', [JobController::class, 'destroy']);
     Route::get('/jobs/stats/summary', [JobController::class, 'stats']);
     Route::post('/jobs/retry-failed', [JobController::class, 'retryFailed']);
+
+    // Notifications
+    Route::get('/notifications', [CrmController::class, 'getNotifications']);
+    Route::post('/notifications/mark-read', [CrmController::class, 'markNotificationsRead']);
 });

@@ -455,8 +455,8 @@ function updateActionButtons(status) {
 // State Transitions
 // ============================================
 
-function markInProduction() {
-    if (confirm('Mark this job as In Production?')) {
+async function markInProduction() {
+    if (await window.crmConfirm('Mark this job as In Production?', 'Confirm Action')) {
         setJobStatus('IN_PRODUCTION');
     }
 }
@@ -469,14 +469,14 @@ function markArtworkNeeded() {
     }
 }
 
-function moveToProduction() {
-    if (confirm('Move this job to Production?')) {
+async function moveToProduction() {
+    if (await window.crmConfirm('Move this job to Production?', 'Confirm Action')) {
         setJobStatus('IN_PRODUCTION');
     }
 }
 
-function markShipped() {
-    if (confirm('Mark this job as Shipped?')) {
+async function markShipped() {
+    if (await window.crmConfirm('Mark this job as Shipped?', 'Confirm Action')) {
         setJobStatus('SHIPPED');
     }
 }
@@ -489,16 +489,16 @@ function markException() {
     }
 }
 
-function cancelJob() {
+async function cancelJob() {
     const reason = prompt('Enter cancellation reason:');
-    if (reason && confirm('Are you sure?')) {
+    if (reason && await window.crmConfirm('Are you sure?', 'Confirm Cancellation')) {
         setJobStatus('CANCELLED');
         showExceptionSection(reason);
     }
 }
 
 function uploadArtwork() {
-    alert('Artwork upload modal here.');
+    window.crmAlert('Artwork upload modal here.', 'info');
 }
 
 function updateStepper(activeStep) {
@@ -611,7 +611,7 @@ function addLead() {
     const value = document.getElementById('leadValue').value;
 
     if (!name || !company) {
-        alert("Name & Company required");
+        window.crmAlert('Name & Company required', 'warning');
         return;
     }
 
@@ -936,6 +936,17 @@ function initializeNotificationDropdown() {
     if (!trigger || !menu) return;
 
     trigger.addEventListener('click', function(e) {
+        const canOpen = typeof window.crmNotificationCanOpen === 'function'
+            ? !!window.crmNotificationCanOpen()
+            : true;
+        if (!canOpen) {
+            closeNotificationDropdown();
+            if (typeof window.crmNotificationNoUnreadAction === 'function') {
+                window.crmNotificationNoUnreadAction();
+            }
+            return;
+        }
+
         e.stopPropagation();
         document.querySelector('.user-dropdown-trigger')?.setAttribute('aria-expanded', 'false');
         var userMenu = document.querySelector('.user-dropdown-menu'); if (userMenu) userMenu.hidden = true;

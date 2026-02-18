@@ -104,18 +104,18 @@ class JobController extends Controller
         }
 
         $validated = $request->validate([
-            'status' => 'required|in:pending,processing,completed,failed',
+            'status' => 'required|in:pending,processing,completed,failed,artwork_needed,in_production,shipped,cancelled,exception',
             'result' => 'nullable|array',
             'error_message' => 'nullable|string'
         ]);
 
         $updateData = $validated;
         
-        if ($validated['status'] === 'processing') {
+        if ($validated['status'] === 'processing' || $validated['status'] === 'in_production') {
             $updateData['started_at'] = now();
-        } elseif ($validated['status'] === 'completed') {
+        } elseif ($validated['status'] === 'completed' || $validated['status'] === 'shipped') {
             $updateData['completed_at'] = now();
-        } elseif ($validated['status'] === 'failed') {
+        } elseif (in_array($validated['status'], ['failed', 'exception', 'cancelled'], true)) {
             $updateData['failed_at'] = now();
         }
 

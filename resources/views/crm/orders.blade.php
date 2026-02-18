@@ -440,7 +440,7 @@
         function updateOrderStatusAjax(orderId, newStatus, cardElement) {
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-            fetch(`/api/update-status`, {
+            fetch(`/api/v1/update-status`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -462,7 +462,7 @@
 
                     console.log('Order status updated successfully');
                 } else {
-                    alert('Error updating status');
+                    window.crmAlert('Error updating status', 'error');
                     cardElement.style.opacity = '1';
                 }
                 draggedCard = null;
@@ -470,7 +470,7 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error updating status');
+                window.crmAlert('Error updating status', 'error');
                 cardElement.style.opacity = '1';
                 draggedCard = null;
                 draggedJobId = null;

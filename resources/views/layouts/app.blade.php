@@ -90,32 +90,47 @@
                     <span></span>
                     <span></span>
                 </button>
-                <h1>@yield('page-title', 'Dashboard')</h1>
+                <div class="page-heading">
+                    @if(!empty($breadcrumbs ?? []))
+                        <nav class="page-breadcrumbs" aria-label="Breadcrumb">
+                            @foreach($breadcrumbs as $index => $crumb)
+                                @if(!empty($crumb['url']) && $index < count($breadcrumbs) - 1)
+                                    <a href="{{ $crumb['url'] }}">{{ $crumb['label'] }}</a>
+                                @else
+                                    <span class="current">{{ $crumb['label'] }}</span>
+                                @endif
+                                @if($index < count($breadcrumbs) - 1)
+                                    <span class="separator">/</span>
+                                @endif
+                            @endforeach
+                        </nav>
+                    @endif
+                    <h1>@yield('page-title', 'Dashboard')</h1>
+                </div>
                 <div class="header-actions">
                     @yield('header-actions')
                     @if($features['notifications']['enabled'] ?? true)
                     <div class="notification-dropdown">
                         <button type="button" class="btn-icon btn-icon-bell notification-trigger" aria-label="Notifications" aria-expanded="false" aria-haspopup="true">
-                            <span class="notification-badge" id="notificationBadge">2</span>
+                            <span class="notification-badge" id="notificationBadge">{{ $headerNotificationCount ?? 0 }}</span>
                         </button>
                         <div class="notification-dropdown-menu" hidden>
                             <div class="notification-dropdown-header">
                                 <span>Notifications</span>
-                                <span class="notification-dropdown-count" id="notificationCount">2</span>
+                                <span class="notification-dropdown-count" id="notificationCount">{{ $headerNotificationCount ?? 0 }}</span>
                             </div>
                             <div class="notification-dropdown-list" id="notificationList">
-                                <a href="{{ route('crm.dashboard') }}" class="notification-dropdown-item">
-                                    <span class="notification-item-avatar">E</span>
-                                    <span class="notification-item-text"><strong>Store ABC</strong> — New order #1234</span>
-                                </a>
-                                <a href="{{ route('crm.dashboard') }}" class="notification-dropdown-item">
-                                    <span class="notification-item-avatar">S</span>
-                                    <span class="notification-item-text"><strong>Job #1230</strong> — Moved to production</span>
-                                </a>
-                                <a href="{{ route('crm.dashboard') }}" class="notification-dropdown-item">
-                                    <span class="notification-item-avatar">N</span>
-                                    <span class="notification-item-text"><strong>Job #1225</strong> — Shipped</span>
-                                </a>
+                                @forelse(($headerNotifications ?? []) as $notification)
+                                    <a href="{{ $notification['url'] }}" class="notification-dropdown-item">
+                                        <span class="notification-item-avatar">{{ $notification['avatar'] }}</span>
+                                        <span class="notification-item-text">{!! $notification['text_html'] !!}</span>
+                                    </a>
+                                @empty
+                                    <div class="notification-dropdown-item">
+                                        <span class="notification-item-avatar">-</span>
+                                        <span class="notification-item-text">No recent notifications</span>
+                                    </div>
+                                @endforelse
                             </div>
                             <a href="{{ route('crm.notifications') }}" class="notification-dropdown-footer">View all notifications</a>
                         </div>
@@ -163,6 +178,38 @@
         };
     </script>
 
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        window.crmAlert = function(message, type = 'info', title = '') {
+            if (window.Swal) {
+                return Swal.fire({
+                    title: title || (type === 'success' ? 'Success' : type === 'error' ? 'Error' : 'Notice'),
+                    text: String(message || ''),
+                    icon: type,
+                    confirmButtonColor: '#3b82f6'
+                });
+            }
+            alert(String(message || ''));
+            return Promise.resolve();
+        };
+
+        window.crmConfirm = async function(message, title = 'Please confirm') {
+            if (window.Swal) {
+                const result = await Swal.fire({
+                    title: String(title),
+                    text: String(message || ''),
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes',
+                    cancelButtonText: 'Cancel',
+                    confirmButtonColor: '#3b82f6',
+                    cancelButtonColor: '#64748b'
+                });
+                return !!result.isConfirmed;
+            }
+            return confirm(String(message || ''));
+        };
+    </script>
     <script src="{{ asset('js/api-client.js') }}"></script>
     <script src="{{ asset('assets/js/script.js') }}"></script>
     <script>
@@ -190,6 +237,8 @@
 
         // Initialize from auth token
         document.addEventListener('DOMContentLoaded', function() {
+            let latestUnreadCount = Number(@json((int) ($headerNotificationCount ?? 0)));
+
             const token = localStorage.getItem('auth_token');
             if (!token) {
                 window.location.href = '{{ route("login") }}';
@@ -206,8 +255,117 @@
                 document.getElementById('headerUserName').textContent = userData.name;
                 document.getElementById('headerUserRole').textContent = userData.role === 'admin' ? 'Administrator' : userData.role.charAt(0).toUpperCase() + userData.role.slice(1);
             }
+
+            function renderNotifications(items) {
+                const list = document.getElementById('notificationList');
+                const badge = document.getElementById('notificationBadge');
+                const countNode = document.getElementById('notificationCount');
+                if (!list || !badge || !countNode) return;
+
+                const count = Array.isArray(items) ? items.length : 0;
+
+                if (!count) {
+                    list.innerHTML = '<div class="notification-dropdown-item"><span class="notification-item-avatar">-</span><span class="notification-item-text">No recent notifications</span></div>';
+                    return;
+                }
+
+                list.innerHTML = items.map(function (item) {
+                    const url = item.url || '{{ route("crm.notifications") }}';
+                    const avatar = item.avatar || 'N';
+                    const text = item.text_html || 'Notification';
+                    const unreadClass = item.is_read ? '' : ' unread';
+                    const itemId = item.id || '';
+                    return '<a href="' + url + '" class="notification-dropdown-item' + unreadClass + '" data-notification-id="' + itemId + '">'
+                        + '<span class="notification-item-avatar">' + avatar + '</span>'
+                        + '<span class="notification-item-text">' + text + '</span>'
+                        + '</a>';
+                }).join('');
+            }
+
+            function updateNotificationCount(count) {
+                const badge = document.getElementById('notificationBadge');
+                const countNode = document.getElementById('notificationCount');
+                if (!badge || !countNode) return;
+                const safeCount = Math.max(0, Number(count || 0));
+                latestUnreadCount = safeCount;
+                badge.textContent = String(safeCount);
+                countNode.textContent = String(safeCount);
+                badge.style.display = safeCount > 0 ? 'inline-flex' : 'none';
+            }
+
+            function authHeaders() {
+                const token = localStorage.getItem('auth_token');
+                return token ? { 'Authorization': 'Bearer ' + token } : {};
+            }
+
+            async function markNotificationsRead(notificationIds = []) {
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                try {
+                    const response = await fetch('/api/v1/notifications/mark-read', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            ...authHeaders()
+                        },
+                        body: JSON.stringify(notificationIds.length ? { notification_ids: notificationIds } : {})
+                    });
+                    if (!response.ok) return;
+                    const payload = await response.json();
+                    updateNotificationCount(payload.unread_count || 0);
+                } catch (error) {
+                    console.error('Mark read failed', error);
+                }
+            }
+
+            async function refreshNotifications() {
+                try {
+                    const response = await fetch('/api/v1/notifications/recent', {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            ...authHeaders()
+                        }
+                    });
+                    if (!response.ok) return;
+                    const payload = await response.json();
+                    if (payload && payload.success) {
+                        renderNotifications(payload.notifications || []);
+                        updateNotificationCount(payload.unread_count || 0);
+                    }
+                } catch (error) {
+                    console.error('Notification refresh failed', error);
+                }
+            }
+
+            const notificationList = document.getElementById('notificationList');
+            if (notificationList) {
+                notificationList.addEventListener('click', function (event) {
+                    const anchor = event.target.closest('a.notification-dropdown-item[data-notification-id]');
+                    if (!anchor) return;
+                    const id = anchor.getAttribute('data-notification-id');
+                    if (!id) return;
+                    markNotificationsRead([id]);
+                });
+            }
+
+            window.refreshHeaderNotifications = refreshNotifications;
+            window.updateHeaderNotificationCount = updateNotificationCount;
+            window.crmNotificationCanOpen = function () {
+                return latestUnreadCount > 0;
+            };
+            window.crmNotificationNoUnreadAction = function () {
+                window.location.href = '{{ route("crm.notifications") }}';
+            };
+
+            refreshNotifications();
+            setInterval(refreshNotifications, 20000);
         });
     </script>
     @stack('scripts')
 </body>
 </html>
+
+
+

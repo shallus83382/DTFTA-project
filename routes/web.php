@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Shopify\WebhookController;
+use App\Http\Controllers\Shopify\AuthController as ShopifyAuthController;
 use App\Http\Controllers\CrmController;
 
 // Public landing page / login
@@ -9,6 +9,10 @@ Route::get('/', [CrmController::class, 'landing']);
 
 // Login page
 Route::get('/login', [CrmController::class, 'landing'])->name('login');
+
+// Shopify app install/callback
+Route::get('/shopify/install', [ShopifyAuthController::class, 'install'])->name('shopify.install');
+Route::get('/shopify/callback', [ShopifyAuthController::class, 'callback'])->name('shopify.callback');
 
 // CRM routes (client-side authentication via localStorage token)
 Route::get('/crm/dashboard', [CrmController::class, 'dashboard'])->name('crm.dashboard');
@@ -18,18 +22,11 @@ Route::get('/crm/shipping', [CrmController::class, 'shipping'])->name('crm.shipp
 Route::get('/crm/shipping/detail/{shipmentId}', [CrmController::class, 'shippingDetail'])->name('crm.shipping-detail');
 Route::get('/crm/stores', [CrmController::class, 'stores'])->name('crm.stores');
 Route::get('/crm/reports', [CrmController::class, 'reports'])->name('crm.reports');
+Route::get('/crm/reports/export-csv', [CrmController::class, 'exportReportsCsv'])->name('crm.reports.export-csv');
 Route::get('/crm/settings', [CrmController::class, 'settings'])->name('crm.settings');
 Route::get('/crm/notifications', [CrmController::class, 'notifications'])->name('crm.notifications');
+Route::get('/crm/users', [CrmController::class, 'users'])->name('crm.users');
 Route::get('/crm/order/detail/{orderId}', [CrmController::class, 'orderdetails'])->name('crm.order-detail');
 Route::get('/crm/store/detail/{storeId}', [CrmController::class, 'storedetails'])->name('crm.store-detail');
-
-// Status update endpoint (handled in CrmController)
-Route::post('/api/update-status', [CrmController::class, 'updateStatus']);
-
-// Get activity log endpoint (handled in CrmController)
-Route::post('/api/get-activity-log', [CrmController::class, 'getActivityLog']);
-
-// Return current order status (used by order-detail page)
-Route::get('/api/get-order-status/{orderId}', [CrmController::class, 'getOrderStatus']);
-
-// Webhook routes moved to API routes to avoid CSRF (POST was causing 419)
+Route::post('/crm/store/{storeId}/status', [CrmController::class, 'updateStoreStatus'])->name('crm.store.update-status');
+Route::post('/crm/store/{storeId}/partner-profile', [CrmController::class, 'upsertPartnerProfile'])->name('crm.store.upsert-profile');

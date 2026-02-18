@@ -27,6 +27,7 @@ class User extends Authenticatable
         'phone',
         'address',
         'last_login_at',
+        'notification_last_read_at',
     ];
 
     /**
@@ -51,6 +52,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
+            'notification_last_read_at' => 'datetime',
         ];
     }
 

@@ -261,7 +261,7 @@
         }
 
         async function deleteShipment() {
-            const ok = window.confirm('Delete this shipment permanently?');
+            const ok = await window.crmConfirm('Delete this shipment permanently?', 'Confirm Delete');
             if (!ok) return;
             await sdRequest(`/api/v1/shipments/${shipmentId}`, { method: 'DELETE' });
             sdFlash('Shipment deleted successfully.');

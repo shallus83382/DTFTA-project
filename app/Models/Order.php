@@ -48,4 +48,9 @@ class Order extends Model
     {
         return $this->hasMany(Shipment::class);
     }
+
+    public function jobs()
+    {
+        return $this->hasMany(Job::class);
+    }
 }

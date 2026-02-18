@@ -151,6 +151,7 @@ class UserManagementController extends Controller
         ]);
     }
 
+
     /**
      * Delete user (admin only)
      */

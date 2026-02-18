@@ -106,6 +106,20 @@ return [
             'visible' => true,
             'roles' => ['admin', 'manager'],
         ],
+        [
+            'label' => 'Notifications',
+            'route' => 'crm.notifications',
+            'icon' => 'nav-icon-notifications',
+            'visible' => true,
+            'roles' => ['admin', 'manager', 'user'],
+        ],
+        [
+            'label' => 'Users',
+            'route' => 'crm.users',
+            'icon' => 'nav-icon-users',
+            'visible' => true,
+            'roles' => ['admin'],
+        ],
     ],
 
     // Status configurations
