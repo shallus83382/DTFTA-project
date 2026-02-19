@@ -83,6 +83,118 @@ class ShopifyService
         }
     }
 
+    private function graphqlRequest(int $shopId, string $query, array $variables = []): array
+    {
+        $auth = $this->getShopAndToken($shopId);
+        if (!$auth['success']) {
+            return $auth;
+        }
+
+        $shop = $auth['shop'];
+        $token = $auth['token'];
+        $url = rtrim($this->baseUrl($shop->shop_domain), '/') . '/graphql.json';
+
+        try {
+            $response = Http::withToken($token)
+                ->acceptJson()
+                ->asJson()
+                ->timeout(20)
+                ->retry(2, 250)
+                ->post($url, [
+                    'query' => $query,
+                    'variables' => $variables,
+                ]);
+
+            $data = $response->json() ?? [];
+            $hasErrors = !empty($data['errors']);
+
+            return [
+                'success' => $response->successful() && !$hasErrors,
+                'status' => $response->status(),
+                'data' => $data['data'] ?? null,
+                'errors' => $data['errors'] ?? [],
+                'message' => $response->successful() && !$hasErrors ? 'ok' : 'Shopify GraphQL request failed',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Shopify GraphQL request error', [
+                'shop_id' => $shopId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
+    private function toFulfillmentOrderGid($fulfillmentOrderId): string
+    {
+        $value = trim((string) $fulfillmentOrderId);
+        if (str_starts_with($value, 'gid://shopify/FulfillmentOrder/')) {
+            return $value;
+        }
+
+        return 'gid://shopify/FulfillmentOrder/' . $value;
+    }
+
+    private function runFulfillmentOrderMutation(
+        int $shopId,
+        string $mutationName,
+        $fulfillmentOrderId,
+        ?string $message = null
+    ): array {
+        $gid = $this->toFulfillmentOrderGid($fulfillmentOrderId);
+        $selection = $mutationName;
+
+        $query = <<<GQL
+mutation {$mutationName}(\$id: ID!, \$message: String) {
+  {$selection}(id: \$id, message: \$message) {
+    fulfillmentOrder {
+      id
+      status
+      requestStatus
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+GQL;
+
+        $result = $this->graphqlRequest($shopId, $query, [
+            'id' => $gid,
+            'message' => $message,
+        ]);
+        if (!$result['success']) {
+            return $result;
+        }
+
+        $payload = $result['data'][$selection] ?? [];
+        $userErrors = $payload['userErrors'] ?? [];
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify mutation returned user errors',
+                'data' => $payload,
+                'errors' => $userErrors,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Mutation completed successfully',
+            'data' => $payload['fulfillmentOrder'] ?? $payload,
+            'errors' => [],
+        ];
+    }
+
     public function getOrder(int $shopId, $shopifyOrderId): array
     {
         $result = $this->request($shopId, 'GET', "orders/{$shopifyOrderId}");
@@ -126,6 +238,46 @@ class ShopifyService
             'status' => $result['status'],
             'message' => 'Assigned fulfillment orders fetched successfully',
         ];
+    }
+
+    public function acceptFulfillmentRequest(int $shopId, $fulfillmentOrderId, ?string $message = null): array
+    {
+        return $this->runFulfillmentOrderMutation(
+            $shopId,
+            'fulfillmentOrderAcceptFulfillmentRequest',
+            $fulfillmentOrderId,
+            $message
+        );
+    }
+
+    public function rejectFulfillmentRequest(int $shopId, $fulfillmentOrderId, string $message): array
+    {
+        return $this->runFulfillmentOrderMutation(
+            $shopId,
+            'fulfillmentOrderRejectFulfillmentRequest',
+            $fulfillmentOrderId,
+            $message
+        );
+    }
+
+    public function acceptCancellationRequest(int $shopId, $fulfillmentOrderId, ?string $message = null): array
+    {
+        return $this->runFulfillmentOrderMutation(
+            $shopId,
+            'fulfillmentOrderAcceptCancellationRequest',
+            $fulfillmentOrderId,
+            $message
+        );
+    }
+
+    public function rejectCancellationRequest(int $shopId, $fulfillmentOrderId, string $message): array
+    {
+        return $this->runFulfillmentOrderMutation(
+            $shopId,
+            'fulfillmentOrderRejectCancellationRequest',
+            $fulfillmentOrderId,
+            $message
+        );
     }
 
     public function createFulfillment($shopId, $shopifyOrderId, $data): array

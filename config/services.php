@@ -41,7 +41,7 @@ return [
         'api_password' => env('SHOPIFY_API_PASSWORD', ''),
         'api_secret' => env('SHOPIFY_API_SECRET', env('SHOPIFY_API_PASSWORD', '')),
         'api_version' => env('SHOPIFY_API_VERSION', '2025-10'),
-        'scopes' => env('SHOPIFY_SCOPES', 'read_orders,write_fulfillments,write_assigned_fulfillment_orders,write_third_party_fulfillment_orders'),
+        'scopes' => env('SHOPIFY_SCOPES', 'read_orders,write_fulfillments,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,write_third_party_fulfillment_orders'),
     ],
 
 ];
