@@ -78,8 +78,6 @@ class FailedWebhookController extends Controller
         }
 
         try {
-            // Attempt to process the webhook again
-            // This would typically delegate to webhook processor service
             
             $failedWebhook->update([
                 'retry_count' => $failedWebhook->retry_count + 1,

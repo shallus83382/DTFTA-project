@@ -8,16 +8,25 @@ use Illuminate\Support\Facades\Log;
 
 class ShopifyService
 {
+    /**
+     * Get the API version to use for Shopify requests
+     */
     private function apiVersion(): string
     {
         return (string) config('services.shopify.api_version', '2025-10');
     }
 
+    /**
+     * Construct the base URL for Shopify API requests based on shop domain and API version
+     */
     private function baseUrl(string $shopDomain): string
     {
         return "https://{$shopDomain}/admin/api/" . $this->apiVersion();
     }
 
+    /**
+     * Retrieve shop information and decrypted access token for a given shop ID
+     */
     private function getShopAndToken(int $shopId): array
     {
         $shop = Shop::find($shopId);
@@ -38,6 +47,9 @@ class ShopifyService
         return ['success' => true, 'shop' => $shop, 'token' => $token];
     }
 
+    /**
+     * Make a REST API request to Shopify for a specific shop
+     */
     private function request(int $shopId, string $method, string $path, array $payload = [], array $query = []): array
     {
         $auth = $this->getShopAndToken($shopId);
@@ -83,6 +95,9 @@ class ShopifyService
         }
     }
 
+    /**
+     * Make a GraphQL API request to Shopify for a specific shop
+     */
     private function graphqlRequest(int $shopId, string $query, array $variables = []): array
     {
         $auth = $this->getShopAndToken($shopId);
@@ -131,6 +146,9 @@ class ShopifyService
         }
     }
 
+    /**
+     * Convert a fulfillment order ID to a GraphQL global ID format if it's not already
+     */
     private function toFulfillmentOrderGid($fulfillmentOrderId): string
     {
         $value = trim((string) $fulfillmentOrderId);
@@ -195,6 +213,9 @@ GQL;
         ];
     }
 
+    /**
+     * getOrder - Retrieve a specific order from Shopify using the REST API. This is used in the fulfillment order flow to get order details needed for creating fulfillments.
+     */
     public function getOrder(int $shopId, $shopifyOrderId): array
     {
         $result = $this->request($shopId, 'GET', "orders/{$shopifyOrderId}");
@@ -210,6 +231,9 @@ GQL;
         ];
     }
 
+    /**
+     * getFulfillmentOrdersForOrder - Retrieve fulfillment orders for a specific Shopify order. This is used to determine which fulfillment orders are associated with an order when creating fulfillments.
+     */
     public function getFulfillmentOrdersForOrder(int $shopId, $shopifyOrderId): array
     {
         $result = $this->request($shopId, 'GET', "orders/{$shopifyOrderId}/fulfillment_orders");
@@ -225,6 +249,9 @@ GQL;
         ];
     }
 
+    /**
+     * getAssignedFulfillmentOrders - Retrieve fulfillment orders that are currently assigned to the app's fulfillment service. This is used to identify which fulfillment orders the app is responsible for fulfilling.
+     */
     public function getAssignedFulfillmentOrders(int $shopId, array $filters = []): array
     {
         $result = $this->request($shopId, 'GET', 'assigned_fulfillment_orders', [], $filters);
@@ -240,6 +267,9 @@ GQL;
         ];
     }
 
+    /**
+     * acceptFulfillmentRequest - Accept a fulfillment request for a specific fulfillment order. This is used when the app wants to accept responsibility for fulfilling a fulfillment order that has requested fulfillment.
+     */
     public function acceptFulfillmentRequest(int $shopId, $fulfillmentOrderId, ?string $message = null): array
     {
         return $this->runFulfillmentOrderMutation(
@@ -250,6 +280,9 @@ GQL;
         );
     }
 
+    /**
+     * rejectFulfillmentRequest - Reject a fulfillment request for a specific fulfillment order. This is used when the app wants to decline responsibility for fulfilling a fulfillment order that has requested fulfillment, often with a message explaining why.
+     */
     public function rejectFulfillmentRequest(int $shopId, $fulfillmentOrderId, string $message): array
     {
         return $this->runFulfillmentOrderMutation(
@@ -260,6 +293,9 @@ GQL;
         );
     }
 
+    /**
+     * acceptCancellationRequest - Accept a cancellation request for a specific fulfillment order. This is used when the app wants to approve a cancellation request that has been submitted for a fulfillment order.
+     */
     public function acceptCancellationRequest(int $shopId, $fulfillmentOrderId, ?string $message = null): array
     {
         return $this->runFulfillmentOrderMutation(
@@ -270,6 +306,9 @@ GQL;
         );
     }
 
+    /**
+     * rejectCancellationRequest - Reject a cancellation request for a specific fulfillment order. This is used when the app wants to deny a cancellation request that has been submitted for a fulfillment order, often with a message explaining why.
+     */
     public function rejectCancellationRequest(int $shopId, $fulfillmentOrderId, string $message): array
     {
         return $this->runFulfillmentOrderMutation(
@@ -280,6 +319,9 @@ GQL;
         );
     }
 
+    /**
+     * createFulfillment - Create a fulfillment for a specific order and fulfillment order. This is used to fulfill items in a fulfillment order that the app has accepted responsibility for.
+     */
     public function createFulfillment($shopId, $shopifyOrderId, $data): array
     {
         try {
@@ -334,6 +376,9 @@ GQL;
         }
     }
 
+    /**
+     * updateFulfillmentTracking - Update the tracking information for a specific fulfillment. This is used to add or change tracking details for a fulfillment that has already been created.
+     */
     public function updateFulfillmentTracking($shopId, $fulfillmentId, $trackingInfo): array
     {
         $payload = [
@@ -360,6 +405,9 @@ GQL;
         ];
     }
 
+    /**
+     * cancelFulfillment - Cancel a specific fulfillment. This is used to cancel a fulfillment that has been created but not yet fulfilled, often when an order is cancelled or a fulfillment needs to be voided.
+     */
     public function cancelFulfillment($shopId, $shopifyOrderId, $fulfillmentId): array
     {
         $result = $this->request((int) $shopId, 'POST', "fulfillments/{$fulfillmentId}/cancel");
@@ -375,6 +423,9 @@ GQL;
         ];
     }
 
+    /**
+     * getFulfillment - Retrieve a specific fulfillment from Shopify. This is used to get details about a fulfillment, including its status and tracking information.
+     */
     public function getFulfillmentServices($shopId): array
     {
         $result = $this->request((int) $shopId, 'GET', 'fulfillment_services');
@@ -390,6 +441,9 @@ GQL;
         ];
     }
 
+    /**
+     * createFulfillmentService - Create a fulfillment service in Shopify. This is used to register a fulfillment service with Shopify that can handle fulfillment orders.
+     */
     public function createFulfillmentService(int $shopId, string $callbackUrl, string $serviceName = 'DTFTA Fulfillment Service'): array
     {
         $payload = [
@@ -417,6 +471,9 @@ GQL;
         ];
     }
 
+    /**
+     * registerWebhook - Register a webhook in Shopify for a specific topic and callback URL. This is used to set up webhooks that notify the app of relevant events in Shopify.
+     */
     public function registerWebhook($shopId, $topic, $callbackUrl): array
     {
         $payload = [
@@ -440,6 +497,9 @@ GQL;
         ];
     }
 
+    /**
+     * listWebhooks - Retrieve a list of registered webhooks in Shopify. This is used to check which webhooks are currently set up for the shop.
+     */
     public function listWebhooks(int $shopId): array
     {
         $result = $this->request($shopId, 'GET', 'webhooks');
@@ -455,11 +515,17 @@ GQL;
         ];
     }
 
+    /**
+     * deleteWebhook - Delete a specific webhook in Shopify by its ID. This is used to remove webhooks that are no longer needed or to clean up during uninstallation.
+     */
     public function deleteWebhook(int $shopId, $webhookId): array
     {
         return $this->request($shopId, 'DELETE', "webhooks/{$webhookId}");
     }
 
+    /**
+     * ensureRequiredWebhooks - Ensure that all required webhooks for the app are registered in Shopify. This is used during installation or setup to make sure the app is subscribed to the necessary events.
+     */
     public function ensureRequiredWebhooks(int $shopId, string $baseUrl): array
     {
         $baseUrl = rtrim($baseUrl, '/');
@@ -507,6 +573,9 @@ GQL;
         ];
     }
 
+    /**
+     * provisionShopOnInstall - Perform necessary setup for a shop when the app is installed, including creating a fulfillment service and registering required webhooks. This is used to prepare the shop for using the app's features.
+     */
     public function provisionShopOnInstall(int $shopId, ?string $baseUrl = null): array
     {
         $shop = Shop::find($shopId);

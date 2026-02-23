@@ -19,6 +19,7 @@
 /storage/*.key
 /storage/pail
 /vendor
+/COMPLETE_PROJECT_DOCUMENTATION.md
 projectclientdocs.txt
 Homestead.json
 Homestead.yaml

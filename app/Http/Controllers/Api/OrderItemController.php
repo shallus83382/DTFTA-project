@@ -42,10 +42,8 @@ class OrderItemController extends Controller
 
         $createdItems = [];
         foreach ($validated['items'] as $itemData) {
-            // Set order_id for the item
             $itemData['order_id'] = $order_id;
             
-            // Set defaults
             if (!isset($itemData['quantity']) || is_null($itemData['quantity'])) {
                 $itemData['quantity'] = 1;
             }

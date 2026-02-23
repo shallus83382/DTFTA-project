@@ -73,7 +73,6 @@ class UserManagementController extends Controller
             'is_active' => true,
         ]);
 
-        // Log activity
         AdminActivityLog::logActivity(
             $request->user()->id,
             'create',
@@ -94,7 +93,6 @@ class UserManagementController extends Controller
      */
     public function show(Request $request, User $user)
     {
-        // Users can view their own profile, admins can view anyone
         if ($request->user()->id !== $user->id && !$request->user()->isAdmin()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }

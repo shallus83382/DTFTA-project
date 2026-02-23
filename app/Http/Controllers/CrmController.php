@@ -94,12 +94,18 @@ class CrmController extends Controller
             'headerNotificationCount' => $headerNotificationsPayload['unread_count'],
         ];
     }
-
+    /**
+     * POST /api/v1/shipments
+     * Create a new shipment and send fulfillment request to Shopify
+     */
     private function getStoreStatusOptions(): array
     {
         return ['active', 'suspended', 'uninstalled'];
     }
-
+    /**
+     * GET /crm/dashboard
+     * Display the CRM dashboard
+     */
     private function buildBreadcrumbs(?string $routeName, array $routeParams = []): array
     {
         $dashboardCrumb = ['label' => 'Dashboard', 'url' => route('crm.dashboard')];
@@ -160,12 +166,17 @@ class CrmController extends Controller
                 return [['label' => 'Dashboard', 'url' => null]];
         }
     }
-
+    /**
+     * Handle Shopify OAuth callback and exchange code for access token
+     */
     private function resolveApiUser()
     {
         return auth('sanctum')->user();
     }
-
+    /**
+     * POST /api/v1/orders/{order_id}/items
+     * Create order items for a specific order
+     */
     private function resolveNotificationIcon(string $type, string $status = ''): string
     {
         if ($type === 'shipment') {
@@ -182,7 +193,10 @@ class CrmController extends Controller
 
         return 'O';
     }
-
+    /**
+     * POST /api/v1/orders
+     * Create or update an order record based on Shopify webhook data
+     */
     private function buildNotificationPool(int $limit = 60): \Illuminate\Support\Collection
     {
         $orderNotifications = Order::with('shop')
@@ -256,7 +270,9 @@ class CrmController extends Controller
             ->values()
             ->take($limit);
     }
-
+    /**
+     * Compute unread notifications count based on user's last read timestamp
+     */
     private function computeUnreadCount(?Carbon $readAt): int
     {
         if (!$readAt) {
@@ -267,7 +283,9 @@ class CrmController extends Controller
             + Job::where('created_at', '>', $readAt)->count()
             + Shipment::where('created_at', '>', $readAt)->count();
     }
-
+    /**
+     * Build header notifications for the CRM dashboard
+     */
     private function buildHeaderNotifications(int $limit = 5): array
     {
         $user = $this->resolveApiUser();
@@ -298,7 +316,9 @@ class CrmController extends Controller
             'unread_count' => $this->computeUnreadCount($readAt),
         ];
     }
-
+    /**
+     * Handle Shopify OAuth callback and exchange code for access token
+     */
     private function parseReportFilters(Request $request): array
     {
         $reportsConfig = $this->getFeatures()['reports'] ?? [];
@@ -352,7 +372,9 @@ class CrmController extends Controller
             'job_type' => $jobType,
         ];
     }
-
+    /**
+     * Build data for reports based on filters
+     */
     private function buildReportsData(Request $request): array
     {
         $filters = $this->parseReportFilters($request);
@@ -565,12 +587,11 @@ class CrmController extends Controller
     {
         $data = $this->prepareViewData();
         $data['dashboardConfig'] = $this->getFeatures()['dashboard'] ?? [];
-        
-        // Get dashboard statistics
+
         $today = carbon::now()->startOfDay();
         $weekStart = Carbon::now()->startOfWeek();
         $monthStart = Carbon::now()->startOfMonth();
-        
+
         $data['stats'] = [
             'totalOrders' => Order::count(),
             'ordersToday' => Order::whereDate('created_at', $today)->count(),
@@ -580,19 +601,17 @@ class CrmController extends Controller
             'shippedThisMonth' => Order::where('fulfillment_status', 'fulfilled')
                 ->whereBetween('created_at', [$monthStart, Carbon::now()])
                 ->count(),
-            'exceptions' => Job::where(function($query) {
+            'exceptions' => Job::where(function ($query) {
                 $query->where('status', 'failed')
                     ->orWhere('status', 'exception')
                     ->orWhere('status', 'cancelled');
             })->count(),
         ];
-        
-        // Get recent activity
+
         $data['recentActivity'] = AdminActivityLog::with('user')
             ->orderBy('created_at', 'desc')
             ->paginate(5, ['*'], 'activity_page');
-        
-        // Get orders per day for chart (last 7 days)
+
         $ordersByDay = [];
         for ($i = 6; $i >= 0; $i--) {
             $date = Carbon::now()->subDays($i);
@@ -603,19 +622,17 @@ class CrmController extends Controller
             ];
         }
         $data['ordersByDay'] = collect($ordersByDay);
-        
-        // Get orders by shop
+
         $data['ordersByShop'] = Order::selectRaw('shops.shop_domain, count(orders.id) as count')
             ->join('shops', 'orders.shop_id', '=', 'shops.id')
             ->groupBy('shops.id', 'shops.shop_domain')
             ->limit(5)
             ->get();
-        
-        // Get job types distribution
+
         $data['jobTypeDistribution'] = Job::selectRaw('job_type, count(*) as count')
             ->groupBy('job_type')
             ->get();
-        
+
         return view('crm.dashboard', $data);
     }
 
@@ -638,16 +655,12 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         $data['ordersConfig'] = $this->getFeatures()['orders'] ?? [];
         $data['orderStatuses'] = $this->getStatuses()['order_statuses'] ?? [];
-        
-        // Get jobs grouped by status for kanban board
-        // Status flow: PENDING → ARTWORK NEEDED → IN PRODUCTION → SHIPPED → CANCELLED/EXCEPTION
         $statuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled'];
         $jobsByStatus = [];
-        
+
         foreach ($statuses as $status) {
             if ($status === 'cancelled') {
-                // For cancelled, get both failed and exception statuses
-                $jobsByStatus[$status] = Job::where(function($query) {
+                $jobsByStatus[$status] = Job::where(function ($query) {
                     $query->where('status', 'failed')
                         ->orWhere('status', 'exception')
                         ->orWhere('status', 'cancelled');
@@ -662,18 +675,14 @@ class CrmController extends Controller
             }
         }
         $data['jobsByStatus'] = $jobsByStatus;
-        
-        // Get all jobs with relationships for table view
         $data['allJobs'] = Job::with('shop', 'order')
             ->orderBy('created_at', 'desc')
             ->paginate(15);
-        
-        // Get unique stores for filter dropdown
+
         $data['stores'] = Shop::pluck('shop_domain');
-        
-        // Get unique product types (job types)
+
         $data['productTypes'] = Job::distinct('job_type')->pluck('job_type');
-        
+
         return view('crm.orders', $data);
     }
 
@@ -685,26 +694,22 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         $data['jobId'] = $jobId;
         $data['orderStatuses'] = $this->getStatuses()['order_statuses'] ?? [];
-        
-        // Get job with relationships
+
         $job = Job::with('shop', 'order', 'order.orderItems')->findOrFail($jobId);
         $data['job'] = $job;
-        
-        // Get the associated order
+
         $order = $job->order;
         $data['order'] = $order;
-        
-        // Get all order items
+
         $data['orderItems'] = $order->orderItems;
-        
-        // Get activity log for this job
+
         $data['activityLog'] = AdminActivityLog::where('model_type', 'Job')
             ->where('model_id', $jobId)
             ->with('user')
             ->orderBy('created_at', 'desc')
             ->limit(10)
             ->get();
-        
+
         return view('crm.order-detail', $data);
     }
 
@@ -821,7 +826,9 @@ class CrmController extends Controller
         $data = array_merge($data, $reportsData);
         return view('crm.reports', $data);
     }
-
+    /**
+     * Export current report data as CSV.
+     */
     public function exportReportsCsv(Request $request): StreamedResponse
     {
         $reportsData = $this->buildReportsData($request);
@@ -879,7 +886,6 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         return view('crm.users', $data);
     }
-
 
     /**
      * Show store detail page.
@@ -943,7 +949,9 @@ class CrmController extends Controller
 
         return view('crm.store-detail', $data);
     }
-
+    /**
+     * Update store status (active, suspended, uninstalled)
+     */
     public function updateStoreStatus(Request $request, string $storeId): RedirectResponse
     {
         $validated = $request->validate([
@@ -971,7 +979,9 @@ class CrmController extends Controller
             ->route('crm.store-detail', $store->id)
             ->with('success', 'Store status updated successfully.');
     }
-
+    /**
+     * Create or update partner profile for a store
+     */
     public function upsertPartnerProfile(Request $request, string $storeId): RedirectResponse
     {
         $validated = $request->validate([
@@ -1008,24 +1018,20 @@ class CrmController extends Controller
     public function orderdetails(string $orderId): View
     {
         $data = $this->prepareViewData();
-        
-        // Get order with relationships
         $order = Order::with('shop', 'orderItems', 'shipments')->findOrFail($orderId);
         $data['order'] = $order;
-        
-        // Get jobs associated with this order
+
         $data['jobs'] = Job::where('order_id', $orderId)
             ->with('shop')
             ->get();
-        
-        // Get activity log for this order
+
         $data['activityLog'] = AdminActivityLog::where('model_type', 'Order')
             ->where('model_id', $orderId)
             ->with('user')
             ->orderBy('created_at', 'desc')
             ->paginate(10, ['*'], 'activity_page')
             ->appends(request()->query());
-        
+
         return view('crm.order-detail', $data);
     }
 
@@ -1042,16 +1048,12 @@ class CrmController extends Controller
             if ($type === 'job') {
                 $job = Job::findOrFail($id);
                 $job->update(['status' => $status]);
-
-                // Also update parent order fulfillment_status if present
                 if ($job->order_id) {
                     $order = Order::find($job->order_id);
                     if ($order) {
                         $order->update(['fulfillment_status' => $status]);
                     }
                 }
-
-                // Log activity
                 AdminActivityLog::logActivity(
                     auth()->id(),
                     'Updated Status to ' . $status,
@@ -1062,14 +1064,9 @@ class CrmController extends Controller
                 return response()->json(['success' => true, 'message' => 'Job status updated successfully', 'status' => $status]);
             }
 
-            // order
             $order = Order::findOrFail($id);
             $order->update(['fulfillment_status' => $status]);
-
-            // Update all jobs linked to this order to keep UI consistent
             Job::where('order_id', $order->id)->update(['status' => $status]);
-
-            // Log activity for order
             AdminActivityLog::logActivity(
                 auth()->id(),
                 'Updated Status to ' . $status,
@@ -1144,7 +1141,9 @@ class CrmController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
         }
     }
-
+    /**
+     * API: Get real-time notifications for the logged-in user
+     */
     public function getRealtimeNotifications(): JsonResponse
     {
         $payload = $this->buildHeaderNotifications();
@@ -1156,7 +1155,9 @@ class CrmController extends Controller
             'timestamp' => now()->toDateTimeString(),
         ]);
     }
-
+    /**
+     * API: Get paginated notifications with filtering options
+     */
     public function getNotifications(Request $request): JsonResponse
     {
         $user = $this->resolveApiUser();
@@ -1206,7 +1207,9 @@ class CrmController extends Controller
             'unread_count' => $this->computeUnreadCount($readAt),
         ]);
     }
-
+    /**
+     * API: Mark notifications as read based on provided IDs or mark all as read
+     */
     public function markNotificationsRead(Request $request): JsonResponse
     {
         $user = $this->resolveApiUser();

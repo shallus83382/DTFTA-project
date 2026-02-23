@@ -243,17 +243,8 @@
 
             </div>
         </div>
-
-
-
-
-
-
-
-
         <script src="public/assets/js/script.js"></script>
         <script>
-            // Load current order status from server on page load
             function loadCurrentOrderStatus() {
                 const orderId = {{ $order->id ?? 'null' }};
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ||
@@ -277,9 +268,7 @@
                     .catch(error => console.error('Error loading status:', error));
             }
 
-            // Update UI with current status
             function updateUIWithStatus(status) {
-                // Update stepper
                 document.querySelectorAll('.ld-stepper .step').forEach(step => {
                     step.classList.remove('active');
                 });
@@ -289,7 +278,6 @@
                     activeStep.classList.add('active');
                 }
 
-                // Update status badge
                 const statusBadge = document.getElementById('statusBadge');
                 if (statusBadge) {
                     const displayText = getStatusDisplayName(status);
@@ -298,7 +286,6 @@
                 }
             }
 
-            // Map database status to display names
             function getStatusDisplayName(status) {
                 const statusMap = {
                     'pending': 'NEW',
@@ -312,7 +299,6 @@
                 return statusMap[status] || status.toUpperCase().replace(/_/g, ' ');
             }
 
-            // Get status class name
             function getStatusClassName(status) {
                 const classMap = {
                     'pending': 'pending',
@@ -326,28 +312,22 @@
                 return classMap[status] || status.replace(/_/g, '-');
             }
 
-            // Load status on page load
             document.addEventListener('DOMContentLoaded', loadCurrentOrderStatus);
 
-            // Update job status when a step is clicked
             function updateJobStatus(newStatus, element) {
                 const orderId = {{ $order->id ?? 'null' }};
 
                 if (!orderId) return;
 
-                // Remove active class from all steps and reset style
                 document.querySelectorAll('.ld-stepper .step').forEach(step => {
                     step.classList.remove('active');
                 });
 
-                // Add active class to clicked step
                 element.classList.add('active');
 
-                // Update status via AJAX - always update order
                 const id = orderId;
                 const type = 'order';
 
-                // Get CSRF token from meta tag or form
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ||
                     document.querySelector('input[name="_token"]')?.value || '';
 
@@ -368,18 +348,15 @@
                         if (data.success) {
                             console.log('Status updated successfully');
 
-                            // Update all active steps
                             document.querySelectorAll('.ld-stepper .step').forEach(step => {
                                 step.classList.remove('active');
                             });
 
-                            // Find and activate the new status step
                             const activeStep = document.querySelector(`.ld-stepper .step[data-status="${newStatus}"]`);
                             if (activeStep) {
                                 activeStep.classList.add('active');
                             }
 
-                            // Update the status badge with proper display name
                             const statusBadge = document.getElementById('statusBadge');
                             if (statusBadge) {
                                 const displayText = getStatusDisplayName(newStatus);
@@ -387,16 +364,13 @@
                                 statusBadge.className = 'status-badge status-' + getStatusClassName(newStatus);
                             }
 
-                            // Refresh the activity log
                             refreshActivityLog(id, type);
 
-                            // Show notification
                             if (typeof showNotification === 'function') {
                                 showNotification('Status updated successfully', 'success');
                             }
                         } else {
                             window.crmAlert('Error updating status: ' + (data.message || 'Unknown error'), 'error');
-                            // Revert the active state if error
                             document.querySelectorAll('.ld-stepper .step').forEach(step => {
                                 step.classList.remove('active');
                             });
@@ -405,14 +379,11 @@
                     .catch(error => {
                         console.error('Error:', error);
                         window.crmAlert('Error updating status', 'error');
-                        // Revert the active state if error
                         document.querySelectorAll('.ld-stepper .step').forEach(step => {
                             step.classList.remove('active');
                         });
                     });
             }
-
-            // Refresh activity log
             function refreshActivityLog(id, type, page = 1) {
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
@@ -440,7 +411,6 @@
                     });
             }
 
-            // Update activity content
             function updateActivityContent(activities, pagination, id, type) {
                 const tabContent = document.getElementById('tabContent');
                 const paginationNode = document.getElementById('activityPagination');
@@ -534,18 +504,11 @@
                 if (['cancelled', 'failed', 'exception'].includes(key)) return 'log-status-danger';
                 return 'log-status-info';
             }
-
-            // Switch tabs
             function switchTab(tabName) {
-                // Remove active class from all tabs
                 document.querySelectorAll('.ld-tabs .tab').forEach(tab => {
                     tab.classList.remove('active');
                 });
-
-                // Add active class to clicked tab
                 event.target.classList.add('active');
-
-                // Update content based on tab
                 const content = document.getElementById('tabContent');
                 if (tabName === 'all') {
                     content.style.display = 'block';

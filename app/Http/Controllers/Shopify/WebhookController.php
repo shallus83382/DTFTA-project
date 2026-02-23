@@ -28,7 +28,6 @@ class WebhookController extends Controller
             $shopDomain = $this->resolveShopDomain($request);
             $webhookId = $request->header('X-Shopify-Webhook-Id');
 
-            // Verify HMAC signature
             if (!$this->verifyHmac($request, $hmac)) {
                 return response()->json([
                     'success' => false,
@@ -36,7 +35,6 @@ class WebhookController extends Controller
                 ], 401);
             }
 
-            // Get shop by domain
             $shop = Shop::where('shop_domain', $shopDomain)->first();
             if (!$shop) {
                 return response()->json([
@@ -46,7 +44,6 @@ class WebhookController extends Controller
                 ], 404);
             }
 
-            // Idempotency guard
             if ($webhookId && Webhook::where('shop_id', $shop->id)
                 ->where('topic', $topic)
                 ->where(function ($query) use ($webhookId) {
@@ -61,7 +58,6 @@ class WebhookController extends Controller
                 ], 200);
             }
 
-            // Store webhook
             $webhook = Webhook::create([
                 'shop_id' => $shop->id,
                 'event_type' => $topic,
@@ -72,11 +68,8 @@ class WebhookController extends Controller
                 'created_at_shopify' => now()
             ]);
 
-            // Process webhook based on topic
             $this->processWebhook($webhook, $topic, $request->all());
-
             $webhook->update(['processed' => true, 'processed_at' => now()]);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Webhook processed successfully'
@@ -84,7 +77,6 @@ class WebhookController extends Controller
         } catch (\Exception $e) {
             Log::error('Webhook Error: ' . $e->getMessage());
 
-            // Store as failed webhook for retry
             if (isset($webhook)) {
                 FailedWebhook::create([
                     'webhook_id' => $webhook->id,
@@ -170,7 +162,6 @@ class WebhookController extends Controller
             ]
         );
 
-        // Create order items
         if (isset($payload['line_items'])) {
             $hasValidDtftaLineItem = false;
             $hasInvalidDtftaLineItem = false;
@@ -526,6 +517,9 @@ class WebhookController extends Controller
         }
     }
 
+    /**
+     * Handle fulfillment_orders/fulfillment_request_submitted webhook
+     */
     private function handleFulfillmentRequestSubmitted(int $shopId, array $payload): void
     {
         [$fulfillmentOrderId, $shopifyOrderId] = $this->extractFulfillmentOrderContext($payload);
@@ -603,7 +597,9 @@ class WebhookController extends Controller
                 ]);
         }
     }
-
+    /**
+     * Handle fulfillment_orders/cancellation_request_submitted webhook
+     */
     private function handleCancellationRequestSubmitted(int $shopId, array $payload): void
     {
         [$fulfillmentOrderId, $shopifyOrderId] = $this->extractFulfillmentOrderContext($payload);
@@ -680,7 +676,9 @@ class WebhookController extends Controller
                 ]);
         }
     }
-
+    /**
+     * Extract fulfillment order ID and related Shopify order ID from payload
+     */
     private function extractFulfillmentOrderContext(array $payload): array
     {
         $fo = is_array($payload['fulfillment_order'] ?? null) ? $payload['fulfillment_order'] : [];
@@ -689,7 +687,9 @@ class WebhookController extends Controller
 
         return [$foId ? (string) $foId : null, $orderId ? (string) $orderId : null];
     }
-
+     /**
+     * Return the first non-empty string from primary and fallback candidates
+     */
     private function firstNonEmpty($primary, $fallback): ?string
     {
         $candidates = [$primary];
@@ -716,13 +716,11 @@ class WebhookController extends Controller
      */
     private function verifyHmac($request, $hmac)
     {
-        // If HMAC is not provided and debug mode is on, allow it for testing
         if (!$hmac && env('WEBHOOK_DEBUG', false)) {
             Log::warning('Webhook: HMAC verification skipped (debug mode enabled)');
             return true;
         }
 
-        // If no secret configured, log warning but allow for testing
         $secret = config('services.shopify.webhook_secret');
         if (!$secret) {
             if (env('WEBHOOK_DEBUG', false)) {
@@ -746,7 +744,9 @@ class WebhookController extends Controller
 
         return hash_equals($calculatedHmac, $hmac);
     }
-
+    /**
+     * Resolve shop domain from various possible headers and payload fields
+     */
     private function resolveShopDomain(Request $request): ?string
     {
         $candidates = [
@@ -765,7 +765,9 @@ class WebhookController extends Controller
 
         return null;
     }
-
+   /**
+     * Normalize shop domain by trimming, lowercasing, and removing protocol/path
+     */
     private function normalizeShopDomain($value): ?string
     {
         if (!is_string($value)) {
@@ -782,7 +784,9 @@ class WebhookController extends Controller
 
         return $value ?: null;
     }
-
+    /**
+     * Normalize line item properties into a simple key-value array
+     */
     private function normalizeLineItemProperties($properties): array
     {
         if (!is_array($properties)) {
@@ -802,7 +806,9 @@ class WebhookController extends Controller
 
         return $normalized;
     }
-
+    /**
+     * Determine if a SKU follows the DTFTA apparel POD format
+     */
     private function isDtftaSku(?string $sku): bool
     {
         if (!$sku) {
@@ -811,7 +817,9 @@ class WebhookController extends Controller
 
         return str_starts_with(strtoupper($sku), 'DTFTA-APP-');
     }
-
+    /**
+     * Validate that a line item has all required DTFTA properties if it is identified as a DTFTA apparel POD item
+     */
     private function validateDtftaLineItem(array $lineItem, array $properties): array
     {
         $required = [

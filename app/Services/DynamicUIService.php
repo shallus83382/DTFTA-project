@@ -55,7 +55,6 @@ class DynamicUIService
         $config = self::getConfig();
         $features = $config['features'] ?? [];
         
-        // Support dot notation like: dashboard.show_charts
         $parts = explode('.', $featurePath);
         $current = $features;
         

@@ -37,8 +37,6 @@ class PasswordResetController extends Controller
             'created_at' => now(),
         ]);
 
-        // In production, send email with reset link
-        // For now, return the token (in real app, send via email)
         $resetLink = config('app.frontend_url') . '/reset-password?email=' . urlencode($request->email) . '&token=' . $token;
 
         // TODO: Send email with reset link
@@ -48,7 +46,7 @@ class PasswordResetController extends Controller
 
         return response()->json([
             'message' => 'Password reset link sent to your email',
-            'debug_link' => $resetLink, // Remove in production
+            'debug_link' => $resetLink, 
         ]);
     }
 
@@ -73,7 +71,6 @@ class PasswordResetController extends Controller
             ], 422);
         }
 
-        // Check if token is valid (created within last 24 hours)
         if (now()->diffInHours($resetRecord->created_at) > 24) {
             DB::table('password_reset_tokens')->where('email', $request->email)->delete();
             return response()->json([
@@ -81,18 +78,15 @@ class PasswordResetController extends Controller
             ], 422);
         }
 
-        // Verify token
         if (!Hash::check($request->token, $resetRecord->token)) {
             return response()->json([
                 'message' => 'Invalid reset token',
             ], 422);
         }
 
-        // Update password
         $user = User::where('email', $request->email)->first();
         $user->update(['password' => $request->password]);
 
-        // Delete reset token
         DB::table('password_reset_tokens')->where('email', $request->email)->delete();
 
         return response()->json([

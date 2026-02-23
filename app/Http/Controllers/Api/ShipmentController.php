@@ -61,7 +61,6 @@ class ShipmentController extends Controller
 
         $shipment = Shipment::create($payload);
 
-        // Call Shopify API to create fulfillment
         try {
             $order = Order::find($validated['order_id']);
             $response = $this->shopifyService->createFulfillment(
@@ -87,7 +86,6 @@ class ShipmentController extends Controller
                 ]);
             }
         } catch (\Exception $e) {
-            // Log error but allow shipment to be created
             Log::error('Shopify Fulfillment Error: ' . $e->getMessage());
         }
 
