@@ -222,11 +222,7 @@
                 </button>
             </form>
 
-            <div class="demo-credentials">
-                <strong>Demo Credentials:</strong><br>
-                Email: <code>admin@test.com</code><br>
-                Password: <code>password</code>
-            </div>
+           
         </div>
     </div>
 

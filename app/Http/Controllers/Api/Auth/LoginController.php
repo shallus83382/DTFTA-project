@@ -34,7 +34,6 @@ class LoginController extends Controller
             ], 403);
         }
 
-        // Update last login time
         $user->update(['last_login_at' => now()]);
 
         $token = $user->createToken('admin-token', ['admin'])->plainTextToken;

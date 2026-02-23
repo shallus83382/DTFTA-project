@@ -129,12 +129,17 @@ class AuthController extends Controller
 
         return redirect('/crm/stores')->with('success', 'Shopify app installed and provisioned successfully.');
     }
-
+    /**
+     * Update user (admin or self)
+     */
     private function isValidShopDomain(string $shop): bool
     {
         return (bool) preg_match('/^[a-z0-9][a-z0-9\\-]*\\.myshopify\\.com$/i', $shop);
     }
-
+    /**
+     * Show user details (admin only, or own profile) 
+     * This method is not used in the current flow but can be useful for future extensions where we want to display shop details after installation or in a settings page.
+     */
     private function verifyOAuthHmac(Request $request, string $hmac): bool
     {
         $secret = (string) config('services.shopify.api_secret', '');

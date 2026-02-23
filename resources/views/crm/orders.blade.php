@@ -339,7 +339,7 @@
 
     <script>
         let draggedJobId = null;
-        let draggedCard = null;
+        let draggedOrderCard = null;
 
         function normalizeFilterStatus(status) {
             if (!status) return '';
@@ -394,15 +394,15 @@
         }
 
         function handleDragStart(e) {
-            draggedCard = this;
+            draggedOrderCard = this;
             draggedJobId = this.dataset.jobId;
             this.style.opacity = '0.5';
             e.dataTransfer.effectAllowed = 'move';
         }
 
         function handleDragEnd(e) {
-            if (draggedCard) {
-                draggedCard.style.opacity = '1';
+            if (draggedOrderCard) {
+                draggedOrderCard.style.opacity = '1';
             }
         }
 
@@ -423,18 +423,18 @@
             if (!draggedJobId) return;
 
             const newStatus = this.dataset.status;
-            const oldStatus = draggedCard.dataset.currentStatus;
+            const oldStatus = draggedOrderCard.dataset.currentStatus;
 
             if (newStatus === oldStatus) {
-                draggedCard.style.opacity = '1';
+                draggedOrderCard.style.opacity = '1';
                 return;
             }
 
             // Get the order ID from the card
-            const orderId = draggedCard.dataset.orderId;
+            const orderId = draggedOrderCard.dataset.orderId;
             
             // Update status via AJAX
-            updateOrderStatusAjax(orderId, newStatus, draggedCard);
+            updateOrderStatusAjax(orderId, newStatus, draggedOrderCard);
         }
 
         function updateOrderStatusAjax(orderId, newStatus, cardElement) {
@@ -465,14 +465,14 @@
                     window.crmAlert('Error updating status', 'error');
                     cardElement.style.opacity = '1';
                 }
-                draggedCard = null;
+                draggedOrderCard = null;
                 draggedJobId = null;
             })
             .catch(error => {
                 console.error('Error:', error);
                 window.crmAlert('Error updating status', 'error');
                 cardElement.style.opacity = '1';
-                draggedCard = null;
+                draggedOrderCard = null;
                 draggedJobId = null;
             });
         }

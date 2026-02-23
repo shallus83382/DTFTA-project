@@ -82,12 +82,10 @@ class OrderController extends Controller
     {
         $query = Order::with(['shop']);
 
-        // Filter by shop_id if provided
         if ($request->has('shop_id')) {
             $query->where('shop_id', $request->query('shop_id'));
         }
 
-        // Filter by fulfillment_status if provided
         if ($request->has('fulfillment_status')) {
             $status = $request->query('fulfillment_status');
             $query->where(function ($q) use ($status) {
@@ -95,7 +93,6 @@ class OrderController extends Controller
             });
         }
 
-        // Filter by status if provided
         if ($request->has('status')) {
             $status = $request->query('status');
             $query->where(function ($q) use ($status) {

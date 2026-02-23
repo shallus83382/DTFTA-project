@@ -9,6 +9,8 @@ use App\Models\FailedWebhook;
 use App\Models\Shop;
 use App\Models\Order;
 use App\Models\Job;
+use App\Models\Shipment;
+use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
 use App\Models\OrderItem;
 
@@ -26,7 +28,6 @@ class WebhookController extends Controller
             $shopDomain = $this->resolveShopDomain($request);
             $webhookId = $request->header('X-Shopify-Webhook-Id');
 
-            // Verify HMAC signature
             if (!$this->verifyHmac($request, $hmac)) {
                 return response()->json([
                     'success' => false,
@@ -34,7 +35,6 @@ class WebhookController extends Controller
                 ], 401);
             }
 
-            // Get shop by domain
             $shop = Shop::where('shop_domain', $shopDomain)->first();
             if (!$shop) {
                 return response()->json([
@@ -44,21 +44,20 @@ class WebhookController extends Controller
                 ], 404);
             }
 
-            // Idempotency guard
             if ($webhookId && Webhook::where('shop_id', $shop->id)
                 ->where('topic', $topic)
                 ->where(function ($query) use ($webhookId) {
                     $query->where('webhook_id', $webhookId)
                         ->orWhere('shopify_webhook_id', $webhookId);
                 })
-                ->exists()) {
+                ->exists()
+            ) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Duplicate webhook ignored'
                 ], 200);
             }
 
-            // Store webhook
             $webhook = Webhook::create([
                 'shop_id' => $shop->id,
                 'event_type' => $topic,
@@ -69,20 +68,15 @@ class WebhookController extends Controller
                 'created_at_shopify' => now()
             ]);
 
-            // Process webhook based on topic
             $this->processWebhook($webhook, $topic, $request->all());
-
             $webhook->update(['processed' => true, 'processed_at' => now()]);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Webhook processed successfully'
             ], 200);
-
         } catch (\Exception $e) {
             Log::error('Webhook Error: ' . $e->getMessage());
 
-            // Store as failed webhook for retry
             if (isset($webhook)) {
                 FailedWebhook::create([
                     'webhook_id' => $webhook->id,
@@ -131,6 +125,12 @@ class WebhookController extends Controller
             case 'fulfillments/update':
                 $this->handleFulfillmentUpdate($webhook->shop_id, $payload);
                 break;
+            case 'fulfillment_orders/fulfillment_request_submitted':
+                $this->handleFulfillmentRequestSubmitted($webhook->shop_id, $payload);
+                break;
+            case 'fulfillment_orders/cancellation_request_submitted':
+                $this->handleCancellationRequestSubmitted($webhook->shop_id, $payload);
+                break;
         }
     }
 
@@ -162,7 +162,6 @@ class WebhookController extends Controller
             ]
         );
 
-        // Create order items
         if (isset($payload['line_items'])) {
             $hasValidDtftaLineItem = false;
             $hasInvalidDtftaLineItem = false;
@@ -335,7 +334,84 @@ class WebhookController extends Controller
      */
     private function handleFulfillmentCreate($shopId, $payload)
     {
-        // Implement fulfillment tracking update logic
+        $shopifyFulfillmentId = $payload['id'] ?? null;
+        if (!$shopifyFulfillmentId) {
+            return;
+        }
+
+        $shopifyOrderId = $payload['order_id'] ?? null;
+        $order = $shopifyOrderId
+            ? Order::where('shop_id', $shopId)->where('shopify_order_id', (string) $shopifyOrderId)->first()
+            : null;
+
+        $jobId = null;
+        if ($order) {
+            $jobId = Job::where('order_id', $order->id)->value('id');
+            if (!$jobId) {
+                $job = Job::create([
+                    'shop_id' => $shopId,
+                    'order_id' => $order->id,
+                    'job_type' => 'fulfillment_request',
+                    'status' => 'in_production',
+                    'payload' => $payload,
+                ]);
+                $jobId = $job->id;
+            }
+        }
+
+        if (!$jobId) {
+            Log::warning('Fulfillment create webhook skipped: no related job/order found', [
+                'shop_id' => $shopId,
+                'fulfillment_id' => $shopifyFulfillmentId,
+            ]);
+            return;
+        }
+
+        $trackingNumber = $this->firstNonEmpty(
+            $payload['tracking_number'] ?? null,
+            $payload['tracking_numbers'] ?? null
+        ) ?: ('shopify-' . (string) $shopifyFulfillmentId);
+        $trackingUrl = $this->firstNonEmpty(
+            $payload['tracking_url'] ?? null,
+            $payload['tracking_urls'] ?? null
+        );
+        $trackingCompany = $payload['tracking_company'] ?? null;
+
+        Shipment::updateOrCreate(
+            [
+                'shop_id' => $shopId,
+                'shipment_id' => (string) $shopifyFulfillmentId,
+            ],
+            [
+                'job_id' => $jobId,
+                'order_id' => $order?->id,
+                'carrier' => $trackingCompany ?: 'shopify',
+                'tracking_company' => $trackingCompany,
+                'tracking_number' => (string) $trackingNumber,
+                'tracking_url' => $trackingUrl,
+                'status' => 'created',
+                'line_items' => $payload['line_items'] ?? null,
+                'shipped_at' => $payload['created_at'] ?? now(),
+                'created_at_shopify' => $payload['created_at'] ?? now(),
+                'updated_at_shopify' => $payload['updated_at'] ?? now(),
+                'payload' => $payload,
+            ]
+        );
+
+        if ($order) {
+            $order->update([
+                'status' => 'shipped',
+                'fulfillment_status' => 'fulfilled',
+                'updated_at_shopify' => $payload['updated_at'] ?? now(),
+            ]);
+            Job::where('order_id', $order->id)
+                ->whereNotIn('status', ['cancelled', 'failed', 'exception'])
+                ->update([
+                    'status' => 'shipped',
+                    'completed_at' => now(),
+                    'error_message' => null,
+                ]);
+        }
     }
 
     /**
@@ -343,7 +419,296 @@ class WebhookController extends Controller
      */
     private function handleFulfillmentUpdate($shopId, $payload)
     {
-        // Implement fulfillment status update logic
+        $shopifyFulfillmentId = $payload['id'] ?? null;
+        if (!$shopifyFulfillmentId) {
+            return;
+        }
+
+        $shipment = Shipment::where('shop_id', $shopId)
+            ->where('shipment_id', (string) $shopifyFulfillmentId)
+            ->first();
+
+        $statusInput = strtolower((string) ($payload['status'] ?? $payload['shipment_status'] ?? ''));
+        $mappedStatus = match ($statusInput) {
+            'cancelled', 'canceled' => 'cancelled',
+            'failure', 'failed', 'error' => 'exception',
+            'success', 'open' => 'created',
+            default => $shipment?->status ?? 'in_production',
+        };
+
+        $trackingNumber = $this->firstNonEmpty(
+            $payload['tracking_number'] ?? null,
+            $payload['tracking_numbers'] ?? null
+        );
+        $trackingUrl = $this->firstNonEmpty(
+            $payload['tracking_url'] ?? null,
+            $payload['tracking_urls'] ?? null
+        );
+        $trackingCompany = $payload['tracking_company'] ?? null;
+
+        if ($shipment) {
+            $shipment->update([
+                'status' => $mappedStatus,
+                'carrier' => $trackingCompany ?: $shipment->carrier,
+                'tracking_company' => $trackingCompany ?: $shipment->tracking_company,
+                'tracking_number' => $trackingNumber ?: $shipment->tracking_number,
+                'tracking_url' => $trackingUrl ?: $shipment->tracking_url,
+                'updated_at_shopify' => $payload['updated_at'] ?? now(),
+                'payload' => $payload,
+            ]);
+        }
+
+        $shopifyOrderId = $payload['order_id'] ?? null;
+        $order = null;
+        if ($shipment?->order_id) {
+            $order = Order::find($shipment->order_id);
+        } elseif ($shopifyOrderId) {
+            $order = Order::where('shop_id', $shopId)
+                ->where('shopify_order_id', (string) $shopifyOrderId)
+                ->first();
+        }
+
+        if (!$order) {
+            return;
+        }
+
+        if ($mappedStatus === 'cancelled') {
+            $order->update([
+                'status' => 'cancelled',
+                'fulfillment_status' => 'cancelled',
+                'updated_at_shopify' => $payload['updated_at'] ?? now(),
+            ]);
+            Job::where('order_id', $order->id)
+                ->whereNotIn('status', ['shipped', 'completed'])
+                ->update([
+                    'status' => 'cancelled',
+                    'error_message' => 'Fulfillment cancelled from Shopify',
+                ]);
+            return;
+        }
+
+        if ($mappedStatus === 'exception') {
+            $order->update([
+                'status' => 'exception',
+                'updated_at_shopify' => $payload['updated_at'] ?? now(),
+            ]);
+            Job::where('order_id', $order->id)
+                ->whereNotIn('status', ['shipped', 'completed', 'cancelled'])
+                ->update([
+                    'status' => 'exception',
+                    'error_message' => 'Fulfillment update reported failure',
+                ]);
+            return;
+        }
+
+        if (in_array($mappedStatus, ['created', 'processing'], true)) {
+            $order->update([
+                'status' => 'shipped',
+                'fulfillment_status' => 'fulfilled',
+                'updated_at_shopify' => $payload['updated_at'] ?? now(),
+            ]);
+            Job::where('order_id', $order->id)
+                ->whereNotIn('status', ['cancelled', 'failed', 'exception'])
+                ->update([
+                    'status' => 'shipped',
+                    'completed_at' => now(),
+                    'error_message' => null,
+                ]);
+        }
+    }
+
+    /**
+     * Handle fulfillment_orders/fulfillment_request_submitted webhook
+     */
+    private function handleFulfillmentRequestSubmitted(int $shopId, array $payload): void
+    {
+        [$fulfillmentOrderId, $shopifyOrderId] = $this->extractFulfillmentOrderContext($payload);
+        if (!$fulfillmentOrderId) {
+            throw new \RuntimeException('Missing fulfillment_order id in fulfillment request payload');
+        }
+
+        $order = null;
+        if ($shopifyOrderId) {
+            $order = Order::firstOrCreate(
+                ['shop_id' => $shopId, 'shopify_order_id' => (string) $shopifyOrderId],
+                [
+                    'status' => 'pending',
+                    'fulfillment_status' => 'pending',
+                    'payload' => $payload,
+                    'raw_data' => $payload,
+                ]
+            );
+        }
+
+        if ($order) {
+            Job::updateOrCreate(
+                [
+                    'shop_id' => $shopId,
+                    'order_id' => $order->id,
+                    'job_type' => 'fulfillment_request',
+                ],
+                [
+                    'status' => 'pending',
+                    'payload' => $payload,
+                    'error_message' => null,
+                ]
+            );
+        }
+
+        $shopifyService = app(ShopifyService::class);
+        if ($order && in_array($order->status, ['cancelled'], true)) {
+            $result = $shopifyService->rejectFulfillmentRequest(
+                $shopId,
+                $fulfillmentOrderId,
+                'Order is already cancelled in DTFTA'
+            );
+            if (!$result['success']) {
+                throw new \RuntimeException('Reject fulfillment request failed: ' . ($result['message'] ?? 'Unknown error'));
+            }
+            return;
+        }
+
+        $result = $shopifyService->acceptFulfillmentRequest(
+            $shopId,
+            $fulfillmentOrderId,
+            'Fulfillment request accepted by DTFTA'
+        );
+        if (!$result['success']) {
+            throw new \RuntimeException('Accept fulfillment request failed: ' . ($result['message'] ?? 'Unknown error'));
+        }
+
+        if ($order) {
+            $hasArtworkNeeded = Job::where('order_id', $order->id)
+                ->where('status', 'artwork_needed')
+                ->exists();
+            $nextStatus = $hasArtworkNeeded ? 'artwork_needed' : 'in_production';
+
+            $order->update([
+                'status' => $nextStatus,
+                'fulfillment_status' => $nextStatus,
+                'payload' => $payload,
+            ]);
+            Job::where('order_id', $order->id)
+                ->where('job_type', 'fulfillment_request')
+                ->update([
+                    'status' => $nextStatus,
+                    'started_at' => now(),
+                    'error_message' => null,
+                ]);
+        }
+    }
+    /**
+     * Handle fulfillment_orders/cancellation_request_submitted webhook
+     */
+    private function handleCancellationRequestSubmitted(int $shopId, array $payload): void
+    {
+        [$fulfillmentOrderId, $shopifyOrderId] = $this->extractFulfillmentOrderContext($payload);
+        if (!$fulfillmentOrderId) {
+            throw new \RuntimeException('Missing fulfillment_order id in cancellation request payload');
+        }
+
+        $order = null;
+        if ($shopifyOrderId) {
+            $order = Order::where('shop_id', $shopId)
+                ->where('shopify_order_id', (string) $shopifyOrderId)
+                ->first();
+        }
+
+        $shopifyService = app(ShopifyService::class);
+        $isShipped = $order
+            ? Job::where('order_id', $order->id)->whereIn('status', ['shipped', 'completed'])->exists()
+            : false;
+        $inProduction = $order
+            ? Job::where('order_id', $order->id)->whereIn('status', ['in_production', 'processing'])->exists()
+            : false;
+
+        if ($isShipped) {
+            $result = $shopifyService->rejectCancellationRequest(
+                $shopId,
+                $fulfillmentOrderId,
+                'Cancellation rejected: fulfillment already completed'
+            );
+            if (!$result['success']) {
+                throw new \RuntimeException('Reject cancellation request failed: ' . ($result['message'] ?? 'Unknown error'));
+            }
+
+            if ($order) {
+                $order->update([
+                    'status' => 'exception',
+                    'fulfillment_status' => 'exception',
+                    'payload' => $payload,
+                ]);
+                Job::where('order_id', $order->id)
+                    ->whereNotIn('status', ['shipped', 'completed', 'cancelled'])
+                    ->update([
+                        'status' => 'exception',
+                        'error_message' => 'Cancellation requested after shipment completion',
+                    ]);
+            }
+            return;
+        }
+
+        $result = $shopifyService->acceptCancellationRequest(
+            $shopId,
+            $fulfillmentOrderId,
+            'Cancellation accepted by DTFTA'
+        );
+        if (!$result['success']) {
+            throw new \RuntimeException('Accept cancellation request failed: ' . ($result['message'] ?? 'Unknown error'));
+        }
+
+        if ($order) {
+            $cancelStatus = $inProduction ? 'exception' : 'cancelled';
+            $cancelReason = $inProduction
+                ? 'Cancellation requested after production start'
+                : 'Cancelled from Shopify cancellation request';
+
+            $order->update([
+                'status' => $cancelStatus,
+                'fulfillment_status' => $cancelStatus,
+                'payload' => $payload,
+            ]);
+            Job::where('order_id', $order->id)
+                ->whereNotIn('status', ['shipped', 'completed'])
+                ->update([
+                    'status' => $cancelStatus,
+                    'error_message' => $cancelReason,
+                ]);
+        }
+    }
+    /**
+     * Extract fulfillment order ID and related Shopify order ID from payload
+     */
+    private function extractFulfillmentOrderContext(array $payload): array
+    {
+        $fo = is_array($payload['fulfillment_order'] ?? null) ? $payload['fulfillment_order'] : [];
+        $foId = $fo['id'] ?? $payload['fulfillment_order_id'] ?? $payload['id'] ?? null;
+        $orderId = $fo['order_id'] ?? $payload['order_id'] ?? null;
+
+        return [$foId ? (string) $foId : null, $orderId ? (string) $orderId : null];
+    }
+     /**
+     * Return the first non-empty string from primary and fallback candidates
+     */
+    private function firstNonEmpty($primary, $fallback): ?string
+    {
+        $candidates = [$primary];
+        if (is_array($fallback)) {
+            $candidates = array_merge($candidates, $fallback);
+        } else {
+            $candidates[] = $fallback;
+        }
+
+        foreach ($candidates as $candidate) {
+            if (is_scalar($candidate)) {
+                $value = trim((string) $candidate);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -351,13 +716,11 @@ class WebhookController extends Controller
      */
     private function verifyHmac($request, $hmac)
     {
-        // If HMAC is not provided and debug mode is on, allow it for testing
         if (!$hmac && env('WEBHOOK_DEBUG', false)) {
             Log::warning('Webhook: HMAC verification skipped (debug mode enabled)');
             return true;
         }
 
-        // If no secret configured, log warning but allow for testing
         $secret = config('services.shopify.webhook_secret');
         if (!$secret) {
             if (env('WEBHOOK_DEBUG', false)) {
@@ -381,7 +744,9 @@ class WebhookController extends Controller
 
         return hash_equals($calculatedHmac, $hmac);
     }
-
+    /**
+     * Resolve shop domain from various possible headers and payload fields
+     */
     private function resolveShopDomain(Request $request): ?string
     {
         $candidates = [
@@ -400,7 +765,9 @@ class WebhookController extends Controller
 
         return null;
     }
-
+   /**
+     * Normalize shop domain by trimming, lowercasing, and removing protocol/path
+     */
     private function normalizeShopDomain($value): ?string
     {
         if (!is_string($value)) {
@@ -417,7 +784,9 @@ class WebhookController extends Controller
 
         return $value ?: null;
     }
-
+    /**
+     * Normalize line item properties into a simple key-value array
+     */
     private function normalizeLineItemProperties($properties): array
     {
         if (!is_array($properties)) {
@@ -437,7 +806,9 @@ class WebhookController extends Controller
 
         return $normalized;
     }
-
+    /**
+     * Determine if a SKU follows the DTFTA apparel POD format
+     */
     private function isDtftaSku(?string $sku): bool
     {
         if (!$sku) {
@@ -446,7 +817,9 @@ class WebhookController extends Controller
 
         return str_starts_with(strtoupper($sku), 'DTFTA-APP-');
     }
-
+    /**
+     * Validate that a line item has all required DTFTA properties if it is identified as a DTFTA apparel POD item
+     */
     private function validateDtftaLineItem(array $lineItem, array $properties): array
     {
         $required = [
@@ -561,10 +934,18 @@ class WebhookController extends Controller
                 );
 
                 if (in_array($kind, ['CANCELLATION_REQUEST', 'CANCEL', 'CANCELLED'], true)) {
-                    $order->update(['status' => 'cancelled', 'fulfillment_status' => 'cancelled']);
+                    $inProduction = Job::where('order_id', $order->id)
+                        ->whereIn('status', ['in_production', 'processing'])
+                        ->exists();
+                    $cancelStatus = $inProduction ? 'exception' : 'cancelled';
+                    $cancelReason = $inProduction
+                        ? 'Cancellation requested after production start'
+                        : 'Cancellation requested from fulfillment callback';
+
+                    $order->update(['status' => $cancelStatus, 'fulfillment_status' => $cancelStatus]);
                     Job::where('order_id', $order->id)
                         ->whereNotIn('status', ['shipped', 'completed'])
-                        ->update(['status' => 'cancelled', 'error_message' => 'Cancellation requested from fulfillment callback']);
+                        ->update(['status' => $cancelStatus, 'error_message' => $cancelReason]);
                 } else {
                     Job::updateOrCreate(
                         [
@@ -573,12 +954,12 @@ class WebhookController extends Controller
                             'job_type' => 'fulfillment_request',
                         ],
                         [
-                            'status' => 'pending',
+                            'status' => 'in_production',
                             'payload' => $payload,
                             'error_message' => null,
                         ]
                     );
-                    $order->update(['status' => 'pending', 'fulfillment_status' => 'pending']);
+                    $order->update(['status' => 'in_production', 'fulfillment_status' => 'in_production']);
                 }
 
                 $webhook->update(['processed' => true, 'processed_at' => now()]);
