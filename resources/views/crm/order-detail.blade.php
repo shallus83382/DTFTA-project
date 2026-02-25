@@ -243,7 +243,7 @@
 
             </div>
         </div>
-        <script src="public/assets/js/script.js"></script>
+        <script src="{{ asset('assets/js/script.js') }}"></script>
         <script>
             function loadCurrentOrderStatus() {
                 const orderId = {{ $order->id ?? 'null' }};

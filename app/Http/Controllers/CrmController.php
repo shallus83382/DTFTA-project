@@ -16,6 +16,7 @@ use App\Models\FulfillmentService;
 use App\Models\PartnerProfile;
 use App\Models\AdminActivityLog;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 
 class CrmController extends Controller
 {
@@ -199,6 +200,10 @@ class CrmController extends Controller
      */
     private function buildNotificationPool(int $limit = 60): \Illuminate\Support\Collection
     {
+        $limit = max(1, min($limit, 300));
+        $cacheKey = 'crm.notification_pool.' . $limit;
+
+        return Cache::remember($cacheKey, now()->addSeconds(30), function () use ($limit) {
         $orderNotifications = Order::with('shop')
             ->orderBy('created_at', 'desc')
             ->limit($limit)
@@ -269,19 +274,24 @@ class CrmController extends Controller
             ->sortByDesc('created_at')
             ->values()
             ->take($limit);
+        });
     }
     /**
      * Compute unread notifications count based on user's last read timestamp
      */
     private function computeUnreadCount(?Carbon $readAt): int
     {
-        if (!$readAt) {
-            return Order::count() + Job::count() + Shipment::count();
-        }
+        $cacheKey = 'crm.unread_count.' . ($readAt ? $readAt->timestamp : 'all');
 
-        return Order::where('created_at', '>', $readAt)->count()
-            + Job::where('created_at', '>', $readAt)->count()
-            + Shipment::where('created_at', '>', $readAt)->count();
+        return Cache::remember($cacheKey, now()->addSeconds(30), function () use ($readAt) {
+            if (!$readAt) {
+                return Order::count() + Job::count() + Shipment::count();
+            }
+
+            return Order::where('created_at', '>', $readAt)->count()
+                + Job::where('created_at', '>', $readAt)->count()
+                + Shipment::where('created_at', '>', $readAt)->count();
+        });
     }
     /**
      * Build header notifications for the CRM dashboard
@@ -656,24 +666,25 @@ class CrmController extends Controller
         $data['ordersConfig'] = $this->getFeatures()['orders'] ?? [];
         $data['orderStatuses'] = $this->getStatuses()['order_statuses'] ?? [];
         $statuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled'];
-        $jobsByStatus = [];
+        $jobsByStatus = array_fill_keys($statuses, collect());
+        $jobsForBoard = Job::query()
+            ->with(['shop', 'order'])
+            ->whereIn('status', ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled', 'failed', 'exception'])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-        foreach ($statuses as $status) {
-            if ($status === 'cancelled') {
-                $jobsByStatus[$status] = Job::where(function ($query) {
-                    $query->where('status', 'failed')
-                        ->orWhere('status', 'exception')
-                        ->orWhere('status', 'cancelled');
-                })->with('shop', 'order')
-                    ->orderBy('created_at', 'desc')
-                    ->get();
-            } else {
-                $jobsByStatus[$status] = Job::where('status', $status)
-                    ->with('shop', 'order')
-                    ->orderBy('created_at', 'desc')
-                    ->get();
+        foreach ($jobsForBoard as $job) {
+            $bucket = in_array($job->status, ['failed', 'exception', 'cancelled'], true)
+                ? 'cancelled'
+                : $job->status;
+
+            if (!array_key_exists($bucket, $jobsByStatus)) {
+                continue;
             }
+
+            $jobsByStatus[$bucket]->push($job);
         }
+
         $data['jobsByStatus'] = $jobsByStatus;
         $data['allJobs'] = Job::with('shop', 'order')
             ->orderBy('created_at', 'desc')

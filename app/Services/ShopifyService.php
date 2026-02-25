@@ -17,11 +17,24 @@ class ShopifyService
     }
 
     /**
+     * Get webhook API version used for webhook registration/list/delete calls
+     */
+    private function webhookApiVersion(?Shop $shop = null): string
+    {
+        $shopValue = $shop?->shopify_webhook_api_version;
+        if (is_string($shopValue) && trim($shopValue) !== '') {
+            return trim($shopValue);
+        }
+
+        return (string) config('services.shopify.webhook_api_version', '2026-04');
+    }
+
+    /**
      * Construct the base URL for Shopify API requests based on shop domain and API version
      */
-    private function baseUrl(string $shopDomain): string
+    private function baseUrl(string $shopDomain, ?string $apiVersion = null): string
     {
-        return "https://{$shopDomain}/admin/api/" . $this->apiVersion();
+        return "https://{$shopDomain}/admin/api/" . ($apiVersion ?: $this->apiVersion());
     }
 
     /**
@@ -50,7 +63,14 @@ class ShopifyService
     /**
      * Make a REST API request to Shopify for a specific shop
      */
-    private function request(int $shopId, string $method, string $path, array $payload = [], array $query = []): array
+    private function request(
+        int $shopId,
+        string $method,
+        string $path,
+        array $payload = [],
+        array $query = [],
+        ?string $apiVersion = null
+    ): array
     {
         $auth = $this->getShopAndToken($shopId);
         if (!$auth['success']) {
@@ -59,10 +79,12 @@ class ShopifyService
 
         $shop = $auth['shop'];
         $token = $auth['token'];
-        $url = rtrim($this->baseUrl($shop->shop_domain), '/') . '/' . ltrim($path, '/') . '.json';
+        $url = rtrim($this->baseUrl($shop->shop_domain, $apiVersion), '/') . '/' . ltrim($path, '/') . '.json';
 
         try {
-            $client = Http::withToken($token)
+            $client = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+            ])
                 ->acceptJson()
                 ->asJson()
                 ->timeout(20)
@@ -110,7 +132,9 @@ class ShopifyService
         $url = rtrim($this->baseUrl($shop->shop_domain), '/') . '/graphql.json';
 
         try {
-            $response = Http::withToken($token)
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $token,
+            ])
                 ->acceptJson()
                 ->asJson()
                 ->timeout(20)
@@ -472,10 +496,152 @@ GQL;
     }
 
     /**
+     * Ensure the shop has a fulfillment service and a US-configured location.
+     * Uses Shopify GraphQL as requested by frontend integration.
+     */
+    public function ensureFulfillmentServiceAndLocation(int $shopId, ?string $baseUrl = null): array
+    {
+        $shop = Shop::find($shopId);
+        if (!$shop) {
+            return ['success' => false, 'message' => 'Shop not found'];
+        }
+
+        if (!empty($shop->fulfillment_service_id) && !empty($shop->location_id)) {
+            return [
+                'success' => true,
+                'message' => 'Fulfillment service already configured',
+                'data' => [
+                    'fulfillment_service_id' => (string) $shop->fulfillment_service_id,
+                    'location_id' => (string) $shop->location_id,
+                ],
+            ];
+        }
+
+        $baseUrl = rtrim((string) ($baseUrl ?: config('app.url')), '/');
+        $callbackUrl = $baseUrl . '/api/v1/fulfillment_order_notification';
+
+        $createMutation = <<<'GQL'
+mutation fulfillmentServiceCreate(
+  $name: String!,
+  $callbackUrl: URL!,
+  $inventoryManagement: Boolean!,
+  $trackingSupport: Boolean!
+) {
+  fulfillmentServiceCreate(
+    name: $name,
+    callbackUrl: $callbackUrl,
+    inventoryManagement: $inventoryManagement,
+    trackingSupport: $trackingSupport
+  ) {
+    fulfillmentService {
+      id
+      location {
+        id
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+GQL;
+
+        $createResult = $this->graphqlRequest($shopId, $createMutation, [
+            'name' => 'DTFTA',
+            'callbackUrl' => $callbackUrl,
+            'inventoryManagement' => true,
+            'trackingSupport' => true,
+        ]);
+
+        if (!$createResult['success']) {
+            return $createResult;
+        }
+
+        $serviceData = $createResult['data']['fulfillmentServiceCreate'] ?? [];
+        $userErrors = $serviceData['userErrors'] ?? [];
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Fulfillment service create returned user errors',
+                'errors' => $userErrors,
+                'data' => $serviceData,
+            ];
+        }
+
+        $fulfillmentServiceId = (string) ($serviceData['fulfillmentService']['id'] ?? '');
+        $createdLocationId = (string) ($serviceData['fulfillmentService']['location']['id'] ?? '');
+
+        if ($fulfillmentServiceId === '') {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Fulfillment service ID missing in Shopify response',
+                'data' => $serviceData,
+            ];
+        }
+
+        $locationUpdateErrors = [];
+        if ($createdLocationId !== '') {
+            $locationMutation = <<<'GQL'
+mutation updateLocation($id: ID!, $input: LocationEditInput!) {
+  locationEdit(id: $id, input: $input) {
+    location {
+      id
+      name
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+GQL;
+
+            $locationResult = $this->graphqlRequest($shopId, $locationMutation, [
+                'id' => $createdLocationId,
+                'input' => [
+                    'address' => [
+                        'countryCode' => 'US',
+                    ],
+                ],
+            ]);
+
+            if (!$locationResult['success']) {
+                $locationUpdateErrors = $locationResult['errors'] ?? [];
+            } else {
+                $locationEditData = $locationResult['data']['locationEdit'] ?? [];
+                if (!empty($locationEditData['userErrors'])) {
+                    $locationUpdateErrors = $locationEditData['userErrors'];
+                }
+            }
+        }
+
+        $shop->fulfillment_service_id = $fulfillmentServiceId;
+        if ($createdLocationId !== '') {
+            $shop->location_id = $createdLocationId;
+        }
+        $shop->save();
+
+        return [
+            'success' => true,
+            'message' => 'Fulfillment service configured successfully',
+            'data' => [
+                'fulfillment_service_id' => $fulfillmentServiceId,
+                'location_id' => $createdLocationId !== '' ? $createdLocationId : null,
+                'location_update_errors' => $locationUpdateErrors,
+            ],
+        ];
+    }
+
+    /**
      * registerWebhook - Register a webhook in Shopify for a specific topic and callback URL. This is used to set up webhooks that notify the app of relevant events in Shopify.
      */
     public function registerWebhook($shopId, $topic, $callbackUrl): array
     {
+        $shop = Shop::find((int) $shopId);
+        $webhookApiVersion = $this->webhookApiVersion($shop);
         $payload = [
             'webhook' => [
                 'topic' => $topic,
@@ -484,7 +650,7 @@ GQL;
             ],
         ];
 
-        $result = $this->request((int) $shopId, 'POST', 'webhooks', $payload);
+        $result = $this->request((int) $shopId, 'POST', 'webhooks', $payload, [], $webhookApiVersion);
         if (!$result['success']) {
             return $result;
         }
@@ -502,7 +668,9 @@ GQL;
      */
     public function listWebhooks(int $shopId): array
     {
-        $result = $this->request($shopId, 'GET', 'webhooks');
+        $shop = Shop::find($shopId);
+        $webhookApiVersion = $this->webhookApiVersion($shop);
+        $result = $this->request($shopId, 'GET', 'webhooks', [], [], $webhookApiVersion);
         if (!$result['success']) {
             return $result;
         }
@@ -520,7 +688,9 @@ GQL;
      */
     public function deleteWebhook(int $shopId, $webhookId): array
     {
-        return $this->request($shopId, 'DELETE', "webhooks/{$webhookId}");
+        $shop = Shop::find($shopId);
+        $webhookApiVersion = $this->webhookApiVersion($shop);
+        return $this->request($shopId, 'DELETE', "webhooks/{$webhookId}", [], [], $webhookApiVersion);
     }
 
     /**

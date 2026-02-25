@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Models\PartnerProfile;
 use App\Models\Order;
 use App\Models\Job;
@@ -10,11 +11,18 @@ use App\Models\Shipment;
 
 class Shop extends Model
 {
+    use SoftDeletes;
 
     protected $fillable = [
+        'store_id',
+        'name',
+        'email',
+        'domain',
+        'shop_owner',
         'shop_domain',
         'shopify_access_token',
         'shopify_api_version',
+        'shopify_webhook_api_version',
         'shopify_scopes',
         'fulfillment_service_id',
         'location_id',
