@@ -31,6 +31,17 @@ class WebhookController extends Controller
             if (!$topic) {
                 $topic = (string) $request->input('topic', '');
             }
+            $normalizedTopic = strtolower(trim((string) $topic));
+
+            // Route install events through the existing signed-install flow on the same webhook endpoint.
+            if (in_array($normalizedTopic, ['app/installed', 'app/install', 'install'], true)) {
+                Log::info('Install event routed to signed install handler', [
+                    'topic' => $topic,
+                    'shop_domain' => $shopDomain,
+                ]);
+
+                return app(AuthController::class)->install($request);
+            }
 
             Log::info('Shopify webhook received', [
                 'topic' => $topic,
@@ -801,6 +812,7 @@ class WebhookController extends Controller
         $candidates = [
             $request->header('X-Shopify-Shop-Domain'),
             $request->header('x-shopify-shop-domain'),
+            $request->header('X-Shop'),
             $request->input('shop_domain'),
             $request->input('shop'),
         ];

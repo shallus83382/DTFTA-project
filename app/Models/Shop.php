@@ -8,6 +8,7 @@ use App\Models\PartnerProfile;
 use App\Models\Order;
 use App\Models\Job;
 use App\Models\Shipment;
+use App\Models\Product;
 
 class Shop extends Model
 {
@@ -49,5 +50,10 @@ class Shop extends Model
     public function shipments()
     {
         return $this->hasMany(Shipment::class);
+    }
+
+    public function products()
+    {
+        return $this->hasMany(Product::class);
     }
 }

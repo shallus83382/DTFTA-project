@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->encryptCookies(except: [
+            'auth_token',
+        ]);
+
         $middleware->validateCsrfTokens(except: [
             'shopify/install',
         ]);
@@ -20,6 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => \App\Http\Middleware\CheckAdminRole::class,
             'manager' => \App\Http\Middleware\CheckManagerRole::class,
+            'frontend.auth' => \App\Http\Middleware\EnsureFrontendTokenAuthenticated::class,
+            'attach.bearer' => \App\Http\Middleware\AttachBearerTokenFromCookie::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
