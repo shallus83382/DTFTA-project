@@ -10,9 +10,8 @@ Route::get('/', [CrmController::class, 'landing']);
 // Login page
 Route::get('/login', [CrmController::class, 'landing'])->name('login');
 
-// Shopify app install/callback
-Route::get('/shopify/install', [ShopifyAuthController::class, 'install'])->name('shopify.install');
-Route::get('/shopify/callback', [ShopifyAuthController::class, 'callback'])->name('shopify.callback');
+// Shopify custom signed install
+Route::post('/shopify/install', [ShopifyAuthController::class, 'install'])->name('shopify.install');
 
 // CRM routes (client-side authentication via localStorage token)
 Route::get('/crm/dashboard', [CrmController::class, 'dashboard'])->name('crm.dashboard');

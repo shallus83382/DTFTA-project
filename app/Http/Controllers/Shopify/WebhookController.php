@@ -10,6 +10,7 @@ use App\Models\Shop;
 use App\Models\Order;
 use App\Models\Job;
 use App\Models\Shipment;
+use App\Models\FulfillmentService;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
 use App\Models\OrderItem;
@@ -23,20 +24,40 @@ class WebhookController extends Controller
     public function handle(Request $request)
     {
         try {
-            $hmac = $request->header('X-Shopify-Hmac-SHA256');
+            $appTimestamp = (string) $request->header('X-App-Timestamp', '');
+            $appSignature = (string) $request->header('X-App-Signature', '');
             $topic = $request->header('X-Shopify-Topic');
             $shopDomain = $this->resolveShopDomain($request);
-            $webhookId = $request->header('X-Shopify-Webhook-Id');
+            if (!$topic) {
+                $topic = (string) $request->input('topic', '');
+            }
 
-            if (!$this->verifyHmac($request, $hmac)) {
+            Log::info('Shopify webhook received', [
+                'topic' => $topic,
+                'shop_domain' => $shopDomain,
+                'app_signature_present' => $appSignature !== '',
+                'app_timestamp_present' => $appTimestamp !== '',
+               
+            ]);
+
+            if (!$this->verifyAppSignature($request, $appTimestamp, $appSignature)) {
+                Log::warning('Shopify webhook rejected: invalid app signature', [
+                    'topic' => $topic,
+                    'shop_domain' => $shopDomain,
+                   
+                ]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid HMAC signature'
+                    'message' => 'Invalid app signature'
                 ], 401);
             }
 
             $shop = Shop::where('shop_domain', $shopDomain)->first();
             if (!$shop) {
+                Log::warning('Shopify webhook rejected: shop not found', [
+                    'topic' => $topic,
+                    'shop_domain' => $shopDomain,
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Shop not found',
@@ -44,38 +65,32 @@ class WebhookController extends Controller
                 ], 404);
             }
 
-            if ($webhookId && Webhook::where('shop_id', $shop->id)
-                ->where('topic', $topic)
-                ->where(function ($query) use ($webhookId) {
-                    $query->where('webhook_id', $webhookId)
-                        ->orWhere('shopify_webhook_id', $webhookId);
-                })
-                ->exists()
-            ) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Duplicate webhook ignored'
-                ], 200);
-            }
-
             $webhook = Webhook::create([
                 'shop_id' => $shop->id,
                 'event_type' => $topic,
                 'topic' => $topic,
-                'webhook_id' => $webhookId,
-                'shopify_webhook_id' => $webhookId,
                 'payload' => $request->all(),
                 'created_at_shopify' => now()
             ]);
 
             $this->processWebhook($webhook, $topic, $request->all());
             $webhook->update(['processed' => true, 'processed_at' => now()]);
+
+            Log::info('Shopify webhook processed successfully', [
+                'topic' => $topic,
+                'shop_domain' => $shopDomain,
+                'webhook_row_id' => $webhook->id,
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Webhook processed successfully'
             ], 200);
         } catch (\Exception $e) {
-            Log::error('Webhook Error: ' . $e->getMessage());
+            Log::error('Webhook Error: ' . $e->getMessage(), [
+                'topic' => $topic ?? null,
+                'shop_domain' => $shopDomain ?? null,
+            ]);
 
             if (isset($webhook)) {
                 FailedWebhook::create([
@@ -96,6 +111,51 @@ class WebhookController extends Controller
                 'message' => 'Webhook processing failed'
             ], 500);
         }
+    }
+
+    /**
+     * Verify custom app signature from frontend relay.
+     * Expected: hex(HMAC_SHA256(timestamp + raw_payload, shared_secret))
+     */
+    private function verifyAppSignature(Request $request, string $timestamp, string $signature): bool
+    {
+        $timestamp = trim($timestamp);
+        $signature = strtolower(trim($signature));
+
+        if ($timestamp === '' || $signature === '') {
+            Log::warning('Webhook app signature verification failed: missing timestamp/signature');
+            return false;
+        }
+
+        if (!ctype_digit($timestamp)) {
+            Log::warning('Webhook app signature payload length failed: non-numeric timestamp', [
+                'timestamp' => $timestamp,
+            ]);
+            return false;
+        }
+
+        $sharedSecret = (string) (config('services.shopify.webhook_secret', config('services.shopify.api_secret', '')));
+        if ($sharedSecret === '') {
+            Log::error('Webhook app signature verification failed: missing shared secret');
+            return false;
+        }
+
+        $rawPayload = (string) $request->getContent();
+        // Frontend currently signs timestamp + empty payload, so backend mirrors same string-to-sign.
+        $stringToSign = $timestamp;
+        $expected = hash_hmac('sha256', $stringToSign, $sharedSecret);
+        $ok = hash_equals($expected, $signature);
+
+        if (env('WEBHOOK_DEBUG', false)) {
+            Log::debug('Webhook app signature debug', [
+                'provided_prefix' => substr($signature, 0, 12),
+                'expected_prefix' => substr($expected, 0, 12),
+                'payload_len' => strlen($rawPayload),
+                'signing_mode' => 'timestamp_only',
+            ]);
+        }
+
+        return $ok;
     }
 
     /**
@@ -318,12 +378,34 @@ class WebhookController extends Controller
             return;
         }
 
+        $orderIds = Order::where('shop_id', $shop->id)->pluck('id');
+
+        Order::where('shop_id', $shop->id)->update([
+            'status' => 'inactive',
+            'fulfillment_status' => 'inactive',
+        ]);
+        Job::where('shop_id', $shop->id)->update(['status' => 'inactive']);
+        Shipment::where('shop_id', $shop->id)->update(['status' => 'inactive']);
+        FulfillmentService::where('shop_id', $shop->id)->update(['status' => 'inactive']);
+        if ($orderIds->isNotEmpty()) {
+            OrderItem::whereIn('order_id', $orderIds)->update(['status' => 'inactive']);
+        }
+
+        if ($orderIds->isNotEmpty()) {
+            OrderItem::whereIn('order_id', $orderIds)->delete();
+        }
+        Shipment::where('shop_id', $shop->id)->delete();
+        Job::where('shop_id', $shop->id)->delete();
+        Order::where('shop_id', $shop->id)->delete();
+        FulfillmentService::where('shop_id', $shop->id)->delete();
+
         $shop->update([
-            'status' => 'uninstalled',
+            'status' => 'inactive',
             'shopify_access_token' => null,
             'shopify_scopes' => null,
             'uninstalled_at' => now(),
         ]);
+        $shop->delete();
 
         Webhook::where('shop_id', $shop->id)->delete();
         FailedWebhook::where('shop_id', $shop->id)->delete();
@@ -712,39 +794,6 @@ class WebhookController extends Controller
     }
 
     /**
-     * Verify HMAC signature
-     */
-    private function verifyHmac($request, $hmac)
-    {
-        if (!$hmac && env('WEBHOOK_DEBUG', false)) {
-            Log::warning('Webhook: HMAC verification skipped (debug mode enabled)');
-            return true;
-        }
-
-        $secret = config('services.shopify.webhook_secret');
-        if (!$secret) {
-            if (env('WEBHOOK_DEBUG', false)) {
-                Log::warning('Webhook: No webhook secret configured, skipping HMAC verification');
-                return true;
-            }
-            Log::error('Webhook: No webhook secret configured');
-            return false;
-        }
-
-        $data = $request->getContent();
-        $calculatedHmac = base64_encode(
-            hash_hmac('sha256', $data, $secret, true)
-        );
-
-        if (env('WEBHOOK_DEBUG', false)) {
-            Log::debug('Webhook debug: provided HMAC', ['provided' => $hmac]);
-            Log::debug('Webhook debug: calculated HMAC', ['calculated' => $calculatedHmac]);
-            Log::debug('Webhook debug: payload length', ['len' => strlen($data)]);
-        }
-
-        return hash_equals($calculatedHmac, $hmac);
-    }
-    /**
      * Resolve shop domain from various possible headers and payload fields
      */
     private function resolveShopDomain(Request $request): ?string
@@ -867,11 +916,12 @@ class WebhookController extends Controller
      */
     public function fulfillmentOrderNotification(Request $request)
     {
-        $hmac = $request->header('X-Shopify-Hmac-SHA256');
-        if (!$this->verifyHmac($request, $hmac)) {
+        $appTimestamp = (string) $request->header('X-App-Timestamp', '');
+        $appSignature = (string) $request->header('X-App-Signature', '');
+        if (!$this->verifyAppSignature($request, $appTimestamp, $appSignature)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid HMAC signature'
+                'message' => 'Invalid app signature'
             ], 401);
         }
 
