@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ShopController;
 use App\Http\Controllers\Api\PartnerProfileController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\OrderItemController;
+use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\FulfillmentServiceController;
 use App\Http\Controllers\Api\FailedWebhookController;
@@ -55,6 +56,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::put('/users/{user}', [UserManagementController::class, 'update']);
         Route::delete('/users/{user}', [UserManagementController::class, 'destroy']);
         Route::get('/activity-logs', [UserManagementController::class, 'activityLogs']);
+        
     });
 
     // User can update own profile
@@ -66,6 +68,13 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/shops', [ShopController::class, 'index']);
     Route::put('/shops/{shop_domain}', [ShopController::class, 'update']);
     Route::delete('/shops/{shop_domain}', [ShopController::class, 'destroy']);
+
+    // Product routes
+    Route::post('/products', [ProductController::class, 'store']);
+    Route::get('/products', [ProductController::class, 'index']);
+    Route::get('/products/{id}', [ProductController::class, 'show']);
+    Route::put('/products/{id}', [ProductController::class, 'update']);
+    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
 
     // Partner profile routes
     Route::post('/partner-profiles', [PartnerProfileController::class, 'store']);

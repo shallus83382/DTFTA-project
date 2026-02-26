@@ -246,6 +246,7 @@
             try {
                 const response = await fetch('/api/v1/auth/login', {
                     method: 'POST',
+                    credentials: 'same-origin',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
@@ -269,6 +270,7 @@
 
                 localStorage.setItem('auth_token', data.token);
                 localStorage.setItem('user_info', JSON.stringify(data.user));
+                document.cookie = 'auth_token=' + encodeURIComponent(data.token) + '; path=/; SameSite=Lax';
 
                 // Redirect to dashboard
                 window.location.href = '/crm/dashboard';
@@ -282,10 +284,33 @@
             }
         });
 
-        // If already logged in, redirect to dashboard
-        if (localStorage.getItem('auth_token')) {
-            window.location.href = '/crm/dashboard';
-        }
+        // If token exists, verify it first to avoid login<->dashboard redirect loop.
+        (async function bootstrapLoginRedirect() {
+            const existingToken = localStorage.getItem('auth_token');
+            if (!existingToken) return;
+
+            try {
+                const response = await fetch('/api/v1/auth/me', {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Authorization': 'Bearer ' + existingToken
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Invalid token');
+                }
+
+                document.cookie = 'auth_token=' + encodeURIComponent(existingToken) + '; path=/; SameSite=Lax';
+                window.location.href = '/crm/dashboard';
+            } catch (error) {
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_info');
+                document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+            }
+        })();
     </script>
 </body>
 </html>

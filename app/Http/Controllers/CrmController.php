@@ -14,9 +14,12 @@ use App\Models\Shop;
 use App\Models\Shipment;
 use App\Models\FulfillmentService;
 use App\Models\PartnerProfile;
+use App\Models\Product;
 use App\Models\AdminActivityLog;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 class CrmController extends Controller
 {
@@ -103,6 +106,14 @@ class CrmController extends Controller
     {
         return ['active', 'suspended', 'uninstalled'];
     }
+
+    /**
+     * Product status options for CRM filters/forms.
+     */
+    private function getProductStatusOptions(): array
+    {
+        return ['active', 'draft', 'archived', 'inactive'];
+    }
     /**
      * GET /crm/dashboard
      * Display the CRM dashboard
@@ -150,6 +161,27 @@ class CrmController extends Controller
                     $dashboardCrumb,
                     ['label' => 'Stores', 'url' => route('crm.stores')],
                     ['label' => 'Store #' . ($routeParams['storeId'] ?? ''), 'url' => null],
+                ];
+
+            case 'crm.products':
+                return [$dashboardCrumb, ['label' => 'Products', 'url' => null]];
+            case 'crm.products.create':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Products', 'url' => route('crm.products')],
+                    ['label' => 'Add Product', 'url' => null],
+                ];
+            case 'crm.products.edit':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Products', 'url' => route('crm.products')],
+                    ['label' => 'Edit Product', 'url' => null],
+                ];
+            case 'crm.products.view':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Products', 'url' => route('crm.products')],
+                    ['label' => 'Product Details', 'url' => null],
                 ];
 
             case 'crm.reports':
@@ -651,9 +683,6 @@ class CrmController extends Controller
      */
     public function landing()
     {
-        if (auth('sanctum')->check()) {
-            return redirect('/crm/dashboard');
-        }
         return view('login');
     }
 
@@ -824,6 +853,381 @@ class CrmController extends Controller
         ];
 
         return view('crm.stores', $data);
+    }
+
+    /**
+     * Show products management page.
+     */
+    public function products(Request $request): View
+    {
+        $data = $this->prepareViewData();
+        $data['productsConfig'] = $this->getFeatures()['products'] ?? [];
+
+        $statusOptions = $this->getProductStatusOptions();
+        $perPage = (int) ($request->integer('per_page') ?: ($data['productsConfig']['items_per_page'] ?? 10));
+        $perPage = max(5, min($perPage, 100));
+
+        $query = Product::query()->with('shop');
+
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            $query->where(function ($searchQuery) use ($search) {
+                $searchQuery->where('title', 'like', '%' . $search . '%')
+                    ->orWhere('sku', 'like', '%' . $search . '%')
+                    ->orWhere('shopify_product_id', 'like', '%' . $search . '%')
+                    ->orWhere('brand', 'like', '%' . $search . '%')
+                    ->orWhere('category', 'like', '%' . $search . '%')
+                    ->orWhere('sub_category', 'like', '%' . $search . '%');
+            });
+        }
+
+        $shopId = (int) $request->query('shop_id', 0);
+        if ($shopId > 0) {
+            $query->where('shop_id', $shopId);
+        } else {
+            $shopId = 0;
+        }
+
+        $statusFilter = strtolower((string) $request->query('status', 'all'));
+        if (in_array($statusFilter, $statusOptions, true)) {
+            $query->where('status', $statusFilter);
+        } else {
+            $statusFilter = 'all';
+        }
+
+        $sortBy = (string) $request->query('sort_by', 'created_at');
+        $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $allowedSorts = ['created_at', 'title', 'regular_price', 'stock_quantity', 'status', 'brand', 'category'];
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'created_at';
+        }
+
+        $products = $query
+            ->orderBy($sortBy, $sortDir)
+            ->paginate($perPage)
+            ->appends($request->query());
+
+        $data['products'] = $products;
+        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
+        $data['productStatusOptions'] = $statusOptions;
+        $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
+        $data['filters'] = [
+            'search' => $search,
+            'shop_id' => $shopId,
+            'status' => $statusFilter,
+            'sort_by' => $sortBy,
+            'sort_dir' => $sortDir,
+            'per_page' => $perPage,
+        ];
+
+        return view('crm.products-index', $data);
+    }
+
+    /**
+     * Show add product page.
+     */
+    public function createProduct(): View
+    {
+        $data = $this->prepareViewData();
+        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
+        $data['productStatusOptions'] = $this->getProductStatusOptions();
+        $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
+        return view('crm.products-add', $data);
+    }
+
+    /**
+     * Show edit product page.
+     */
+    public function editProduct(string $productId): View
+    {
+        $data = $this->prepareViewData();
+        $data['product'] = Product::with('shop')->findOrFail($productId);
+        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
+        $data['productStatusOptions'] = $this->getProductStatusOptions();
+        $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
+        return view('crm.products-edit', $data);
+    }
+
+    /**
+     * Show product detail page.
+     */
+    public function viewProduct(string $productId): View
+    {
+        $data = $this->prepareViewData();
+        $data['product'] = Product::with('shop')->findOrFail($productId);
+        return view('crm.products-view', $data);
+    }
+
+    /**
+     * Create product from CRM page.
+     */
+    public function storeProduct(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'shop_id' => 'required|exists:shops,id',
+            'title' => 'required|string|max:255',
+            'sku' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('products', 'sku')->where(function ($query) use ($request) {
+                    return $query->where('shop_id', $request->input('shop_id'));
+                }),
+            ],
+            'shopify_product_id' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('products', 'shopify_product_id')->where(function ($query) use ($request) {
+                    return $query->where('shop_id', $request->input('shop_id'));
+                }),
+            ],
+            'description' => 'nullable|string',
+            'short_description' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
+            'sub_category' => 'nullable|string|max:255',
+            'brand' => 'nullable|string|max:255',
+            'product_type' => 'nullable|string|max:255',
+            'tags' => 'nullable|string',
+            'regular_price' => 'nullable|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'currency' => 'nullable|string|max:10',
+            'tax_class' => 'nullable|string|max:255',
+            'stock_quantity' => 'nullable|integer|min:0',
+            'stock_status' => 'required|in:in_stock,out_of_stock',
+            'track_inventory' => 'nullable|boolean',
+            'status' => 'required|in:active,draft,archived,inactive',
+            'featured_image' => 'nullable|image|max:5120',
+            'gallery_images' => 'nullable|array',
+            'gallery_images.*' => 'nullable|image|max:5120',
+            'weight' => 'nullable|numeric|min:0',
+            'length' => 'nullable|numeric|min:0',
+            'width' => 'nullable|numeric|min:0',
+            'height' => 'nullable|numeric|min:0',
+            'shipping_class' => 'nullable|string|max:255',
+        ]);
+
+        $featuredImagePath = $request->hasFile('featured_image')
+            ? $request->file('featured_image')->store('products/featured', 'public')
+            : null;
+        $galleryImages = $this->storeGalleryImages($request);
+
+        $product = Product::create([
+            'shop_id' => (int) $validated['shop_id'],
+            'title' => $validated['title'],
+            'sku' => $validated['sku'] ?? null,
+            'shopify_product_id' => $validated['shopify_product_id'] ?? null,
+            'description' => $validated['description'] ?? null,
+            'short_description' => $validated['short_description'] ?? null,
+            'category' => $validated['category'] ?? null,
+            'sub_category' => $validated['sub_category'] ?? null,
+            'brand' => $validated['brand'] ?? null,
+            'product_type' => $validated['product_type'] ?? null,
+            'tags' => $this->normalizeTags($validated['tags'] ?? null),
+            'regular_price' => $validated['regular_price'] ?? null,
+            'sale_price' => $validated['sale_price'] ?? null,
+            'price' => $validated['regular_price'] ?? null,
+            'currency' => $validated['currency'] ?? 'USD',
+            'tax_class' => $validated['tax_class'] ?? null,
+            'stock_quantity' => $validated['stock_quantity'] ?? 0,
+            'stock_status' => $validated['stock_status'],
+            'track_inventory' => (bool) ($validated['track_inventory'] ?? false),
+            'status' => $validated['status'],
+            'featured_image' => $featuredImagePath,
+            'gallery_images' => $galleryImages,
+            'weight' => $validated['weight'] ?? null,
+            'length' => $validated['length'] ?? null,
+            'width' => $validated['width'] ?? null,
+            'height' => $validated['height'] ?? null,
+            'shipping_class' => $validated['shipping_class'] ?? null,
+        ]);
+
+        AdminActivityLog::logActivity(
+            auth()->id(),
+            'Created Product',
+            'Product',
+            $product->id
+        );
+
+        return redirect()
+            ->route('crm.products')
+            ->with('success', 'Product created successfully.');
+    }
+
+    /**
+     * Update product from CRM page.
+     */
+    public function updateProduct(Request $request, string $productId): RedirectResponse
+    {
+        $product = Product::findOrFail($productId);
+
+        $validated = $request->validate([
+            'shop_id' => 'required|exists:shops,id',
+            'title' => 'required|string|max:255',
+            'sku' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('products', 'sku')
+                    ->ignore($product->id)
+                    ->where(function ($query) use ($request) {
+                        return $query->where('shop_id', $request->input('shop_id'));
+                    }),
+            ],
+            'shopify_product_id' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('products', 'shopify_product_id')
+                    ->ignore($product->id)
+                    ->where(function ($query) use ($request) {
+                        return $query->where('shop_id', $request->input('shop_id'));
+                    }),
+            ],
+            'description' => 'nullable|string',
+            'short_description' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
+            'sub_category' => 'nullable|string|max:255',
+            'brand' => 'nullable|string|max:255',
+            'product_type' => 'nullable|string|max:255',
+            'tags' => 'nullable|string',
+            'regular_price' => 'nullable|numeric|min:0',
+            'sale_price' => 'nullable|numeric|min:0',
+            'currency' => 'nullable|string|max:10',
+            'tax_class' => 'nullable|string|max:255',
+            'stock_quantity' => 'nullable|integer|min:0',
+            'stock_status' => 'required|in:in_stock,out_of_stock',
+            'track_inventory' => 'nullable|boolean',
+            'status' => 'required|in:active,draft,archived,inactive',
+            'featured_image' => 'nullable|image|max:5120',
+            'gallery_images' => 'nullable|array',
+            'gallery_images.*' => 'nullable|image|max:5120',
+            'remove_featured_image' => 'nullable|boolean',
+            'remove_existing_gallery' => 'nullable|boolean',
+            'weight' => 'nullable|numeric|min:0',
+            'length' => 'nullable|numeric|min:0',
+            'width' => 'nullable|numeric|min:0',
+            'height' => 'nullable|numeric|min:0',
+            'shipping_class' => 'nullable|string|max:255',
+        ]);
+
+        $featuredImagePath = $product->featured_image;
+        $removeFeaturedImage = (bool) $request->boolean('remove_featured_image', false);
+        if ($removeFeaturedImage && $featuredImagePath) {
+            Storage::disk('public')->delete($featuredImagePath);
+            $featuredImagePath = null;
+        }
+        if ($request->hasFile('featured_image')) {
+            if ($featuredImagePath) {
+                Storage::disk('public')->delete($featuredImagePath);
+            }
+            $featuredImagePath = $request->file('featured_image')->store('products/featured', 'public');
+        }
+
+        $existingGallery = is_array($product->gallery_images) ? $product->gallery_images : [];
+        $removeExistingGallery = (bool) $request->boolean('remove_existing_gallery', false);
+        if ($removeExistingGallery) {
+            foreach ($existingGallery as $galleryPath) {
+                Storage::disk('public')->delete((string) $galleryPath);
+            }
+            $existingGallery = [];
+        }
+        $newGalleryImages = $this->storeGalleryImages($request);
+        $finalGallery = array_values(array_filter(array_merge($existingGallery, $newGalleryImages)));
+
+        $product->update([
+            'shop_id' => (int) $validated['shop_id'],
+            'title' => $validated['title'],
+            'sku' => $validated['sku'] ?? null,
+            'shopify_product_id' => $validated['shopify_product_id'] ?? null,
+            'description' => $validated['description'] ?? null,
+            'short_description' => $validated['short_description'] ?? null,
+            'category' => $validated['category'] ?? null,
+            'sub_category' => $validated['sub_category'] ?? null,
+            'brand' => $validated['brand'] ?? null,
+            'product_type' => $validated['product_type'] ?? null,
+            'tags' => $this->normalizeTags($validated['tags'] ?? null),
+            'regular_price' => $validated['regular_price'] ?? null,
+            'sale_price' => $validated['sale_price'] ?? null,
+            'price' => $validated['regular_price'] ?? null,
+            'currency' => $validated['currency'] ?? 'USD',
+            'tax_class' => $validated['tax_class'] ?? null,
+            'stock_quantity' => $validated['stock_quantity'] ?? 0,
+            'stock_status' => $validated['stock_status'],
+            'track_inventory' => (bool) ($validated['track_inventory'] ?? false),
+            'status' => $validated['status'],
+            'featured_image' => $featuredImagePath,
+            'gallery_images' => $finalGallery,
+            'weight' => $validated['weight'] ?? null,
+            'length' => $validated['length'] ?? null,
+            'width' => $validated['width'] ?? null,
+            'height' => $validated['height'] ?? null,
+            'shipping_class' => $validated['shipping_class'] ?? null,
+        ]);
+
+        AdminActivityLog::logActivity(
+            auth()->id(),
+            'Updated Product',
+            'Product',
+            $product->id
+        );
+
+        return redirect()
+            ->route('crm.products')
+            ->with('success', 'Product updated successfully.');
+    }
+
+    /**
+     * Delete product from CRM page.
+     */
+    public function destroyProduct(string $productId): RedirectResponse
+    {
+        $product = Product::findOrFail($productId);
+        if (!empty($product->featured_image)) {
+            Storage::disk('public')->delete($product->featured_image);
+        }
+        $galleryImages = is_array($product->gallery_images) ? $product->gallery_images : [];
+        foreach ($galleryImages as $galleryPath) {
+            Storage::disk('public')->delete((string) $galleryPath);
+        }
+        $product->delete();
+
+        AdminActivityLog::logActivity(
+            auth()->id(),
+            'Deleted Product',
+            'Product',
+            $product->id
+        );
+
+        return redirect()
+            ->route('crm.products')
+            ->with('success', 'Product deleted successfully.');
+    }
+
+    private function normalizeTags(?string $tags): ?array
+    {
+        if ($tags === null || trim($tags) === '') {
+            return null;
+        }
+
+        $parts = array_values(array_filter(array_map('trim', explode(',', $tags)), fn($tag) => $tag !== ''));
+        return empty($parts) ? null : $parts;
+    }
+
+    private function storeGalleryImages(Request $request): array
+    {
+        $paths = [];
+        if (!$request->hasFile('gallery_images')) {
+            return $paths;
+        }
+
+        foreach ((array) $request->file('gallery_images') as $file) {
+            if ($file) {
+                $paths[] = $file->store('products/gallery', 'public');
+            }
+        }
+
+        return $paths;
     }
 
     /**

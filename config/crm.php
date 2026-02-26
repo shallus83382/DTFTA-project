@@ -51,6 +51,11 @@ return [
             'items_per_page' => 10,
             'enable_shopify_sync' => true,
         ],
+        'products' => [
+            'enabled' => true,
+            'items_per_page' => 10,
+            'enable_shop_selection' => true,
+        ],
         'reports' => [
             'enabled' => true,
             'enable_export' => true,
@@ -98,6 +103,13 @@ return [
             'icon' => 'nav-icon-stores',
             'visible' => true,
             'roles' => ['admin', 'manager'],
+        ],
+        [
+            'label' => 'Products',
+            'route' => 'crm.products',
+            'icon' => 'nav-icon-products',
+            'visible' => true,
+            'roles' => ['admin', 'manager', 'user'],
         ],
         [
             'label' => 'Reports',

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\JsonResponse;
 
 class LoginController extends Controller
 {
@@ -38,7 +39,7 @@ class LoginController extends Controller
 
         $token = $user->createToken('admin-token', ['admin'])->plainTextToken;
 
-        return response()->json([
+        $response = response()->json([
             'message' => 'Login successful',
             'user' => [
                 'id' => $user->id,
@@ -49,6 +50,19 @@ class LoginController extends Controller
             ],
             'token' => $token,
         ]);
+
+        // Keep CRM web routes authenticated via sanctum + cookie bridge middleware.
+        return $response->cookie(
+            'auth_token',
+            $token,
+            60 * 24 * 30,
+            '/',
+            null,
+            false,
+            false,
+            false,
+            'Lax'
+        );
     }
 
     /**
@@ -56,11 +70,13 @@ class LoginController extends Controller
      */
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        if ($request->user() && $request->user()->currentAccessToken()) {
+            $request->user()->currentAccessToken()->delete();
+        }
 
         return response()->json([
             'message' => 'Logged out successfully',
-        ]);
+        ])->withCookie(cookie()->forget('auth_token'));
     }
 
     /**
