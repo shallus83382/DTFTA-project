@@ -75,8 +75,9 @@ async function loadNotifications(page = notificationPage) {
     if (type) params.set('type', type);
 
     try {
-        const response = await fetch('/api/v1/notifications?' + params.toString(), {
+        const response = await fetch('/crm/notifications/data?' + params.toString(), {
             method: 'GET',
+            credentials: 'same-origin',
             headers: {
                 'Accept': 'application/json',
                 ...getAuthHeaders()
@@ -150,11 +151,13 @@ function renderPagination(pagination) {
 
 async function markAllNotificationsRead() {
     try {
-        await fetch('/api/v1/notifications/mark-read', {
+        await fetch('/crm/notifications/mark-read', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content') || '',
                 ...getAuthHeaders()
             },
             body: JSON.stringify({})
@@ -171,11 +174,13 @@ async function markAllNotificationsRead() {
 async function markOneNotificationRead(event, notificationId) {
     if (!notificationId) return;
     try {
-        await fetch('/api/v1/notifications/mark-read', {
+        await fetch('/crm/notifications/mark-read', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content') || '',
                 ...getAuthHeaders()
             },
             body: JSON.stringify({ notification_ids: [notificationId] })
@@ -202,4 +207,3 @@ function escapeJs(value) {
 }
 </script>
 @endpush
-

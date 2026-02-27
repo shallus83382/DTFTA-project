@@ -177,6 +177,7 @@
                 </div>
             </div>
 
+
             <div style="margin-top: 12px; display: flex; gap: 10px;">
                 <button type="submit" class="btn-primary">Save Changes</button>
                 <a href="{{ route('crm.products') }}" class="btn-secondary">Cancel</a>

@@ -5,6 +5,7 @@ use App\Http\Controllers\CrmController;
 use App\Http\Controllers\Api\Auth\LoginController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
+use App\Http\Controllers\PrintAreaController;
 
 Route::get('/', [CrmController::class, 'landing']);
 
@@ -20,6 +21,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/auth/logout', [LoginController::class, 'logout'])->name('logout');
     Route::get('/auth/me', [LoginController::class, 'me'])->name('auth.me');
     Route::post('/auth/change-password', [PasswordResetController::class, 'changePassword'])->name('auth.change-password');
+    Route::get('/crm/notifications/recent', [CrmController::class, 'getRealtimeNotifications'])->name('crm.notifications.recent');
+    Route::get('/crm/notifications/data', [CrmController::class, 'getNotifications'])->name('crm.notifications.data');
+    Route::post('/crm/notifications/mark-read', [CrmController::class, 'markNotificationsRead'])->name('crm.notifications.mark-read');
 
     Route::get('/crm/dashboard', [CrmController::class, 'dashboard'])->name('crm.dashboard');
     Route::get('/crm/orders', [CrmController::class, 'orders'])->name('crm.orders');
@@ -51,4 +55,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/crm/store/detail/{storeId}', [CrmController::class, 'storedetails'])->name('crm.store-detail');
     Route::post('/crm/store/{storeId}/status', [CrmController::class, 'updateStoreStatus'])->name('crm.store.update-status');
     Route::post('/crm/store/{storeId}/partner-profile', [CrmController::class, 'upsertPartnerProfile'])->name('crm.store.upsert-profile');
+
+    Route::get('/crm/print-areas/list', [PrintAreaController::class, 'index'])->name('crm.print-areas.index');
+
+        Route::get('/crm/print-areas/create', [PrintAreaController::class, 'create'])->name('crm.print-areas.create');
+        Route::post('/crm/print-areas/store', [PrintAreaController::class, 'store'])->name('crm.print-areas.store');
+
+        Route::get('/crm/print-areas/view/{id}', [PrintAreaController::class, 'show'])->name('crm.print-areas.show');
+
+        Route::get('/crm/print-areas/edit/{id}', [PrintAreaController::class, 'edit'])->name('crm.print-areas.edit');
+        Route::post('/crm/print-areas/update/{id}', [PrintAreaController::class, 'update'])->name('crm.print-areas.update');
+
+        Route::delete('/crm/print-areas/delete/{id}', [PrintAreaController::class, 'destroy'])->name('crm.print-areas.delete');
 });

@@ -32,6 +32,18 @@
                     </select>
                 </div>
                 <div class="filter-group">
+    <label for="print_area_id">Print Area</label>
+    <select id="print_area_id" name="print_area_id" class="filter-select">
+        <option value="">Select Print Area</option>
+        @foreach($printAreas as $printArea)
+            <option value="{{ $printArea->id }}"
+                {{ old('print_area_id') == $printArea->id ? 'selected' : '' }}>
+                {{ $printArea->title }}
+            </option>
+        @endforeach
+    </select>
+</div>
+                <div class="filter-group">
                     <label for="title">Title</label>
                     <input id="title" name="title" type="text" class="filter-select" value="{{ old('title') }}" required>
                 </div>
@@ -147,6 +159,8 @@
                     <textarea id="description" name="description" class="filter-select" rows="3">{{ old('description') }}</textarea>
                 </div>
             </div>
+
+           
 
             <div style="margin-top: 12px; display: flex; gap: 10px;">
                 <button type="submit" class="btn-primary">Create Product</button>
