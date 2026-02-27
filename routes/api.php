@@ -11,8 +11,6 @@ use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\FulfillmentServiceController;
 use App\Http\Controllers\Api\FailedWebhookController;
 use App\Http\Controllers\Api\JobController;
-use App\Http\Controllers\Api\Auth\LoginController;
-use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\Shopify\WebhookController;
 use App\Http\Controllers\CrmController;
@@ -21,11 +19,6 @@ use App\Http\Controllers\CrmController;
 // PUBLIC ROUTES (No Authentication Required)
 // ============================================
 Route::prefix('v1')->group(function () {
-    // Authentication routes
-    Route::post('/auth/login', [LoginController::class, 'login']);
-    Route::post('/auth/forgot-password', [PasswordResetController::class, 'forgotPassword']);
-    Route::post('/auth/reset-password', [PasswordResetController::class, 'resetPassword']);
-
     // Public Shopify webhook endpoints
     Route::post('/webhooks/shopify', [WebhookController::class, 'handle']);
     Route::get('/webhooks/status', [WebhookController::class, 'status']);
@@ -43,11 +36,6 @@ Route::prefix('v1')->group(function () {
 // PROTECTED ROUTES (Authentication Required)
 // ============================================
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
-    // Authentication routes
-    Route::post('/auth/logout', [LoginController::class, 'logout'])->name('logout');
-    Route::get('/auth/me', [LoginController::class, 'me']);
-    Route::post('/auth/change-password', [PasswordResetController::class, 'changePassword']);
-
     // User Management (Admin Only)
     Route::middleware('admin')->group(function () {
         Route::get('/users', [UserManagementController::class, 'index']);

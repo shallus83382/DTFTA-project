@@ -217,15 +217,15 @@
         async function handleLogout() {
             try {
                 const token = localStorage.getItem('auth_token');
-                if (token) {
-                    await fetch('/api/v1/auth/logout', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': 'Bearer ' + token,
-                            'Content-Type': 'application/json',
-                        }
-                    });
-                }
+                await fetch('/auth/logout', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Authorization': token ? ('Bearer ' + token) : '',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content') || '',
+                    }
+                });
             } catch (error) {
                 console.error('Logout error:', error);
             }
@@ -239,15 +239,10 @@
         // Initialize from auth token
         document.addEventListener('DOMContentLoaded', function() {
             let latestUnreadCount = Number(@json((int) ($headerNotificationCount ?? 0)));
-
-            const token = localStorage.getItem('auth_token');
-            if (!token) {
-                window.location.href = '{{ route("login") }}';
-            }
-            
             const user = localStorage.getItem('user_info');
-            if (user) {
-                const userData = JSON.parse(user);
+            const authenticatedUser = @json(auth()->user() ? ['name' => auth()->user()->name, 'role' => auth()->user()->role] : null);
+            if (user || authenticatedUser) {
+                const userData = user ? JSON.parse(user) : authenticatedUser;
                 const avatar = userData.name.charAt(0).toUpperCase();
                 document.getElementById('sidebarUserAvatar').textContent = avatar;
                 document.getElementById('sidebarUserName').textContent = userData.name;

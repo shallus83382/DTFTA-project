@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
@@ -34,6 +35,9 @@ class LoginController extends Controller
                 'message' => 'This account has been deactivated.',
             ], 403);
         }
+
+        Auth::guard('web')->login($user);
+        $request->session()->regenerate();
 
         $user->update(['last_login_at' => now()]);
 
@@ -73,6 +77,10 @@ class LoginController extends Controller
         if ($request->user() && $request->user()->currentAccessToken()) {
             $request->user()->currentAccessToken()->delete();
         }
+
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return response()->json([
             'message' => 'Logged out successfully',

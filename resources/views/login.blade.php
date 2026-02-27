@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>DTFTA CRM - Login</title>
     <style>
         * {
@@ -231,6 +232,7 @@
         const loginBtn = document.getElementById('loginBtn');
         const errorMessage = document.getElementById('errorMessage');
         const loading = document.getElementById('loading');
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -244,12 +246,13 @@
             errorMessage.classList.remove('show');
 
             try {
-                const response = await fetch('/api/v1/auth/login', {
+                const response = await fetch('/auth/login', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken,
                     },
                     body: JSON.stringify({
                         email: email,
@@ -290,7 +293,7 @@
             if (!existingToken) return;
 
             try {
-                const response = await fetch('/api/v1/auth/me', {
+                const response = await fetch('/auth/me', {
                     method: 'GET',
                     credentials: 'same-origin',
                     headers: {

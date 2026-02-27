@@ -2,15 +2,29 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CrmController;
+use App\Http\Controllers\Api\Auth\LoginController;
+use App\Http\Controllers\Api\Auth\PasswordResetController;
 
 // Public landing page / login
 Route::get('/', [CrmController::class, 'landing']);
 
 // Login page
-Route::get('/login', [CrmController::class, 'landing'])->name('login');
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [CrmController::class, 'landing'])->name('login');
+    Route::prefix('auth')->group(function () {
+        Route::post('/login', [LoginController::class, 'login'])->name('auth.login');
+        Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])->name('auth.forgot-password');
+        Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->name('auth.reset-password');
+    });
+});
 
-// CRM routes protected using same sanctum auth as API routes.
+Route::middleware('auth')->prefix('auth')->group(function () {
+    Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
+    Route::get('/me', [LoginController::class, 'me'])->name('auth.me');
+    Route::post('/change-password', [PasswordResetController::class, 'changePassword'])->name('auth.change-password');
+});
 
+Route::middleware('auth')->group(function () {
     Route::get('/crm/dashboard', [CrmController::class, 'dashboard'])->name('crm.dashboard');
     Route::get('/crm/orders', [CrmController::class, 'orders'])->name('crm.orders');
     Route::get('/crm/orders/{jobId}', [CrmController::class, 'jobDetail'])->name('crm.job-detail');
@@ -33,3 +47,4 @@ Route::get('/login', [CrmController::class, 'landing'])->name('login');
     Route::get('/crm/store/detail/{storeId}', [CrmController::class, 'storedetails'])->name('crm.store-detail');
     Route::post('/crm/store/{storeId}/status', [CrmController::class, 'updateStoreStatus'])->name('crm.store.update-status');
     Route::post('/crm/store/{storeId}/partner-profile', [CrmController::class, 'upsertPartnerProfile'])->name('crm.store.upsert-profile');
+});
