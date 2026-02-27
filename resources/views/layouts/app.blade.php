@@ -222,7 +222,6 @@
                     credentials: 'same-origin',
                     headers: {
                         'Authorization': token ? ('Bearer ' + token) : '',
-                        'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content') || '',
                     }
                 });
@@ -295,14 +294,14 @@
             }
 
             async function markNotificationsRead(notificationIds = []) {
-                const token = localStorage.getItem('auth_token');
-                if (!token) return;
                 try {
-                    const response = await fetch('/api/v1/notifications/mark-read', {
+                    const response = await fetch('/crm/notifications/mark-read', {
                         method: 'POST',
+                        credentials: 'same-origin',
                         headers: {
                             'Accept': 'application/json',
                             'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content') || '',
                             ...authHeaders()
                         },
                         body: JSON.stringify(notificationIds.length ? { notification_ids: notificationIds } : {})
@@ -317,8 +316,9 @@
 
             async function refreshNotifications() {
                 try {
-                    const response = await fetch('/api/v1/notifications/recent', {
+                    const response = await fetch('/crm/notifications/recent', {
                         method: 'GET',
+                        credentials: 'same-origin',
                         headers: {
                             'Accept': 'application/json',
                             ...authHeaders()

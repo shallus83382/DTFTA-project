@@ -20,6 +20,8 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use App\Http\Controllers\Controller;
+use App\Models\PrintArea;
 
 class CrmController extends Controller
 {
@@ -79,7 +81,7 @@ class CrmController extends Controller
     /**
      * Prepare data for views
      */
-    private function prepareViewData(): array
+    public function prepareViewData(): array
     {
         $route = request()->route();
         $routeName = $route ? $route->getName() : null;
@@ -162,7 +164,36 @@ class CrmController extends Controller
                     ['label' => 'Stores', 'url' => route('crm.stores')],
                     ['label' => 'Store #' . ($routeParams['storeId'] ?? ''), 'url' => null],
                 ];
+                // ================= PRINT AREAS =================
 
+                // ================= PRINT AREAS =================
+
+            case 'crm.print-areas.index':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Print Areas', 'url' => null],
+                ];
+
+            case 'crm.print-areas.create':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Print Areas', 'url' => route('crm.print-areas.index')],
+                    ['label' => 'Add Print Area', 'url' => null],
+                ];
+
+            case 'crm.print-areas.edit':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Print Areas', 'url' => route('crm.print-areas.index')],
+                    ['label' => 'Edit Print Area', 'url' => null],
+                ];
+
+            case 'crm.print-areas.show':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Print Areas', 'url' => route('crm.print-areas.index')],
+                    ['label' => 'Print Area #' . ($routeParams['id'] ?? ''), 'url' => null],
+                ];
             case 'crm.products':
                 return [$dashboardCrumb, ['label' => 'Products', 'url' => null]];
             case 'crm.products.create':
@@ -204,7 +235,7 @@ class CrmController extends Controller
      */
     private function resolveApiUser()
     {
-        return auth('sanctum')->user();
+        return auth()->user() ?? auth('sanctum')->user();
     }
     /**
      * POST /api/v1/orders/{order_id}/items
@@ -236,76 +267,76 @@ class CrmController extends Controller
         $cacheKey = 'crm.notification_pool.' . $limit;
 
         return Cache::remember($cacheKey, now()->addSeconds(30), function () use ($limit) {
-        $orderNotifications = Order::with('shop')
-            ->orderBy('created_at', 'desc')
-            ->limit($limit)
-            ->get()
-            ->map(function ($order) {
-                $title = 'Order #' . ($order->order_number ?: $order->id);
-                $shopDomain = $order->shop->shop_domain ?? 'Unknown store';
-                $status = strtolower((string) $order->fulfillment_status);
-                return [
-                    'id' => 'order_' . $order->id,
-                    'entity_type' => 'order',
-                    'entity_id' => (int) $order->id,
-                    'avatar' => $this->resolveNotificationIcon('order', $status),
-                    'title' => $title,
-                    'message' => 'Order update from ' . $shopDomain,
-                    'status' => $status !== '' ? $status : 'pending',
-                    'text_html' => '<strong>' . e($title) . '</strong> - ' . e('Order update from ' . $shopDomain),
-                    'url' => route('crm.order-detail', $order->id),
-                    'created_at' => $order->created_at,
-                ];
-            });
+            $orderNotifications = Order::with('shop')
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($order) {
+                    $title = 'Order #' . ($order->order_number ?: $order->id);
+                    $shopDomain = $order->shop->shop_domain ?? 'Unknown store';
+                    $status = strtolower((string) $order->fulfillment_status);
+                    return [
+                        'id' => 'order_' . $order->id,
+                        'entity_type' => 'order',
+                        'entity_id' => (int) $order->id,
+                        'avatar' => $this->resolveNotificationIcon('order', $status),
+                        'title' => $title,
+                        'message' => 'Order update from ' . $shopDomain,
+                        'status' => $status !== '' ? $status : 'pending',
+                        'text_html' => '<strong>' . e($title) . '</strong> - ' . e('Order update from ' . $shopDomain),
+                        'url' => route('crm.order-detail', $order->id),
+                        'created_at' => $order->created_at,
+                    ];
+                });
 
-        $jobNotifications = Job::with('shop')
-            ->orderBy('created_at', 'desc')
-            ->limit($limit)
-            ->get()
-            ->map(function ($job) {
-                $status = strtoupper(str_replace('_', ' ', (string) $job->status));
-                return [
-                    'id' => 'job_' . $job->id,
-                    'entity_type' => 'job',
-                    'entity_id' => (int) $job->id,
-                    'avatar' => $this->resolveNotificationIcon('job', (string) $job->status),
-                    'title' => 'Job #' . (string) $job->id,
-                    'message' => $status,
-                    'status' => strtolower((string) $job->status),
-                    'text_html' => '<strong>Job #' . e((string) $job->id) . '</strong> - ' . e($status),
-                    'url' => route('crm.job-detail', $job->id),
-                    'created_at' => $job->created_at,
-                ];
-            });
+            $jobNotifications = Job::with('shop')
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($job) {
+                    $status = strtoupper(str_replace('_', ' ', (string) $job->status));
+                    return [
+                        'id' => 'job_' . $job->id,
+                        'entity_type' => 'job',
+                        'entity_id' => (int) $job->id,
+                        'avatar' => $this->resolveNotificationIcon('job', (string) $job->status),
+                        'title' => 'Job #' . (string) $job->id,
+                        'message' => $status,
+                        'status' => strtolower((string) $job->status),
+                        'text_html' => '<strong>Job #' . e((string) $job->id) . '</strong> - ' . e($status),
+                        'url' => route('crm.job-detail', $job->id),
+                        'created_at' => $job->created_at,
+                    ];
+                });
 
-        $shipmentNotifications = Shipment::with('shop')
-            ->orderBy('created_at', 'desc')
-            ->limit($limit)
-            ->get()
-            ->map(function ($shipment) {
-                $shipmentId = $shipment->shipment_id ?: $shipment->id;
-                $shopDomain = $shipment->shop->shop_domain ?? 'Unknown store';
-                $status = strtolower((string) $shipment->status);
-                return [
-                    'id' => 'shipment_' . $shipment->id,
-                    'entity_type' => 'shipment',
-                    'entity_id' => (int) $shipment->id,
-                    'avatar' => $this->resolveNotificationIcon('shipment', $status),
-                    'title' => 'Shipment #' . $shipmentId,
-                    'message' => 'Shipment update for ' . $shopDomain,
-                    'status' => $status !== '' ? $status : 'pending',
-                    'text_html' => '<strong>Shipment #' . e((string) $shipmentId) . '</strong> - ' . e('Shipment update for ' . $shopDomain),
-                    'url' => route('crm.shipping-detail', $shipment->id),
-                    'created_at' => $shipment->created_at,
-                ];
-            });
+            $shipmentNotifications = Shipment::with('shop')
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($shipment) {
+                    $shipmentId = $shipment->shipment_id ?: $shipment->id;
+                    $shopDomain = $shipment->shop->shop_domain ?? 'Unknown store';
+                    $status = strtolower((string) $shipment->status);
+                    return [
+                        'id' => 'shipment_' . $shipment->id,
+                        'entity_type' => 'shipment',
+                        'entity_id' => (int) $shipment->id,
+                        'avatar' => $this->resolveNotificationIcon('shipment', $status),
+                        'title' => 'Shipment #' . $shipmentId,
+                        'message' => 'Shipment update for ' . $shopDomain,
+                        'status' => $status !== '' ? $status : 'pending',
+                        'text_html' => '<strong>Shipment #' . e((string) $shipmentId) . '</strong> - ' . e('Shipment update for ' . $shopDomain),
+                        'url' => route('crm.shipping-detail', $shipment->id),
+                        'created_at' => $shipment->created_at,
+                    ];
+                });
 
-        return $orderNotifications
-            ->concat($jobNotifications)
-            ->concat($shipmentNotifications)
-            ->sortByDesc('created_at')
-            ->values()
-            ->take($limit);
+            return $orderNotifications
+                ->concat($jobNotifications)
+                ->concat($shipmentNotifications)
+                ->sortByDesc('created_at')
+                ->values()
+                ->take($limit);
         });
     }
     /**
@@ -684,7 +715,6 @@ class CrmController extends Controller
     public function landing()
     {
         return view('login');
-         
     }
 
     /**
@@ -888,7 +918,7 @@ class CrmController extends Controller
         $perPage = max(5, min($perPage, 100));
 
         $query = Product::query()->with('shop');
-
+        
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(function ($searchQuery) use ($search) {
@@ -950,6 +980,7 @@ class CrmController extends Controller
     {
         $data = $this->prepareViewData();
         $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
+        $data['printAreas'] = PrintArea::orderBy('title')->get();
         $data['productStatusOptions'] = $this->getProductStatusOptions();
         $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
         return view('crm.products-add', $data);
@@ -961,8 +992,9 @@ class CrmController extends Controller
     public function editProduct(string $productId): View
     {
         $data = $this->prepareViewData();
-        $data['product'] = Product::with('shop')->findOrFail($productId);
+        $data['product'] = Product::with(['shop'])->findOrFail($productId);
         $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
+        $data['printAreas'] = PrintArea::orderBy('title')->get();
         $data['productStatusOptions'] = $this->getProductStatusOptions();
         $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
         return view('crm.products-edit', $data);
@@ -974,7 +1006,9 @@ class CrmController extends Controller
     public function viewProduct(string $productId): View
     {
         $data = $this->prepareViewData();
-        $data['product'] = Product::with('shop')->findOrFail($productId);
+        $data['product'] = Product::with(['shop'])->findOrFail($productId);
+        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
+        $data['printAreas'] = PrintArea::orderBy('title')->get();
         return view('crm.products-view', $data);
     }
 
@@ -1025,6 +1059,7 @@ class CrmController extends Controller
             'width' => 'nullable|numeric|min:0',
             'height' => 'nullable|numeric|min:0',
             'shipping_class' => 'nullable|string|max:255',
+         
         ]);
 
         $featuredImagePath = $request->hasFile('featured_image')
@@ -1061,6 +1096,8 @@ class CrmController extends Controller
             'height' => $validated['height'] ?? null,
             'shipping_class' => $validated['shipping_class'] ?? null,
         ]);
+
+        $this->syncProductPrintAreasFromRequest($request, $product);
 
         AdminActivityLog::logActivity(
             auth()->id(),
@@ -1129,6 +1166,7 @@ class CrmController extends Controller
             'width' => 'nullable|numeric|min:0',
             'height' => 'nullable|numeric|min:0',
             'shipping_class' => 'nullable|string|max:255',
+           
         ]);
 
         $featuredImagePath = $product->featured_image;
@@ -1185,6 +1223,8 @@ class CrmController extends Controller
             'shipping_class' => $validated['shipping_class'] ?? null,
         ]);
 
+        $this->syncProductPrintAreasFromRequest($request, $product);
+
         AdminActivityLog::logActivity(
             auth()->id(),
             'Updated Product',
@@ -1209,6 +1249,11 @@ class CrmController extends Controller
         $galleryImages = is_array($product->gallery_images) ? $product->gallery_images : [];
         foreach ($galleryImages as $galleryPath) {
             Storage::disk('public')->delete((string) $galleryPath);
+        }
+        foreach ($product->printAreas as $printArea) {
+            if (!empty($printArea->placement_image) && !str_starts_with($printArea->placement_image, 'http://') && !str_starts_with($printArea->placement_image, 'https://')) {
+                Storage::disk('public')->delete($printArea->placement_image);
+            }
         }
         $product->delete();
 
@@ -1248,6 +1293,96 @@ class CrmController extends Controller
         }
 
         return $paths;
+    }
+
+    private function syncProductPrintAreasFromRequest(Request $request, Product $product): void
+    {
+        $rows = $request->input('print_areas', []);
+        if (!is_array($rows)) {
+            $rows = [];
+        }
+
+        $existing = $product->printAreas()->get()->keyBy('id');
+        $processedIds = [];
+
+        foreach ($rows as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $title = trim((string) ($row['title'] ?? ''));
+            $areaWidth = $row['area_width'] ?? null;
+            $areaHeight = $row['area_height'] ?? null;
+            $tshirtSize = trim((string) ($row['tshirt_size'] ?? ''));
+            $hasNewImage = $request->hasFile('print_area_images.' . $index);
+
+            if (
+                $title === ''
+                && !$hasNewImage
+                && ($areaWidth === null || $areaWidth === '')
+                && ($areaHeight === null || $areaHeight === '')
+                && $tshirtSize === ''
+            ) {
+                continue;
+            }
+
+            $printAreaId = isset($row['id']) && is_numeric($row['id']) ? (int) $row['id'] : null;
+            $existingModel = $printAreaId ? $existing->get($printAreaId) : null;
+
+            $placementImage = (string) ($row['existing_image'] ?? '');
+            $removeImage = filter_var($row['remove_image'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+            if ($existingModel && $placementImage === '') {
+                $placementImage = (string) ($existingModel->placement_image ?? '');
+            }
+
+            if ($removeImage && $placementImage !== '') {
+                if (!str_starts_with($placementImage, 'http://') && !str_starts_with($placementImage, 'https://')) {
+                    Storage::disk('public')->delete($placementImage);
+                }
+                $placementImage = '';
+            }
+
+            if ($hasNewImage) {
+                if ($placementImage !== '' && !str_starts_with($placementImage, 'http://') && !str_starts_with($placementImage, 'https://')) {
+                    Storage::disk('public')->delete($placementImage);
+                }
+                $placementImage = $request->file('print_area_images.' . $index)->store('products/print-areas', 'public');
+            }
+
+            $payload = [
+                'title' => $title !== '' ? $title : 'Print Area',
+                'placement_image' => $placementImage !== '' ? $placementImage : null,
+                'area_width' => ($areaWidth === '' || $areaWidth === null) ? null : (float) $areaWidth,
+                'area_height' => ($areaHeight === '' || $areaHeight === null) ? null : (float) $areaHeight,
+                'unit' => in_array(($row['unit'] ?? 'mm'), ['mm', 'cm', 'in', 'px'], true) ? $row['unit'] : 'mm',
+                'position_x' => ($row['position_x'] ?? '') === '' ? null : (float) $row['position_x'],
+                'position_y' => ($row['position_y'] ?? '') === '' ? null : (float) $row['position_y'],
+                'tshirt_size' => $tshirtSize !== '' ? $tshirtSize : null,
+                'display_order' => max(0, (int) ($row['display_order'] ?? $index)),
+                'is_active' => filter_var($row['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+            ];
+
+            if ($existingModel) {
+                $existingModel->update($payload);
+                $processedIds[] = $existingModel->id;
+            } else {
+                $created = $product->printAreas()->create($payload);
+                $processedIds[] = $created->id;
+            }
+        }
+
+        $toDelete = $existing->keys()->diff($processedIds);
+        if ($toDelete->isNotEmpty()) {
+            $models = $existing->only($toDelete->all());
+            foreach ($models as $model) {
+                $path = (string) ($model->placement_image ?? '');
+                if ($path !== '' && !str_starts_with($path, 'http://') && !str_starts_with($path, 'https://')) {
+                    Storage::disk('public')->delete($path);
+                }
+                $model->delete();
+            }
+        }
     }
 
     /**
@@ -1312,6 +1447,7 @@ class CrmController extends Controller
         $data['notificationsConfig'] = $this->getFeatures()['notifications'] ?? [];
         return view('crm.notifications', $data);
     }
+    
 
     /**
      * Show users management page.
@@ -1581,6 +1717,10 @@ class CrmController extends Controller
      */
     public function getRealtimeNotifications(): JsonResponse
     {
+        if (!$this->resolveApiUser()) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+        }
+
         $payload = $this->buildHeaderNotifications();
         return response()->json([
             'success' => true,

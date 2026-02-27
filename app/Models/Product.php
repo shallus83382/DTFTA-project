@@ -63,4 +63,10 @@ class Product extends Model
     {
         return $this->belongsTo(Shop::class);
     }
+    
+    public function printArea()
+{
+    return $this->belongsTo(PrintArea::class);
+}
+  
 }

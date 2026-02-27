@@ -51,6 +51,11 @@ return [
             'items_per_page' => 10,
             'enable_shopify_sync' => true,
         ],
+        'print_areas' => [
+            'enabled' => true,
+            'items_per_page' => 10,
+            'enable_images' => true,
+        ],
         'products' => [
             'enabled' => true,
             'items_per_page' => 10,
@@ -103,6 +108,13 @@ return [
             'icon' => 'nav-icon-stores',
             'visible' => true,
             'roles' => ['admin', 'manager'],
+        ],
+        [
+            'label' => 'Print Areas',
+            'route' => 'crm.print-areas.index',
+            'icon' => 'nav-icon-print-areas',
+            'visible' => true,
+            'roles' => ['admin', 'manager', 'user'],
         ],
         [
             'label' => 'Products',

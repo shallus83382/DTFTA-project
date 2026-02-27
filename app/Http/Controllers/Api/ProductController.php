@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use App\Models\PrintArea;
 
 class ProductController extends Controller
 {
@@ -24,6 +25,7 @@ class ProductController extends Controller
     {
         $validated = $request->validate([
             'shop_id' => 'nullable|exists:shops,id',
+            'print_area_id' => 'nullable|exists:print_areas,id',
             'shopify_product_id' => 'nullable|string|max:255',
             'title' => 'required|string|max:255',
             'sku' => 'nullable|string|max:255',
@@ -69,6 +71,7 @@ class ProductController extends Controller
 
         $payload = [
             'shop_id' => $validated['shop_id'],
+                'print_area_id' => $validated['print_area_id'] ?? null,
             'shopify_product_id' => $validated['shopify_product_id'] ?? null,
             'title' => $validated['title'],
             'sku' => $validated['sku'] ?? null,
@@ -121,7 +124,7 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $query = Product::with('shop');
-
+     
         if ($request->filled('shop_id')) {
             $query->where('shop_id', (int) $request->query('shop_id'));
         }
@@ -150,6 +153,7 @@ class ProductController extends Controller
             'success' => true,
             'message' => 'Products retrieved successfully.',
             'data' => $products,
+            
         ]);
     }
 
@@ -327,6 +331,7 @@ class ProductController extends Controller
                     }),
             ],
             'description' => 'sometimes|nullable|string',
+            'print_area_id' => 'sometimes|nullable|exists:print_areas,id',
             'short_description' => 'sometimes|nullable|string|max:255',
             'category' => 'sometimes|nullable|string|max:255',
             'sub_category' => 'sometimes|nullable|string|max:255',

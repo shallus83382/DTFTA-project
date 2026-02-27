@@ -244,6 +244,7 @@ async function getCurrentRole() {
     try {
         const response = await fetch('/auth/me', {
             method: 'GET',
+            credentials: 'same-origin',
             headers: { 'Accept': 'application/json', ...getAuthHeaders() }
         });
         if (!response.ok) return null;
@@ -274,6 +275,7 @@ async function loadUsers(page) {
     try {
         const response = await fetch('/crm/admin/users?' + params.toString(), {
             method: 'GET',
+            credentials: 'same-origin',
             headers: { 'Accept': 'application/json', ...getAuthHeaders() }
         });
 
@@ -413,6 +415,7 @@ async function saveUser() {
         if (editingUserId) {
             const response = await fetch('/crm/admin/users/' + editingUserId, {
                 method: 'PUT',
+                credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify(payload)
             });
@@ -431,6 +434,7 @@ async function saveUser() {
             }
             const response = await fetch('/crm/admin/users', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify({
                     ...payload,
@@ -459,6 +463,7 @@ async function toggleUserStatus(userId) {
     try {
         const response = await fetch('/crm/admin/users/' + userId, {
             method: 'PUT',
+            credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify({ is_active: !user.is_active })
         });
@@ -475,6 +480,7 @@ async function deleteUser(userId) {
     try {
         const response = await fetch('/crm/admin/users/' + userId, {
             method: 'DELETE',
+            credentials: 'same-origin',
             headers: { 'Accept': 'application/json', ...getAuthHeaders() }
         });
         if (!response.ok) throw new Error('Unable to delete user');
