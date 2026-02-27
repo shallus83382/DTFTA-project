@@ -2,12 +2,21 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CrmController;
+use App\Http\Controllers\Api\Auth\PasswordResetController;
 
 // Public landing page / login
 Route::get('/', [CrmController::class, 'landing']);
 
 // Login page
 Route::get('/login', [CrmController::class, 'landing'])->name('login');
+
+// Forgot password page
+Route::get('/forgot-password', [CrmController::class, 'forgotPassword'])->name('forgot-password');
+Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])->name('forgot-password.submit');
+
+// Reset password page
+Route::get('/reset-password', [CrmController::class, 'resetPassword'])->name('reset-password');
+Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->name('reset-password.submit');
 
 // CRM routes protected using same sanctum auth as API routes.
 

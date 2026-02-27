@@ -22,6 +22,7 @@ class PasswordResetController extends Controller
         ]);
 
         $user = User::where('email', $request->email)->first();
+    
 
         if (!$user->is_active) {
             return response()->json([
@@ -40,14 +41,23 @@ class PasswordResetController extends Controller
         $resetLink = config('app.frontend_url') . '/reset-password?email=' . urlencode($request->email) . '&token=' . $token;
 
         // TODO: Send email with reset link
-        // Mail::send('emails.password-reset', ['link' => $resetLink], function($message) use ($request) {
-        //     $message->to($request->email)->subject('Password Reset Link');
-        // });
+        try {
+            Mail::send('emails.password-reset', ['link' => $resetLink], function($message) use ($request) {
+                $message->to($request->email)->subject('Password Reset Link');
+            });
 
-        return response()->json([
-            'message' => 'Password reset link sent to your email',
-            'debug_link' => $resetLink, 
-        ]);
+            return response()->json([
+                'message' => 'Password reset link sent to your email',
+                'debug_link' => $resetLink, 
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Mail error',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+        
     }
 
     /**
