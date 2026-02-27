@@ -11,12 +11,19 @@ use App\Models\Order;
 use App\Models\Job;
 use App\Models\Shipment;
 use App\Models\FulfillmentService;
+use App\Services\AppSignatureVerifier;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
 use App\Models\OrderItem;
 
 class WebhookController extends Controller
 {
+    public function __construct(
+        private AppSignatureVerifier $appSignatureVerifier,
+        private ShopifyService $shopifyService
+    ) {
+    }
+
     /**
      * POST /webhooks/shopify
      * Handle incoming Shopify webhooks
@@ -51,7 +58,14 @@ class WebhookController extends Controller
                
             ]);
 
-            if (!$this->verifyAppSignature($request, $appTimestamp, $appSignature)) {
+            $isValidSignature = $this->appSignatureVerifier->verify(
+                $request,
+                $appTimestamp,
+                $appSignature,
+                AppSignatureVerifier::MODE_TIMESTAMP_ONLY
+            );
+
+            if (!$isValidSignature) {
                 Log::warning('Shopify webhook rejected: invalid app signature', [
                     'topic' => $topic,
                     'shop_domain' => $shopDomain,
@@ -122,51 +136,6 @@ class WebhookController extends Controller
                 'message' => 'Webhook processing failed'
             ], 500);
         }
-    }
-
-    /**
-     * Verify custom app signature from frontend relay.
-     * Expected: hex(HMAC_SHA256(timestamp + raw_payload, shared_secret))
-     */
-    private function verifyAppSignature(Request $request, string $timestamp, string $signature): bool
-    {
-        $timestamp = trim($timestamp);
-        $signature = strtolower(trim($signature));
-
-        if ($timestamp === '' || $signature === '') {
-            Log::warning('Webhook app signature verification failed: missing timestamp/signature');
-            return false;
-        }
-
-        if (!ctype_digit($timestamp)) {
-            Log::warning('Webhook app signature payload length failed: non-numeric timestamp', [
-                'timestamp' => $timestamp,
-            ]);
-            return false;
-        }
-
-        $sharedSecret = (string) (config('services.shopify.webhook_secret', config('services.shopify.api_secret', '')));
-        if ($sharedSecret === '') {
-            Log::error('Webhook app signature verification failed: missing shared secret');
-            return false;
-        }
-
-        $rawPayload = (string) $request->getContent();
-        // Frontend currently signs timestamp + empty payload, so backend mirrors same string-to-sign.
-        $stringToSign = $timestamp;
-        $expected = hash_hmac('sha256', $stringToSign, $sharedSecret);
-        $ok = hash_equals($expected, $signature);
-
-        if (env('WEBHOOK_DEBUG', false)) {
-            Log::debug('Webhook app signature debug', [
-                'provided_prefix' => substr($signature, 0, 12),
-                'expected_prefix' => substr($expected, 0, 12),
-                'payload_len' => strlen($rawPayload),
-                'signing_mode' => 'timestamp_only',
-            ]);
-        }
-
-        return $ok;
     }
 
     /**
@@ -648,9 +617,8 @@ class WebhookController extends Controller
             );
         }
 
-        $shopifyService = app(ShopifyService::class);
         if ($order && in_array($order->status, ['cancelled'], true)) {
-            $result = $shopifyService->rejectFulfillmentRequest(
+            $result = $this->shopifyService->rejectFulfillmentRequest(
                 $shopId,
                 $fulfillmentOrderId,
                 'Order is already cancelled in DTFTA'
@@ -661,7 +629,7 @@ class WebhookController extends Controller
             return;
         }
 
-        $result = $shopifyService->acceptFulfillmentRequest(
+        $result = $this->shopifyService->acceptFulfillmentRequest(
             $shopId,
             $fulfillmentOrderId,
             'Fulfillment request accepted by DTFTA'
@@ -707,7 +675,6 @@ class WebhookController extends Controller
                 ->first();
         }
 
-        $shopifyService = app(ShopifyService::class);
         $isShipped = $order
             ? Job::where('order_id', $order->id)->whereIn('status', ['shipped', 'completed'])->exists()
             : false;
@@ -716,7 +683,7 @@ class WebhookController extends Controller
             : false;
 
         if ($isShipped) {
-            $result = $shopifyService->rejectCancellationRequest(
+            $result = $this->shopifyService->rejectCancellationRequest(
                 $shopId,
                 $fulfillmentOrderId,
                 'Cancellation rejected: fulfillment already completed'
@@ -741,7 +708,7 @@ class WebhookController extends Controller
             return;
         }
 
-        $result = $shopifyService->acceptCancellationRequest(
+        $result = $this->shopifyService->acceptCancellationRequest(
             $shopId,
             $fulfillmentOrderId,
             'Cancellation accepted by DTFTA'
@@ -930,7 +897,14 @@ class WebhookController extends Controller
     {
         $appTimestamp = (string) $request->header('X-App-Timestamp', '');
         $appSignature = (string) $request->header('X-App-Signature', '');
-        if (!$this->verifyAppSignature($request, $appTimestamp, $appSignature)) {
+        $isValidSignature = $this->appSignatureVerifier->verify(
+            $request,
+            $appTimestamp,
+            $appSignature,
+            AppSignatureVerifier::MODE_TIMESTAMP_ONLY
+        );
+
+        if (!$isValidSignature) {
             return response()->json([
                 'success' => false,
                 'message' => 'Invalid app signature'

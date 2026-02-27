@@ -230,7 +230,14 @@ document.addEventListener('DOMContentLoaded', async function () {
 
 function getAuthHeaders() {
     const token = localStorage.getItem('auth_token');
-    return token ? { 'Authorization': 'Bearer ' + token } : {};
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const headers = {
+        'X-CSRF-TOKEN': csrf
+    };
+    if (token) {
+        headers['Authorization'] = 'Bearer ' + token;
+    }
+    return headers;
 }
 
 async function getCurrentRole() {
@@ -265,7 +272,7 @@ async function loadUsers(page) {
     if (active !== '') params.set('active', active);
 
     try {
-        const response = await fetch('/api/v1/users?' + params.toString(), {
+        const response = await fetch('/crm/admin/users?' + params.toString(), {
             method: 'GET',
             headers: { 'Accept': 'application/json', ...getAuthHeaders() }
         });
@@ -404,7 +411,7 @@ async function saveUser() {
 
     try {
         if (editingUserId) {
-            const response = await fetch('/api/v1/users/' + editingUserId, {
+            const response = await fetch('/crm/admin/users/' + editingUserId, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify(payload)
@@ -422,7 +429,7 @@ async function saveUser() {
                 window.crmAlert('Password confirmation does not match', 'warning');
                 return;
             }
-            const response = await fetch('/api/v1/users', {
+            const response = await fetch('/crm/admin/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify({
@@ -450,7 +457,7 @@ async function toggleUserStatus(userId) {
     const user = usersCache.find(u => u.id === userId);
     if (!user) return;
     try {
-        const response = await fetch('/api/v1/users/' + userId, {
+        const response = await fetch('/crm/admin/users/' + userId, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify({ is_active: !user.is_active })
@@ -466,7 +473,7 @@ async function deleteUser(userId) {
     const ok = await window.crmConfirm('Delete this user?', 'Confirm Delete');
     if (!ok) return;
     try {
-        const response = await fetch('/api/v1/users/' + userId, {
+        const response = await fetch('/crm/admin/users/' + userId, {
             method: 'DELETE',
             headers: { 'Accept': 'application/json', ...getAuthHeaders() }
         });

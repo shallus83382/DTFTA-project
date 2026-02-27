@@ -30,23 +30,16 @@ Route::prefix('v1')->group(function () {
     Route::post('/get-activity-log', [CrmController::class, 'getActivityLog']);
     Route::get('/get-order-status/{orderId}', [CrmController::class, 'getOrderStatus']);
     Route::get('/notifications/recent', [CrmController::class, 'getRealtimeNotifications']);
+
+    // Frontend signed endpoint (timestamp + signature HMAC)
+    Route::get('/products/get', [ProductController::class, 'signedIndex']);
+    Route::get('/products/get/{id}', [ProductController::class, 'signedShow']);
 });
 
 // ============================================
 // PROTECTED ROUTES (Authentication Required)
 // ============================================
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
-    // User Management (Admin Only)
-    Route::middleware('admin')->group(function () {
-        Route::get('/users', [UserManagementController::class, 'index']);
-        Route::post('/users', [UserManagementController::class, 'store']);
-        Route::get('/users/{user}', [UserManagementController::class, 'show']);
-        Route::put('/users/{user}', [UserManagementController::class, 'update']);
-        Route::delete('/users/{user}', [UserManagementController::class, 'destroy']);
-        Route::get('/activity-logs', [UserManagementController::class, 'activityLogs']);
-        
-    });
-
     // User can update own profile
     Route::put('/profile', [UserManagementController::class, 'update']);
 
