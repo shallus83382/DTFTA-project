@@ -684,6 +684,26 @@ class CrmController extends Controller
     public function landing()
     {
         return view('login');
+         
+    }
+
+    /**
+     * Forgot password page.
+     */
+    public function forgotPassword(): View
+    {
+        return view('forgot-password');
+    }
+
+    /**
+     * Reset password page (from email link; shows form to set new password).
+     */
+    public function resetPassword(): View
+    {
+        return view('reset-password', [
+            'email' => request('email', ''),
+            'token' => request('token', ''),
+        ]);
     }
 
     /**
