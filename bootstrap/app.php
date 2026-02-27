@@ -19,7 +19,6 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register middleware aliases
         $middleware->alias([
             'admin' => \App\Http\Middleware\CheckAdminRole::class,
-            'manager' => \App\Http\Middleware\CheckManagerRole::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

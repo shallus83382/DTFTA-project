@@ -7,15 +7,13 @@ use App\Http\Controllers\Api\Auth\PasswordResetController;
 
 Route::get('/', [CrmController::class, 'landing']);
 
-Route::middleware('guest')->group(function () {
-    Route::get('/login', [CrmController::class, 'landing'])->name('login');
-    Route::get('/forgot-password', [CrmController::class, 'forgotPassword'])->name('forgot-password');
-    Route::get('/reset-password', [CrmController::class, 'resetPassword'])->name('reset-password');
+Route::get('/login', [CrmController::class, 'landing'])->name('login');
+Route::get('/forgot-password', [CrmController::class, 'forgotPassword'])->name('forgot-password');
+Route::get('/reset-password', [CrmController::class, 'resetPassword'])->name('reset-password');
 
-    Route::post('/auth/login', [LoginController::class, 'login'])->name('auth.login');
-    Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])->name('forgot-password.submit');
-    Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->name('reset-password.submit');
-});
+Route::post('/auth/login', [LoginController::class, 'login'])->name('auth.login');
+Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])->name('forgot-password.submit');
+Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->name('reset-password.submit');
 
 Route::middleware('auth')->group(function () {
     Route::post('/auth/logout', [LoginController::class, 'logout'])->name('logout');
@@ -39,7 +37,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/crm/reports/export-csv', [CrmController::class, 'exportReportsCsv'])->name('crm.reports.export-csv');
     Route::get('/crm/settings', [CrmController::class, 'settings'])->name('crm.settings');
     Route::get('/crm/notifications', [CrmController::class, 'notifications'])->name('crm.notifications');
-    Route::get('/crm/users', [CrmController::class, 'users'])->name('crm.users');
+    Route::middleware('admin')->group(function () {
+        Route::get('/crm/users', [CrmController::class, 'users'])->name('crm.users');
+    });
     Route::get('/crm/order/detail/{orderId}', [CrmController::class, 'orderdetails'])->name('crm.order-detail');
     Route::get('/crm/store/detail/{storeId}', [CrmController::class, 'storedetails'])->name('crm.store-detail');
     Route::post('/crm/store/{storeId}/status', [CrmController::class, 'updateStoreStatus'])->name('crm.store.update-status');
