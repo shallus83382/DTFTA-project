@@ -23,7 +23,6 @@ class LoginController extends Controller
         ]);
 
         $user = User::where('email', $request->email)->first();
-
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['The provided credentials are incorrect.'],
@@ -31,6 +30,12 @@ class LoginController extends Controller
         }
 
         if (!$user->is_active) {
+            if (!$request->expectsJson()) {
+                return back()
+                    ->withInput($request->only('email'))
+                    ->withErrors(['email' => 'This account has been deactivated.']);
+            }
+
             return response()->json([
                 'message' => 'This account has been deactivated.',
             ], 403);
@@ -43,7 +48,7 @@ class LoginController extends Controller
 
         $token = $user->createToken('admin-token', ['admin'])->plainTextToken;
 
-        $response = response()->json([
+        $payload = [
             'message' => 'Login successful',
             'user' => [
                 'id' => $user->id,
@@ -53,7 +58,25 @@ class LoginController extends Controller
                 'avatar' => substr($user->name, 0, 1),
             ],
             'token' => $token,
-        ]);
+        ];
+
+        if (!$request->expectsJson()) {
+            return redirect()
+                ->intended('/crm/dashboard')
+                ->withCookie(cookie(
+                    'auth_token',
+                    $token,
+                    60 * 24 * 30,
+                    '/',
+                    null,
+                    false,
+                    false,
+                    false,
+                    'Lax'
+                ));
+        }
+
+        $response = response()->json($payload);
 
         // Keep CRM web routes authenticated via sanctum + cookie bridge middleware.
         return $response->cookie(
