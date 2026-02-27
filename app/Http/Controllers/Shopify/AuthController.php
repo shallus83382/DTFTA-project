@@ -7,11 +7,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Shop;
+use App\Services\AppSignatureVerifier;
 use App\Services\ShopifyService;
 
 class AuthController extends Controller
 {
-    public function __construct(private ShopifyService $shopifyService)
+    public function __construct(
+        private ShopifyService $shopifyService,
+        private AppSignatureVerifier $appSignatureVerifier
+    )
     {
     }
 
@@ -39,7 +43,14 @@ class AuthController extends Controller
             ], 422);
         }
 
-        if (!$this->verifyAppHeaderSignature($request, $appTimestamp, $appSignature)) {
+        $isValidSignature = $this->appSignatureVerifier->verify(
+            $request,
+            $appTimestamp,
+            $appSignature,
+            AppSignatureVerifier::MODE_TIMESTAMP_PLUS_PAYLOAD_VARIANTS
+        );
+
+        if (!$isValidSignature) {
             Log::warning('Install rejected: invalid app signature', [
                 'shop' => $shop,
                 'timestamp_present' => $appTimestamp !== '',
@@ -242,152 +253,5 @@ class AuthController extends Controller
     private function isValidShopDomain(string $shop): bool
     {
         return (bool) preg_match('/^[a-z0-9][a-z0-9\\-]*\\.myshopify\\.com$/i', $shop);
-    }
-    /**
-     * Optional additional signature layer from integrator headers.
-     * Expected signature: hex(HMAC_SHA256(timestamp + raw_payload, shared_secret))
-     */
-    private function verifyAppHeaderSignature(Request $request, string $timestamp, string $signature): bool
-    {
-        $timestamp = trim($timestamp);
-        $signature = trim($signature);
-        if ($timestamp === '' || $signature === '') {
-            Log::warning('App signature verification failed: missing timestamp/signature');
-            return false;
-        }
-
-        if (!ctype_digit($timestamp)) {
-            Log::warning('App signature verification failed: non-numeric timestamp', [
-                'timestamp' => $timestamp,
-            ]);
-            return false;
-        }
-
-        // Timestamp freshness window is intentionally disabled for testing phase.
-
-        $sharedSecret = (string) (config('services.shopify.webhook_secret', config('services.shopify.api_secret', '')));
-        if ($sharedSecret === '') {
-            Log::warning('App signature verification failed: missing shared secret');
-            return false;
-        }
-        $secretFingerprint = substr(hash('sha256', $sharedSecret), 0, 12);
-
-        $rawPayload = (string) $request->getContent();
-        $payloadVariants = $this->buildPayloadVariants($request, $rawPayload);
-
-        $expectedCandidates = [];
-        $ok = false;
-        $matchedMode = null;
-        foreach ($payloadVariants as $mode => $payloadVariant) {
-            $expected = hash_hmac('sha256', $timestamp . $payloadVariant, $sharedSecret);
-            $expectedCandidates[$mode] = $expected;
-            if (hash_equals($expected, $signature)) {
-                $ok = true;
-                $matchedMode = $mode;
-                break;
-            }
-        }
-
-        $payloadHash = hash('sha256', $rawPayload);
-        $frontendPayload = $payloadVariants['frontend_json_stringify'] ?? $rawPayload;
-        $payloadFrontendHash = hash('sha256', $frontendPayload);
-        $stringToSignHash = hash('sha256', $timestamp . $rawPayload);
-        $stringToSignFrontendHash = hash('sha256', $timestamp . $frontendPayload);
-
-        $expectedRaw = $expectedCandidates['raw_payload'] ?? '';
-        $expectedFrontend = $expectedCandidates['frontend_json_stringify'] ?? '';
-        if (!$ok) {
-            Log::warning('App signature verification failed: signature mismatch', [
-                'provided_prefix' => substr($signature, 0, 12),
-                'expected_raw_prefix' => substr($expectedRaw, 0, 12),
-                'expected_frontend_prefix' => substr($expectedFrontend, 0, 12),
-                'expected_modes' => array_keys($expectedCandidates),
-                'timestamp' => $timestamp,
-                'provided_len' => strlen($signature),
-                'secret_fingerprint' => $secretFingerprint,
-                'payload_hash' => $payloadHash,
-                'payload_frontend_hash' => $payloadFrontendHash,
-                'raw_payload_len' => strlen($rawPayload),
-                'frontend_payload_len' => strlen($frontendPayload),
-                'raw_payload_sample' => substr($rawPayload, 0, 160),
-                'string_to_sign_hash' => $stringToSignHash,
-                'string_to_sign_frontend_hash' => $stringToSignFrontendHash,
-            ]);
-        } else {
-            Log::info('App signature verification passed', [
-                'timestamp' => $timestamp,
-                'provided_len' => strlen($signature),
-                'secret_fingerprint' => $secretFingerprint,
-                'payload_hash' => $payloadHash,
-                'payload_frontend_hash' => $payloadFrontendHash,
-                'string_to_sign_hash' => $stringToSignHash,
-                'string_to_sign_frontend_hash' => $stringToSignFrontendHash,
-                'matched_mode' => $matchedMode,
-            ]);
-        }
-        return $ok;
-    }
-
-    private function buildPayloadVariants(Request $request, string $rawPayload): array
-    {
-        $variants = [
-            'raw_payload' => $rawPayload,
-        ];
-
-        $decoded = json_decode($rawPayload, true);
-        if (json_last_error() === JSON_ERROR_NONE) {
-            $frontendStyle = json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if (is_string($frontendStyle)) {
-                $variants['frontend_json_stringify'] = $frontendStyle;
-            }
-
-            $pretty = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if (is_string($pretty)) {
-                $variants['pretty_json'] = $pretty;
-            }
-
-            $sorted = $this->sortArrayRecursively($decoded);
-            $sortedMinified = json_encode($sorted, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if (is_string($sortedMinified)) {
-                $variants['sorted_minified_json'] = $sortedMinified;
-            }
-
-            $sortedPretty = json_encode($sorted, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if (is_string($sortedPretty)) {
-                $variants['sorted_pretty_json'] = $sortedPretty;
-            }
-        }
-
-        $all = $request->all();
-        $encodedAll = json_encode($all, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if (is_string($encodedAll)) {
-            $variants['request_all_json'] = $encodedAll;
-        }
-
-        return $variants;
-    }
-
-    private function sortArrayRecursively(array $data): array
-    {
-        foreach ($data as $key => $value) {
-            if (is_array($value)) {
-                $data[$key] = $this->sortArrayRecursively($value);
-            }
-        }
-
-        if ($this->isAssociativeArray($data)) {
-            ksort($data);
-        }
-
-        return $data;
-    }
-
-    private function isAssociativeArray(array $array): bool
-    {
-        if ($array === []) {
-            return false;
-        }
-
-        return array_keys($array) !== range(0, count($array) - 1);
     }
 }

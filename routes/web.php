@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CrmController;
 use App\Http\Controllers\Api\Auth\LoginController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
+use App\Http\Controllers\Api\Auth\UserManagementController;
 
 Route::get('/', [CrmController::class, 'landing']);
 
@@ -39,6 +40,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/crm/notifications', [CrmController::class, 'notifications'])->name('crm.notifications');
     Route::middleware('admin')->group(function () {
         Route::get('/crm/users', [CrmController::class, 'users'])->name('crm.users');
+        Route::get('/crm/admin/users', [UserManagementController::class, 'index'])->name('crm.admin.users.index');
+        Route::post('/crm/admin/users', [UserManagementController::class, 'store'])->name('crm.admin.users.store');
+        Route::get('/crm/admin/users/{user}', [UserManagementController::class, 'show'])->name('crm.admin.users.show');
+        Route::put('/crm/admin/users/{user}', [UserManagementController::class, 'update'])->name('crm.admin.users.update');
+        Route::delete('/crm/admin/users/{user}', [UserManagementController::class, 'destroy'])->name('crm.admin.users.destroy');
+        Route::get('/crm/admin/activity-logs', [UserManagementController::class, 'activityLogs'])->name('crm.admin.activity-logs');
     });
     Route::get('/crm/order/detail/{orderId}', [CrmController::class, 'orderdetails'])->name('crm.order-detail');
     Route::get('/crm/store/detail/{storeId}', [CrmController::class, 'storedetails'])->name('crm.store-detail');
