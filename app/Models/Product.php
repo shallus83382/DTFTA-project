@@ -11,6 +11,7 @@ class Product extends Model
 
     protected $fillable = [
         'shop_id',
+        'print_area_id',
         'shopify_product_id',
         'title',
         'sku',
@@ -64,7 +65,7 @@ class Product extends Model
         return $this->belongsTo(Shop::class);
     }
     
-    public function printArea()
+public function printArea()
 {
     return $this->belongsTo(PrintArea::class);
 }
