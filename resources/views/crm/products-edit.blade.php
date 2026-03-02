@@ -16,7 +16,7 @@
     @endif
 
     <div style="margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
-        <a href="{{ route('crm.products') }}" class="btn-secondary">Back to Products</a>
+       
         <a href="{{ route('crm.products.view', $product->id) }}" class="btn-secondary">View Product</a>
         <form method="POST" action="{{ route('crm.products.destroy', $product->id) }}" onsubmit="return confirm('Delete this product?')">
             @csrf
@@ -36,6 +36,18 @@
                         @foreach($shopsForProducts as $shop)
                             <option value="{{ $shop->id }}" {{ (string) old('shop_id', $product->shop_id) === (string) $shop->id ? 'selected' : '' }}>
                                 {{ $shop->shop_domain }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                    <div class="filter-group">
+                    <label for="print_area_id">Print Area</label>
+                    <select id="print_area_id" name="print_area_id" class="filter-select">
+                        <option value="">Select Print Area</option>
+                        @foreach ($printAreas as $printArea)
+                            <option value="{{ $printArea->id }}"
+                                {{ (string)old('print_area_id', $product->print_area_id) == (string)$printArea->id ? 'selected' : '' }}>
+                                {{ $printArea->title }}
                             </option>
                         @endforeach
                     </select>
