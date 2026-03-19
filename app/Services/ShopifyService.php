@@ -779,4 +779,753 @@ GQL;
             'message' => 'Provisioning completed',
         ];
     }
+
+
+    /**
+     * Create custom product with:
+     * - product
+     * - variants (with SKU)
+     * - print area metafield
+     * - artwork metafield
+     * - print plan metafield
+     * - artwork attached as product media
+     *
+     * Expected payload:
+     * [
+     *   'title' => 'T-Shirt Custom',
+     *   'descriptionHtml' => '<p>Custom t-shirt</p>',
+     *   'vendor' => 'DTFTA',
+     *   'productType' => 'T-Shirt',
+     *   'status' => 'DRAFT',
+     *   'tags' => ['custom', 'print-on-demand'],
+     *   'options' => [
+     *      ['name' => 'Color', 'values' => ['Black', 'White']],
+     *      ['name' => 'Size', 'values' => ['S', 'M']],
+     *   ],
+     *   'variants' => [
+     *      [
+     *          'price' => '19.99',
+     *          'compareAtPrice' => '24.99',
+     *          'sku' => 'TS-BLK-S',
+     *          'barcode' => '123456',
+     *          'optionValues' => [
+     *              ['optionName' => 'Color', 'name' => 'Black'],
+     *              ['optionName' => 'Size', 'name' => 'S'],
+     *          ],
+     *      ],
+     *   ],
+     *   'print_areas' => [
+     *      [
+     *          'placement' => 'front',
+     *          'width' => 12,
+     *          'height' => 16,
+     *          'unit' => 'in',
+     *          'position_x' => 125,
+     *          'position_y' => 125,
+     *      ],
+     *   ],
+     *   'artwork' => [
+     *      'front' => 'data:image/png;base64,...',
+     *      'back' => 'data:image/png;base64,...',
+     *   ],
+     *   'print_plan' => [
+     *      'front' => ['width' => 12, 'height' => 16],
+     *   ],
+     * ]
+     */
+    public function createCustomProductWithPrintAreas(int $shopId, array $payload): array
+    {
+        try {
+            $productCreateResult = $this->createShopifyProduct($shopId, $payload);
+            if (!$productCreateResult['success']) {
+                return $productCreateResult;
+            }
+
+            $product = $productCreateResult['data']['product'] ?? null;
+            $productId = $product['id'] ?? null;
+
+            if (!$productId) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => 'Product ID missing after product creation',
+                    'data' => $productCreateResult['data'] ?? null,
+                    'errors' => [],
+                ];
+            }
+
+            $createdVariants = [];
+
+            if (!empty($payload['variants'])) {
+                $variantResult = $this->createShopifyVariants(
+                    $shopId,
+                    $productId,
+                    $product,
+                    $payload['variants']
+                );
+
+                if (!$variantResult['success']) {
+                    return $variantResult;
+                }
+
+                $createdVariants = $variantResult['data']['variants'] ?? [];
+                $product = $variantResult['data']['product'] ?? $product;
+            }
+
+            $artworkUrls = [];
+
+            if (!empty($payload['artwork']) && is_array($payload['artwork'])) {
+                $uploadResult = $this->uploadArtworkBatchToShopify($shopId, $payload['artwork']);
+
+                if (!$uploadResult['success']) {
+                    return $uploadResult;
+                }
+
+                $artworkUrls = $uploadResult['data']['artwork'] ?? [];
+            }
+
+            $metafieldResult = $this->setCustomProductMetafields($shopId, $productId, [
+                'print_areas' => $payload['print_areas'] ?? [],
+                'artwork' => $artworkUrls,
+                'print_plan' => $payload['print_plan'] ?? null,
+            ]);
+
+            if (!$metafieldResult['success']) {
+                return $metafieldResult;
+            }
+
+            $mediaResultData = [];
+
+            if (!empty($artworkUrls)) {
+                $mediaResult = $this->attachArtworkAsProductMedia($shopId, $productId, $artworkUrls);
+
+                if (!$mediaResult['success']) {
+                    return $mediaResult;
+                }
+
+                $mediaResultData = $mediaResult['data']['media'] ?? [];
+                $product = $mediaResult['data']['product'] ?? $product;
+            }
+
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Custom product created successfully',
+                'data' => [
+                    'product' => $product,
+                    'variants' => $createdVariants,
+                    'artwork' => $artworkUrls,
+                    'media' => $mediaResultData,
+                    'metafields' => $metafieldResult['data']['metafields'] ?? [],
+                ],
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Shopify createCustomProductWithPrintAreas error', [
+                'shop_id' => $shopId,
+                'error' => $e->getMessage(),
+                'payload' => $payload,
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
+    private function createShopifyProduct(int $shopId, array $payload): array
+    {
+        $mutation = <<<'GQL'
+    mutation productCreate($product: ProductCreateInput!) {
+    productCreate(product: $product) {
+        product {
+        id
+        title
+        handle
+        status
+        options {
+            id
+            name
+            optionValues {
+            id
+            name
+            }
+        }
+        }
+        userErrors {
+        field
+        message
+        }
+    }
+    }
+    GQL;
+
+        $productInput = [
+            'title' => (string) ($payload['title'] ?? ''),
+            'descriptionHtml' => $payload['descriptionHtml'] ?? null,
+            'vendor' => $payload['vendor'] ?? null,
+            'productType' => $payload['productType'] ?? null,
+            'status' => $payload['status'] ?? 'DRAFT',
+            'tags' => array_values($payload['tags'] ?? []),
+            'productOptions' => collect($payload['options'] ?? [])
+                ->map(function ($option) {
+                    return [
+                        'name' => (string) ($option['name'] ?? ''),
+                        'values' => collect($option['values'] ?? [])
+                            ->map(fn ($value) => ['name' => (string) $value])
+                            ->values()
+                            ->all(),
+                    ];
+                })
+                ->filter(fn ($option) => !empty($option['name']) && !empty($option['values']))
+                ->values()
+                ->all(),
+        ];
+
+        if ($productInput['title'] === '') {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Product title is required',
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+
+        $result = $this->graphqlRequest($shopId, $mutation, [
+            'product' => $productInput,
+        ]);
+
+        if (!$result['success']) {
+            return $result;
+        }
+
+        $payloadData = $result['data']['productCreate'] ?? [];
+        $userErrors = $payloadData['userErrors'] ?? [];
+
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify productCreate returned user errors',
+                'data' => $payloadData,
+                'errors' => $userErrors,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Product created successfully',
+            'data' => [
+                'product' => $payloadData['product'] ?? null,
+            ],
+            'errors' => [],
+        ];
+    }
+
+    private function createShopifyVariants(int $shopId, string $productId, array $product, array $variants): array
+    {
+        $optionIdMap = [];
+
+        foreach (($product['options'] ?? []) as $option) {
+            $optionName = (string) ($option['name'] ?? '');
+            $optionId = (string) ($option['id'] ?? '');
+
+            if ($optionName === '' || $optionId === '') {
+                continue;
+            }
+
+            foreach (($option['optionValues'] ?? []) as $value) {
+                $valueName = (string) ($value['name'] ?? '');
+                if ($valueName !== '') {
+                    $optionIdMap[$optionName][$valueName] = $optionId;
+                }
+            }
+        }
+
+        $variantInputs = collect($variants)->map(function ($variant) use ($optionIdMap) {
+            return [
+                'price' => isset($variant['price']) ? (string) $variant['price'] : null,
+                'compareAtPrice' => isset($variant['compareAtPrice']) ? (string) $variant['compareAtPrice'] : null,
+                'inventoryItem' => [
+                    'sku' => $variant['sku'] ?? null,
+                    'barcode' => $variant['barcode'] ?? null,
+                    'tracked' => true,
+                ],
+                'optionValues' => collect($variant['optionValues'] ?? [])
+                    ->map(function ($optionValue) use ($optionIdMap) {
+                        $optionName = (string) ($optionValue['optionName'] ?? '');
+                        $valueName = (string) ($optionValue['name'] ?? '');
+                        $optionId = $optionIdMap[$optionName][$valueName] ?? null;
+
+                        if (!$optionId || $valueName === '') {
+                            return null;
+                        }
+
+                        return [
+                            'optionId' => $optionId,
+                            'name' => $valueName,
+                        ];
+                    })
+                    ->filter()
+                    ->values()
+                    ->all(),
+            ];
+        })->values()->all();
+
+        $mutation = <<<'GQL'
+    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    productVariantsBulkCreate(
+        productId: $productId,
+        variants: $variants,
+        strategy: REMOVE_STANDALONE_VARIANT
+    ) {
+        product {
+        id
+        title
+        handle
+        }
+        productVariants {
+        id
+        title
+        price
+        inventoryItem {
+            id
+            sku
+            barcode
+        }
+        selectedOptions {
+            name
+            value
+        }
+        }
+        userErrors {
+        field
+        message
+        }
+    }
+    }
+    GQL;
+
+        $result = $this->graphqlRequest($shopId, $mutation, [
+            'productId' => $productId,
+            'variants' => $variantInputs,
+        ]);
+
+        if (!$result['success']) {
+            return $result;
+        }
+
+        $payloadData = $result['data']['productVariantsBulkCreate'] ?? [];
+        $userErrors = $payloadData['userErrors'] ?? [];
+
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify productVariantsBulkCreate returned user errors',
+                'data' => $payloadData,
+                'errors' => $userErrors,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Variants created successfully',
+            'data' => [
+                'product' => $payloadData['product'] ?? null,
+                'variants' => $payloadData['productVariants'] ?? [],
+            ],
+            'errors' => [],
+        ];
+    }
+
+    private function uploadArtworkToShopify(int $shopId, string $base64Image, string $filename = 'artwork.png', string $alt = 'Artwork'): array
+    {
+        if (!preg_match('/^data:(image\/[a-zA-Z0-9.+-]+);base64,/', $base64Image, $matches)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Invalid base64 image format',
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    
+        $mimeType = $matches[1];
+        $binary = base64_decode(substr($base64Image, strpos($base64Image, ',') + 1), true);
+    
+        if ($binary === false) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Failed to decode base64 image',
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    
+        $fileSize = strlen($binary);
+    
+        $stagedMutation = <<<'GQL'
+    mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets {
+          url
+          resourceUrl
+          parameters {
+            name
+            value
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+    GQL;
+    
+        $stagedResult = $this->graphqlRequest($shopId, $stagedMutation, [
+            'input' => [
+                [
+                    'resource' => 'IMAGE',
+                    'filename' => $filename,
+                    'mimeType' => $mimeType,
+                    'httpMethod' => 'POST',
+                    'fileSize' => (string) $fileSize,
+                ],
+            ],
+        ]);
+    
+        if (!$stagedResult['success']) {
+            return $stagedResult;
+        }
+    
+        $stagedPayload = $stagedResult['data']['stagedUploadsCreate'] ?? [];
+        $stagedErrors = $stagedPayload['userErrors'] ?? [];
+    
+        if (!empty($stagedErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify stagedUploadsCreate returned user errors',
+                'data' => $stagedPayload,
+                'errors' => $stagedErrors,
+            ];
+        }
+    
+        $target = $stagedPayload['stagedTargets'][0] ?? null;
+    
+        if (!$target || empty($target['url']) || empty($target['resourceUrl'])) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Missing staged upload target',
+                'data' => $stagedPayload,
+                'errors' => [],
+            ];
+        }
+    
+        $multipart = [];
+    
+        foreach (($target['parameters'] ?? []) as $param) {
+            $multipart[] = [
+                'name' => $param['name'],
+                'contents' => $param['value'],
+            ];
+        }
+    
+        $multipart[] = [
+            'name' => 'file',
+            'contents' => $binary,
+            'filename' => $filename,
+            'headers' => [
+                'Content-Type' => $mimeType,
+            ],
+        ];
+    
+        $uploadResponse = Http::timeout(60)
+            ->asMultipart()
+            ->post($target['url'], $multipart);
+    
+        if (!$uploadResponse->successful()) {
+            Log::error('Shopify staged upload failed', [
+                'shop_id' => $shopId,
+                'status' => $uploadResponse->status(),
+                'body' => $uploadResponse->body(),
+            ]);
+    
+            return [
+                'success' => false,
+                'status' => $uploadResponse->status(),
+                'message' => 'Failed to upload image to Shopify staged target',
+                'data' => $uploadResponse->body(),
+                'errors' => [],
+            ];
+        }
+    
+        return [
+            'success' => true,
+            'status' => 200,
+            'message' => 'Artwork uploaded successfully',
+            'data' => [
+                'resourceUrl' => $target['resourceUrl'],
+                'filename' => $filename,
+                'alt' => $alt,
+            ],
+            'errors' => [],
+        ];
+    }
+    
+    private function uploadArtworkBatchToShopify(int $shopId, array $artwork): array
+    {
+        $uploaded = [];
+        $media = [];
+    
+        foreach ($artwork as $placement => $base64Image) {
+            if (!is_string($base64Image) || trim($base64Image) === '') {
+                continue;
+            }
+    
+            $filename = strtolower((string) $placement) . '.png';
+            $alt = ucfirst((string) $placement) . ' artwork';
+    
+            $result = $this->uploadArtworkToShopify($shopId, $base64Image, $filename, $alt);
+    
+            if (!$result['success']) {
+                return $result;
+            }
+    
+            $resourceUrl = $result['data']['resourceUrl'] ?? null;
+    
+            if ($resourceUrl) {
+                $uploaded[$placement] = $resourceUrl;
+                $media[] = [
+                    'originalSource' => $resourceUrl,
+                    'mediaContentType' => 'IMAGE',
+                    'alt' => $alt,
+                ];
+            }
+        }
+    
+        if (empty($uploaded)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'No artwork images were uploaded',
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    
+        return [
+            'success' => true,
+            'status' => 200,
+            'message' => 'Artwork batch uploaded successfully',
+            'data' => [
+                'artwork' => $uploaded,
+                'media' => $media,
+            ],
+            'errors' => [],
+        ];
+    }
+    
+    private function attachArtworkAsProductMedia(int $shopId, string $productId, array $artworkUrls): array
+    {
+        $media = collect($artworkUrls)
+            ->map(function ($url, $placement) {
+                if (!is_string($url) || trim($url) === '') {
+                    return null;
+                }
+    
+                return [
+                    'originalSource' => $url,
+                    'mediaContentType' => 'IMAGE',
+                    'alt' => ucfirst((string) $placement) . ' artwork',
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    
+        if (empty($media)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'No valid artwork URLs provided',
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    
+        $mutation = <<<'GQL'
+    mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+      productUpdate(product: $product, media: $media) {
+        product {
+          id
+          title
+          media(first: 20) {
+            nodes {
+              id
+              alt
+              mediaContentType
+              status
+              ... on MediaImage {
+                image {
+                  url
+                }
+              }
+            }
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+    GQL;
+    
+        $result = $this->graphqlRequest($shopId, $mutation, [
+            'product' => [
+                'id' => $productId,
+            ],
+            'media' => $media,
+        ]);
+    
+        if (!$result['success']) {
+            return $result;
+        }
+    
+        $payloadData = $result['data']['productUpdate'] ?? [];
+        $userErrors = $payloadData['userErrors'] ?? [];
+    
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify productUpdate returned user errors',
+                'data' => $payloadData,
+                'errors' => $userErrors,
+            ];
+        }
+    
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Artwork attached as product media successfully',
+            'data' => [
+                'product' => $payloadData['product'] ?? null,
+                'media' => $payloadData['product']['media']['nodes'] ?? [],
+            ],
+            'errors' => [],
+        ];
+    }
+
+    private function setCustomProductMetafields(int $shopId, string $productId, array $data): array
+    {
+        $metafields = [];
+    
+        if (!empty($data['print_areas'])) {
+            $metafields[] = [
+                'ownerId' => $productId,
+                'namespace' => 'dtfta',
+                'key' => 'print_areas',
+                'type' => 'json',
+                'value' => json_encode(array_values($data['print_areas']), JSON_UNESCAPED_SLASHES),
+            ];
+        }
+    
+        if (!empty($data['artwork'])) {
+            $metafields[] = [
+                'ownerId' => $productId,
+                'namespace' => 'dtfta',
+                'key' => 'artwork',
+                'type' => 'json',
+                'value' => json_encode($data['artwork'], JSON_UNESCAPED_SLASHES),
+            ];
+        }
+    
+        if (!empty($data['print_plan'])) {
+            $metafields[] = [
+                'ownerId' => $productId,
+                'namespace' => 'dtfta',
+                'key' => 'print_plan',
+                'type' => 'json',
+                'value' => is_string($data['print_plan'])
+                    ? $data['print_plan']
+                    : json_encode($data['print_plan'], JSON_UNESCAPED_SLASHES),
+            ];
+        }
+    
+        if (empty($metafields)) {
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'No metafields to save',
+                'data' => [
+                    'metafields' => [],
+                ],
+                'errors' => [],
+            ];
+        }
+    
+        $mutation = <<<'GQL'
+    mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields {
+          id
+          namespace
+          key
+          type
+          value
+        }
+        userErrors {
+          field
+          message
+          code
+        }
+      }
+    }
+    GQL;
+    
+        $result = $this->graphqlRequest($shopId, $mutation, [
+            'metafields' => $metafields,
+        ]);
+    
+        if (!$result['success']) {
+            return $result;
+        }
+    
+        $payloadData = $result['data']['metafieldsSet'] ?? [];
+        $userErrors = $payloadData['userErrors'] ?? [];
+    
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify metafieldsSet returned user errors',
+                'data' => $payloadData,
+                'errors' => $userErrors,
+            ];
+        }
+    
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Metafields saved successfully',
+            'data' => [
+                'metafields' => $payloadData['metafields'] ?? [],
+            ],
+            'errors' => [],
+        ];
+    }
+
 }

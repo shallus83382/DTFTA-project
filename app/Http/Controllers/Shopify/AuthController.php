@@ -97,6 +97,7 @@ class AuthController extends Controller
                     ->acceptJson()
                     ->asJson()
                     ->timeout(20)
+                    ->withoutVerifying()
                     ->post("https://{$shop}/admin/api/{$version}/graphql.json", [
                         'query' => '{ shop { id myshopifyDomain } }',
                     ]);
