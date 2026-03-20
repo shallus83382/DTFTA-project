@@ -70,7 +70,7 @@ class DtftaProductResource extends JsonResource
                     'tshirt_size' => $printArea->tshirt_size,
                     'display_order' => $printArea->display_order,
                     'is_active' => (bool) $printArea->is_active,
-                    'image' => asset('storage/' .$printArea->images),
+                    'image' => $printArea->images,
                 ];
             })->values();
         }, collect());

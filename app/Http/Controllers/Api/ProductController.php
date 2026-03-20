@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\Shop;
+use App\Models\CustomProduct;
 use App\Services\AppSignatureVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -12,13 +14,13 @@ use Illuminate\Validation\Rule;
 use App\Models\PrintArea;
 use App\Http\Resources\DtftaProductResource;
 use App\Services\ShopifyService;
+use Illuminate\Support\Facades\DB;
 
 class ProductController extends Controller
 {
-    public function __construct(private AppSignatureVerifier $appSignatureVerifier,private ShopifyService $ShopifyService )
+    public function __construct(private AppSignatureVerifier $appSignatureVerifier, private ShopifyService $ShopifyService)
     {
     }
-
 
     /**
      * GET /api/v1/products/signed
@@ -141,13 +143,13 @@ class ProductController extends Controller
             ->with([
                 'variants' => function ($q) {
                     $q->where('is_active', true)
-                    ->orderBy('color')
-                    ->orderBy('size');
+                        ->orderBy('color')
+                        ->orderBy('size');
                 },
                 'printAreas' => function ($q) {
                     $q->where('is_active', true)
-                    ->orderBy('display_order')
-                    ->orderBy('title');
+                        ->orderBy('display_order')
+                        ->orderBy('title');
                 },
             ])
             ->where('status', 'active');
@@ -157,9 +159,9 @@ class ProductController extends Controller
 
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', '%' . $search . '%')
-                ->orWhere('brand', 'like', '%' . $search . '%')
-                ->orWhere('model_code', 'like', '%' . $search . '%')
-                ->orWhere('category', 'like', '%' . $search . '%');
+                    ->orWhere('brand', 'like', '%' . $search . '%')
+                    ->orWhere('model_code', 'like', '%' . $search . '%')
+                    ->orWhere('category', 'like', '%' . $search . '%');
             });
         }
 
@@ -179,146 +181,287 @@ class ProductController extends Controller
     }
 
     /**
-     * POST /api/v1/products/create-in-shopify
-     * Create custom product in Shopify with variants, print areas, artwork, and metafields.
+     * POST /api/v1/products/create-in-shopify/{shopId}
      */
-    public function createInShopify(Request $request,int $shopId,)
+    public function createInShopify(Request $request, int $shopId)
     {
+        DB::beginTransaction();
+
         try {
             $validated = $request->validate([
-                'shop_id' => ['required', 'integer', 'exists:shops,id'],
-                'product_key' => ['nullable', 'string', 'max:255'],
-                'title' => ['required', 'string', 'max:255'],
-                'descriptionHtml' => ['nullable', 'string'],
-                'vendor' => ['nullable', 'string', 'max:255'],
-                'productType' => ['nullable', 'string', 'max:255'],
-                'status' => ['nullable', Rule::in(['ACTIVE', 'DRAFT', 'ARCHIVED'])],
-                'tags' => ['nullable', 'array'],
-                'tags.*' => ['string'],
-
-                'options' => ['nullable', 'array'],
-                'options.*.name' => ['required_with:options', 'string', 'max:255'],
-                'options.*.values' => ['required_with:options', 'array', 'min:1'],
-                'options.*.values.*' => ['string', 'max:255'],
-
-                'variants' => ['nullable', 'array'],
-                'variants.*.price' => ['nullable'],
-                'variants.*.compareAtPrice' => ['nullable'],
-                'variants.*.sku' => ['nullable', 'string', 'max:255'],
-                'variants.*.barcode' => ['nullable', 'string', 'max:255'],
-                'variants.*.optionValues' => ['nullable', 'array'],
-                'variants.*.optionValues.*.optionName' => ['required_with:variants.*.optionValues', 'string', 'max:255'],
-                'variants.*.optionValues.*.name' => ['required_with:variants.*.optionValues', 'string', 'max:255'],
-
-                'print_areas' => ['nullable', 'array'],
-                'print_areas.*.placement' => ['nullable', 'string', 'max:100'],
-                'print_areas.*.title' => ['nullable', 'string', 'max:255'],
-                'print_areas.*.width' => ['nullable'],
-                'print_areas.*.height' => ['nullable'],
-                'print_areas.*.unit' => ['nullable', 'string', 'max:20'],
-                'print_areas.*.position_x' => ['nullable'],
-                'print_areas.*.position_y' => ['nullable'],
-
-                'artwork' => ['nullable', 'array'],
-                'artwork.*' => ['nullable', 'string'],
-
-                'print_plan' => ['nullable'],
+                'productId' => ['nullable', 'integer', 'exists:products,id'],
+                'productKey' => ['nullable', 'string', 'max:255'],
+                'title' => ['nullable', 'string', 'max:255'],
+                'printPlan' => ['nullable'],
+                'artworkUrls' => ['nullable', 'array'],
+                'artworkUrls.*' => ['nullable', 'string'],
             ]);
 
-            /**
-             * If product_key is provided, try to load local product data
-             * and auto-fill print areas when not explicitly sent.
-             */
-            if (!empty($validated['product_key']) && empty($validated['print_areas'])) {
-                $product = Product::with([
-                    'printAreas' => function ($q) {
-                        $q->where('is_active', true)
-                            ->orderBy('display_order')
-                            ->orderBy('title');
-                    },
-                    'variants' => function ($q) {
-                        $q->where('is_active', true)
-                            ->orderBy('color')
-                            ->orderBy('size');
-                    },
-                ])->where(function ($q) use ($validated) {
-                    $q->where('sku', $validated['product_key'])
-                        ->orWhere('model_code', $validated['product_key'])
-                        ->orWhere('id', $validated['product_key']);
-                })->first();
-
-                if ($product) {
-                    $validated['vendor'] = $validated['vendor'] ?? $product->brand;
-                    $validated['productType'] = $validated['productType'] ?? $product->category;
-
-                    $validated['print_areas'] = $product->printAreas->map(function ($area) {
-                        return [
-                            'placement' => $area->title ? strtolower(trim((string) $area->title)) : null,
-                            'title' => $area->title,
-                            'width' => $area->area_width,
-                            'height' => $area->area_height,
-                            'unit' => $area->unit,
-                            'position_x' => $area->position_x,
-                            'position_y' => $area->position_y,
-                        ];
-                    })->values()->all();
-                }
+            if (empty($validated['productId']) && empty($validated['productKey'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Either productId or productKey is required.',
+                ], 422);
             }
 
-            Log::info('Create Shopify product API request received', [
-                'shop_id' => $shopId,
-                'title' => $validated['title'] ?? null,
-                'product_key' => $validated['product_key'] ?? null,
-                'has_options' => !empty($validated['options']),
-                'variant_count' => count($validated['variants'] ?? []),
-                'print_area_count' => count($validated['print_areas'] ?? []),
-                'artwork_count' => count($validated['artwork'] ?? []),
-            ]);
+            $product = Product::with([
+                'printAreas' => function ($q) {
+                    $q->where('is_active', true)
+                        ->orderBy('display_order')
+                        ->orderBy('title');
+                },
+                'variants' => function ($q) {
+                    $q->where('is_active', true)
+                        ->orderBy('color')
+                        ->orderBy('size');
+                },
+            ])
+                ->when(!empty($validated['productId']), function ($q) use ($validated) {
+                    $q->where('id', $validated['productId']);
+                })
+                ->when(empty($validated['productId']) && !empty($validated['productKey']), function ($q) use ($validated) {
+                    $q->where(function ($sub) use ($validated) {
+                        $sub->where('sku', $validated['productKey'])
+                            ->orWhere('model_code', $validated['productKey'])
+                            ->orWhere('id', $validated['productKey']);
+                    });
+                })
+                ->first();
+
+            if (!$product) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found in database.',
+                ], 404);
+            }
+
+            $title = $validated['title']
+                ?? $product->title
+                ?? $product->name
+                ?? 'Custom Product';
+
+            $descriptionHtml = $product->description ?? null;
+            $vendor = 'DFTA';
+            $productType = $product->category ?? null;
+            $status = 'DRAFT';
+            $tags = [$product->category,$product->brand];
+
+            $colors = $product->variants->pluck('color')->filter()->unique()->values()->all();
+            $sizes = $product->variants->pluck('size')->filter()->unique()->values()->all();
+
+            $options = array_values(array_filter([
+                !empty($colors) ? [
+                    'name' => 'Color',
+                    'values' => $colors,
+                ] : null,
+                !empty($sizes) ? [
+                    'name' => 'Size',
+                    'values' => $sizes,
+                ] : null,
+            ]));
+
+            $variants = $product->variants->map(function ($variant) {
+                return [
+                    'db_variant_id' => $variant->id,
+                    'price' => 1,
+                    'compareAtPrice' => $variant->compare_at_price,
+                    'sku' => $variant->sku,
+                    'barcode' => $variant->barcode,
+                    'optionValues' => array_values(array_filter([
+                        $variant->color ? [
+                            'optionName' => 'Color',
+                            'name' => $variant->color,
+                        ] : null,
+                        $variant->size ? [
+                            'optionName' => 'Size',
+                            'name' => $variant->size,
+                        ] : null,
+                    ])),
+                ];
+            })->values()->all();
+
+            $printAreas = $product->printAreas->map(function ($area) {
+                return [
+                    'placement' => $area->title ? strtolower(trim((string) $area->title)) : null,
+                    'title' => $area->title,
+                    'width' => $area->area_width,
+                    'height' => $area->area_height,
+                    'unit' => $area->unit,
+                    'position_x' => $area->position_x,
+                    'position_y' => $area->position_y,
+                ];
+            })->values()->all();
+
+            /*
+             * FIX:
+             * artworkUrls may be associative, e.g.
+             * [
+             *   "ls front" => "data:image/png;base64,...",
+             *   "back" => "data:image/png;base64,..."
+             * ]
+             *
+             * So we must not assume the map key is numeric.
+             */
+            $artworksSource = collect($validated['artworkUrls'] ?? []);
+
+            $artworks = $artworksSource
+                ->map(function ($artworkValue, $key) use ($printAreas, $shopId, $product) {
+                    $placementFromKey = is_string($key) ? strtolower(trim($key)) : null;
+            
+                    return [
+                        'placement' => $placementFromKey,
+                        'source' => $artworkValue,
+                    ];
+                })
+                ->values()
+                ->map(function ($item, $index) use ($printAreas, $shopId, $product) {
+                    $storedUrl = $this->storeArtworkFile(
+                        $item['source'],
+                        $shopId,
+                        $product->id,
+                        $item['placement'] ?: ($printAreas[$index]['placement'] ?? null),
+                        $index
+                    );
+            
+                    return [
+                        'placement' => $item['placement'] ?: ($printAreas[$index]['placement'] ?? null),
+                        'title' => 'Artwork ' . ($index + 1),
+                        'url' => $storedUrl,
+                        'source_code' => $item['source'],
+                    ];
+                })
+                ->all();
 
             $payload = [
-                'title' => $validated['title'],
-                'descriptionHtml' => $validated['descriptionHtml'] ?? null,
-                'vendor' => $validated['vendor'] ?? null,
-                'productType' => $validated['productType'] ?? null,
-                'status' => $validated['status'] ?? 'DRAFT',
-                'tags' => $validated['tags'] ?? [],
-                'options' => $validated['options'] ?? [],
-                'variants' => $validated['variants'] ?? [],
-                'print_areas' => $validated['print_areas'] ?? [],
-                'artwork' => $validated['artwork'] ?? [],
-                'print_plan' => $validated['print_plan'] ?? null,
+                'title' => $title,
+                'descriptionHtml' => $descriptionHtml,
+                'vendor' => $vendor,
+                'productType' => $productType,
+                'status' => $status,
+                'tags' => $tags,
+                'options' => $options,
+                'variants' => $variants,
+                'print_areas' => $printAreas,
+                'artwork' => $artworks,
+                'print_plan' => $validated['printPlan'] ?? null,
             ];
+
+            Log::info('Create Shopify product request prepared', [
+                'shop_id' => $shopId,
+                'product_id' => $product->id,
+                'product_key' => $validated['productKey'] ?? null,
+                'title' => $payload['title'],
+                'variant_count' => count($variants),
+                'print_area_count' => count($printAreas),
+                'artwork_count' => count($artworks),
+                'artwork_keys' => array_keys($validated['artworkUrls'] ?? []),
+            ]);
+
+            $customProduct = CustomProduct::create([
+                'shop_id' => $shopId,
+                'product_id' => $product->id,
+                'product_key' => $validated['productKey'] ?? (string) $product->id,
+                'title' => $payload['title'],
+                'vendor' => $payload['vendor'],
+                'product_type' => $payload['productType'],
+                'status' => $payload['status'],
+                'description_html' => $payload['descriptionHtml'],
+                'tags' => $payload['tags'],
+                'options' => $payload['options'],
+                'print_areas' => $payload['print_areas'],
+                'print_plan' => $payload['print_plan'],
+            ]);
+
+            foreach ($variants as $variant) {
+                $customProduct->variants()->create([
+                    'product_variant_id' => $variant['db_variant_id'] ?? null,
+                    'title' => null,
+                    'sku' => $variant['sku'] ?? null,
+                    'barcode' => $variant['barcode'] ?? null,
+                    'price' => $variant['price'] ?? null,
+                    'compare_at_price' => $variant['compareAtPrice'] ?? null,
+                    'option_values' => $variant['optionValues'] ?? [],
+                    'source_payload' => $variant,
+                ]);
+            }
+
+            foreach ($artworks as $artwork) {
+                $customProduct->artworks()->create([
+                    'custom_product_variant_id' => null,
+                    'placement' => $artwork['placement'] ?? null,
+                    'title' => $artwork['title'] ?? null,
+                    'artwork_url' => $artwork['url'] ?? null,
+                    // 'meta' => [
+                    //     'source_code' => $artwork['source_code'] ?? null,
+                    // ],
+                ]);
+            }
 
             $result = $this->ShopifyService->createCustomProductWithPrintAreas($shopId, $payload);
 
-            if (!$result['success']) {
-                Log::warning('Create Shopify product API failed', [
+            if (!($result['success'] ?? false)) {
+                DB::rollBack();
+
+                Log::warning('Create Shopify product failed', [
                     'shop_id' => $shopId,
                     'message' => $result['message'] ?? 'Unknown error',
                     'errors' => $result['errors'] ?? [],
+                    'payload' => $payload,
                 ]);
 
                 return response()->json([
                     'success' => false,
-                    'message' => $result['message'] ?? 'Failed to create product in Shopify',
+                    'message' => $result['message'] ?? 'Failed to create product in Shopify.',
                     'errors' => $result['errors'] ?? [],
                     'data' => $result['data'] ?? null,
+                    'requested_payload' => $payload,
                 ], $result['status'] ?? 422);
             }
 
-            Log::info('Create Shopify product API success', [
+            $shopifyProductId = data_get($result, 'data.product.id');
+            $shopifyVariants = data_get($result, 'data.variants', []);
+
+            $customProduct->update([
+                'shopify_product_id' => $shopifyProductId,
+            ]);
+
+            foreach ($shopifyVariants as $shopifyVariant) {
+                $sku = data_get($shopifyVariant, 'sku');
+                $shopifyVariantId = data_get($shopifyVariant, 'id');
+
+                if (!$sku || !$shopifyVariantId) {
+                    continue;
+                }
+
+                $customProduct->variants()
+                    ->where('sku', $sku)
+                    ->update([
+                        'shopify_variant_id' => $shopifyVariantId,
+                    ]);
+            }
+
+            DB::commit();
+
+            Log::info('Create Shopify product success', [
                 'shop_id' => $shopId,
-                'product_id' => data_get($result, 'data.product.id'),
-                'variant_count' => count(data_get($result, 'data.variants', [])),
+                'custom_product_id' => $customProduct->id,
+                'shopify_product_id' => $shopifyProductId,
             ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Product created successfully in Shopify.',
-                'data' => $result['data'] ?? null,
+                'data' => [
+                    'custom_product_id' => $customProduct->id,
+                    'shopify' => $result['data'] ?? null,
+                ],
             ], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('Create Shopify product API validation failed', [
+            DB::rollBack();
+
+            Log::warning('Create Shopify product validation failed', [
                 'errors' => $e->errors(),
             ]);
 
@@ -328,7 +471,9 @@ class ProductController extends Controller
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Throwable $e) {
-            Log::error('Create Shopify product API exception', [
+            DB::rollBack();
+
+            Log::error('Create Shopify product exception', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -340,12 +485,15 @@ class ProductController extends Controller
             ], 500);
         }
     }
-    
 
+    /**
+     * POST /api/v1/products/create-in-shopify-signed
+     */
     public function createInShopifySigned(Request $request)
     {
         $shop = strtolower(trim((string) (
             $request->header('X-Shop')
+            ?? $request->input('shop')
             ?? $request->input('shop_domain')
             ?? ''
         )));
@@ -354,29 +502,30 @@ class ProductController extends Controller
         $signature = (string) $request->header('X-App-Signature', '');
 
         if (!$this->isValidShopDomain($shop)) {
-            Log::warning('Install rejected: invalid shop domain', [
+            Log::warning('Create Shopify signed rejected: invalid shop domain', [
                 'shop' => $shop,
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid shop domain.'
+                'message' => 'Invalid shop domain.',
             ], 422);
         }
 
-        $isValidSignature = $this->appSignatureVerifier->verify(
-            $request,
-            $timestamp,
-            $signature,
-            AppSignatureVerifier::MODE_TIMESTAMP_ONLY
-        );
-
-        if (!$isValidSignature) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid app signature',
-            ], 401);
-        }
-
+        // Enable signature verification in production
+        // $isValidSignature = $this->appSignatureVerifier->verify(
+        //     $request,
+        //     $timestamp,
+        //     $signature,
+        //     AppSignatureVerifier::MODE_TIMESTAMP_ONLY
+        // );
+        //
+        // if (!$isValidSignature) {
+        //     return response()->json([
+        //         'success' => false,
+        //         'message' => 'Invalid app signature',
+        //     ], 401);
+        // }
 
         $existingShop = Shop::where('shop_domain', $shop)
             ->orderByDesc('id')
@@ -385,20 +534,97 @@ class ProductController extends Controller
         if (!$existingShop) {
             return response()->json([
                 'success' => false,
-                'message' => 'store not exit',
-            ], 401);
+                'message' => 'Store does not exist.',
+            ], 404);
         }
 
-        return $this->createInShopify($request,$existingShop->id);
+        Log::info('Signed request shop found', [
+            'shop_domain' => $shop,
+            'shop_id' => $existingShop->id,
+        ]);
+
+        return $this->createInShopify($request, $existingShop->id);
     }
 
-    /**
-     * Update user (admin or self)
-     */
     private function isValidShopDomain(string $shop): bool
     {
-        return (bool) preg_match('/^[a-z0-9][a-z0-9\\-]*\\.myshopify\\.com$/i', $shop);
+        return (bool) preg_match('/^[a-z0-9][a-z0-9\-]*\.myshopify\.com$/i', $shop);
     }
 
-
+    private function storeArtworkFile(
+        string $source,
+        int $shopId,
+        int $productId,
+        ?string $placement,
+        int $index
+    ): string {
+        if ($this->isDataUrl($source)) {
+            return $this->storeBase64Artwork($source, $shopId, $productId, $placement, $index);
+        }
+    
+        // Already a normal URL, keep as is
+        return $source;
+    }
+    
+    private function isDataUrl(string $value): bool
+    {
+        return str_starts_with($value, 'data:');
+    }
+    
+    private function storeBase64Artwork(
+        string $dataUrl,
+        int $shopId,
+        int $productId,
+        ?string $placement,
+        int $index
+    ): string {
+        if (!preg_match('/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/', $dataUrl, $matches)) {
+            throw new \Exception('Invalid base64 artwork format.');
+        }
+    
+        $mimeType = strtolower($matches[1]);
+        $base64Data = $matches[2];
+    
+        $extension = $this->mimeTypeToExtension($mimeType);
+    
+        if (!$extension) {
+            throw new \Exception('Unsupported artwork mime type: ' . $mimeType);
+        }
+    
+        $binaryData = base64_decode($base64Data, true);
+    
+        if ($binaryData === false) {
+            throw new \Exception('Failed to decode base64 artwork.');
+        }
+    
+        $safePlacement = $placement
+            ? preg_replace('/[^a-z0-9_-]+/i', '-', strtolower($placement))
+            : 'artwork';
+    
+        $fileName = sprintf(
+            '%s_%s_%s.%s',
+            now()->format('YmdHis'),
+            $safePlacement,
+            $index + 1,
+            $extension
+        );
+    
+        $path = "artworks/shop_{$shopId}/product_{$productId}/{$fileName}";
+    
+        Storage::disk('public')->put($path, $binaryData);
+    
+        return Storage::disk('public')->url($path);
+    }
+    
+    private function mimeTypeToExtension(string $mimeType): ?string
+    {
+        return match ($mimeType) {
+            'image/png' => 'png',
+            'image/jpeg', 'image/jpg' => 'jpg',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            'image/svg+xml' => 'svg',
+            default => null,
+        };
+    }
 }
