@@ -21,6 +21,7 @@ class WebhookController extends Controller
     public function __construct(
         private AppSignatureVerifier $appSignatureVerifier,
         private ShopifyService $shopifyService
+        
     ) {
     }
 

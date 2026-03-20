@@ -25,9 +25,18 @@ class PrintArea extends Model
         'is_active' => 'boolean'
     ];
 
-    public function products()
-{
-    return $this->hasMany(Product::class);
-}
+
+    // PrintArea → Products (M:N)
+    public function products(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Product::class,
+            'product_print_areas',
+            'print_area_id',
+            'product_id'
+        )
+        ->using(ProductPrintArea::class)
+        ->withTimestamps();
+    }
 }
 

@@ -34,6 +34,7 @@ Route::prefix('v1')->group(function () {
     // Frontend signed endpoint (timestamp + signature HMAC)
     Route::get('/products/get', [ProductController::class, 'signedIndex']);
     Route::get('/products/get/{id}', [ProductController::class, 'signedShow']);
+    Route::post('/products/create-in-shopify-signed', [ProductController::class, 'createInShopifySigned']);
 });
 
 // ============================================

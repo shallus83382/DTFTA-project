@@ -22,6 +22,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
 use App\Models\PrintArea;
+use App\Models\ProductVariant;
+use Illuminate\Support\Facades\DB;
 
 class CrmController extends Controller
 {
@@ -909,64 +911,61 @@ class CrmController extends Controller
     {
         $data = $this->prepareViewData();
         $data['productsConfig'] = $this->getFeatures()['products'] ?? [];
-
+    
         $statusOptions = $this->getProductStatusOptions();
         $perPage = (int) ($request->integer('per_page') ?: ($data['productsConfig']['items_per_page'] ?? 10));
         $perPage = max(5, min($perPage, 100));
-
-        $query = Product::query()->with('shop');
-
+    
+        $query = Product::query()
+            ->with(['variants', 'printAreas']);
+    
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
             $query->where(function ($searchQuery) use ($search) {
                 $searchQuery->where('title', 'like', '%' . $search . '%')
-                    ->orWhere('sku', 'like', '%' . $search . '%')
-                    ->orWhere('shopify_product_id', 'like', '%' . $search . '%')
                     ->orWhere('brand', 'like', '%' . $search . '%')
+                    ->orWhere('model_code', 'like', '%' . $search . '%')
                     ->orWhere('category', 'like', '%' . $search . '%')
-                    ->orWhere('sub_category', 'like', '%' . $search . '%');
+                    ->orWhereHas('variants', function ($variantQuery) use ($search) {
+                        $variantQuery->where('sku', 'like', '%' . $search . '%')
+                            ->orWhere('color', 'like', '%' . $search . '%')
+                            ->orWhere('size', 'like', '%' . $search . '%');
+                    })
+                    ->orWhereHas('printAreas', function ($printAreaQuery) use ($search) {
+                        $printAreaQuery->where('title', 'like', '%' . $search . '%');
+                    });
             });
         }
-
-        $shopId = (int) $request->query('shop_id', 0);
-        if ($shopId > 0) {
-            $query->where('shop_id', $shopId);
-        } else {
-            $shopId = 0;
-        }
-
+    
         $statusFilter = strtolower((string) $request->query('status', 'all'));
         if (in_array($statusFilter, $statusOptions, true)) {
             $query->where('status', $statusFilter);
         } else {
             $statusFilter = 'all';
         }
-
+    
         $sortBy = (string) $request->query('sort_by', 'created_at');
         $sortDir = strtolower((string) $request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
-        $allowedSorts = ['created_at', 'title', 'regular_price', 'stock_quantity', 'status', 'brand', 'category'];
+        $allowedSorts = ['created_at', 'title', 'status', 'brand', 'category', 'model_code'];
         if (!in_array($sortBy, $allowedSorts, true)) {
             $sortBy = 'created_at';
         }
-
+    
         $products = $query
             ->orderBy($sortBy, $sortDir)
             ->paginate($perPage)
             ->appends($request->query());
-
+    
         $data['products'] = $products;
-        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
         $data['productStatusOptions'] = $statusOptions;
-        $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
         $data['filters'] = [
             'search' => $search,
-            'shop_id' => $shopId,
             'status' => $statusFilter,
             'sort_by' => $sortBy,
             'sort_dir' => $sortDir,
             'per_page' => $perPage,
         ];
-
+    
         return view('crm.products-index', $data);
     }
 
@@ -976,10 +975,13 @@ class CrmController extends Controller
     public function createProduct(): View
     {
         $data = $this->prepareViewData();
-        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
-        $data['printAreas'] = PrintArea::orderBy('title')->get();
+        $data['printAreas'] = PrintArea::where('is_active', true)
+            ->orderBy('display_order')
+            ->orderBy('title')
+            ->get();
+    
         $data['productStatusOptions'] = $this->getProductStatusOptions();
-        $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
+    
         return view('crm.products-add', $data);
     }
 
@@ -989,11 +991,16 @@ class CrmController extends Controller
     public function editProduct(string $productId): View
     {
         $data = $this->prepareViewData();
-        $data['product'] = Product::with(['shop'])->findOrFail($productId);
-        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
-        $data['printAreas'] = PrintArea::orderBy('title')->get();
+        $data['product'] = Product::with(['variants', 'printAreas'])->findOrFail($productId);
+        $data['printAreas'] = PrintArea::where('is_active', true)
+            ->orderBy('display_order')
+            ->orderBy('title')
+            ->get();
+    
         $data['productStatusOptions'] = $this->getProductStatusOptions();
-        $data['stockStatusOptions'] = ['in_stock', 'out_of_stock'];
+        $data['selectedColors'] = $data['product']->variants->pluck('color')->unique()->values();
+        $data['selectedSizes'] = $data['product']->variants->pluck('size')->unique()->values();
+    
         return view('crm.products-edit', $data);
     }
 
@@ -1003,9 +1010,12 @@ class CrmController extends Controller
     public function viewProduct(string $productId): View
     {
         $data = $this->prepareViewData();
-        $data['product'] = Product::with(['shop'])->findOrFail($productId);
-        $data['shopsForProducts'] = Shop::orderBy('shop_domain')->get(['id', 'shop_domain']);
-        $data['printAreas'] = PrintArea::orderBy('title')->get();
+        $data['product'] = Product::with(['variants', 'printAreas'])->findOrFail($productId);
+        $data['printAreas'] = PrintArea::where('is_active', true)
+            ->orderBy('display_order')
+            ->orderBy('title')
+            ->get();
+    
         return view('crm.products-view', $data);
     }
 
@@ -1015,96 +1025,82 @@ class CrmController extends Controller
     public function storeProduct(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'shop_id' => 'required|exists:shops,id',
             'title' => 'required|string|max:255',
-            'print_area_id' => 'required|exists:print_areas,id',
-            'sku' => [
-                'nullable',
-                'string',
-                'max:255',
-                Rule::unique('products', 'sku')->where(function ($query) use ($request) {
-                    return $query->where('shop_id', $request->input('shop_id'));
-                }),
-            ],
-            'shopify_product_id' => [
-                'nullable',
-                'string',
-                'max:255',
-                Rule::unique('products', 'shopify_product_id')->where(function ($query) use ($request) {
-                    return $query->where('shop_id', $request->input('shop_id'));
-                }),
-            ],
-            'description' => 'nullable|string',
-            'short_description' => 'nullable|string|max:255',
-            'category' => 'nullable|string|max:255',
-            'sub_category' => 'nullable|string|max:255',
             'brand' => 'nullable|string|max:255',
-            'product_type' => 'nullable|string|max:255',
-            'tags' => 'nullable|string',
-            'regular_price' => 'nullable|numeric|min:0',
-            'sale_price' => 'nullable|numeric|min:0',
-            'currency' => 'nullable|string|max:10',
-            'tax_class' => 'nullable|string|max:255',
-            'stock_quantity' => 'nullable|integer|min:0',
-            'stock_status' => 'required|in:in_stock,out_of_stock',
-            'track_inventory' => 'nullable|boolean',
+            'model_code' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
             'status' => 'required|in:active,draft,archived,inactive',
-            'featured_image' => 'nullable|image|max:5120',
-            'gallery_images' => 'nullable|array',
-            'gallery_images.*' => 'nullable|image|max:5120',
-            'weight' => 'nullable|numeric|min:0',
-            'length' => 'nullable|numeric|min:0',
-            'width' => 'nullable|numeric|min:0',
-            'height' => 'nullable|numeric|min:0',
-            'shipping_class' => 'nullable|string|max:255',
-
+    
+            'images' => 'nullable|array',
+            'images.*' => 'nullable|image|max:5120',
+    
+            'colors' => 'required|array|min:1',
+            'colors.*' => 'required|string|max:100',
+    
+            'sizes' => 'required|array|min:1',
+            'sizes.*' => 'required|string|max:100',
+    
+            'print_area_ids' => 'nullable|array',
+            'print_area_ids.*' => 'integer|exists:print_areas,id',
         ]);
-
-        $featuredImagePath = $request->hasFile('featured_image')
-            ? $request->file('featured_image')->store('products/featured', 'public')
-            : null;
-        $galleryImages = $this->storeGalleryImages($request);
-
-        $product = Product::create([
-            'shop_id' => (int) $validated['shop_id'],
-            'print_area_id' => (int) $validated['print_area_id'],
-            'title' => $validated['title'],
-            'sku' => $validated['sku'] ?? null,
-            'shopify_product_id' => $validated['shopify_product_id'] ?? null,
-            'description' => $validated['description'] ?? null,
-            'short_description' => $validated['short_description'] ?? null,
-            'category' => $validated['category'] ?? null,
-            'sub_category' => $validated['sub_category'] ?? null,
-            'brand' => $validated['brand'] ?? null,
-            'product_type' => $validated['product_type'] ?? null,
-            'tags' => $this->normalizeTags($validated['tags'] ?? null),
-            'regular_price' => $validated['regular_price'] ?? null,
-            'sale_price' => $validated['sale_price'] ?? null,
-            'price' => $validated['regular_price'] ?? null,
-            'currency' => $validated['currency'] ?? 'USD',
-            'tax_class' => $validated['tax_class'] ?? null,
-            'stock_quantity' => $validated['stock_quantity'] ?? 0,
-            'stock_status' => $validated['stock_status'],
-            'track_inventory' => (bool) ($validated['track_inventory'] ?? false),
-            'status' => $validated['status'],
-            'featured_image' => $featuredImagePath,
-            'gallery_images' => $galleryImages,
-            'weight' => $validated['weight'] ?? null,
-            'length' => $validated['length'] ?? null,
-            'width' => $validated['width'] ?? null,
-            'height' => $validated['height'] ?? null,
-            'shipping_class' => $validated['shipping_class'] ?? null,
-        ]);
-
-      
-
+    
+        $product = null;
+    
+        DB::transaction(function () use ($request, $validated, &$product) {
+            $imagePaths = [];
+    
+            if ($request->hasFile('images')) {
+                foreach ((array) $request->file('images') as $file) {
+                    if ($file) {
+                        $imagePaths[] = $file->store('products/images', 'public');
+                    }
+                }
+            }
+    
+            $product = Product::create([
+                'title' => $validated['title'],
+                'brand' => $validated['brand'] ?? null,
+                'model_code' => $validated['model_code'] ?? null,
+                'category' => $validated['category'] ?? null,
+                'description' => $validated['description'] ?? null,
+                'status' => $validated['status'],
+                'images' => $imagePaths ?: null,
+            ]);
+    
+            $colors = collect($validated['colors'])
+                ->map(fn ($color) => trim($color))
+                ->filter()
+                ->unique()
+                ->values();
+    
+            $sizes = collect($validated['sizes'])
+                ->map(fn ($size) => trim($size))
+                ->filter()
+                ->unique()
+                ->values();
+    
+            foreach ($colors as $color) {
+                foreach ($sizes as $size) {
+                    $product->variants()->create([
+                        'sku' => $this->generateProductVariantSku($product, $color, $size),
+                        'color' => $color,
+                        'size' => $size,
+                        'is_active' => true,
+                    ]);
+                }
+            }
+    
+            $product->printAreas()->sync($validated['print_area_ids'] ?? []);
+        });
+    
         AdminActivityLog::logActivity(
             auth()->id(),
             'Created Product',
             'Product',
             $product->id
         );
-
+    
         return redirect()
             ->route('crm.products')
             ->with('success', 'Product created successfully.');
@@ -1115,156 +1111,195 @@ class CrmController extends Controller
      */
     public function updateProduct(Request $request, string $productId): RedirectResponse
     {
-        $product = Product::findOrFail($productId);
-
+        $product = Product::with(['variants', 'printAreas'])->findOrFail($productId);
+    
         $validated = $request->validate([
-            'shop_id' => 'required|exists:shops,id',
             'title' => 'required|string|max:255',
-            'print_area_id' => 'required|exists:print_areas,id',
-            'sku' => [
-                'nullable',
-                'string',
-                'max:255',
-                Rule::unique('products', 'sku')
-                    ->ignore($product->id)
-                    ->where(function ($query) use ($request) {
-                        return $query->where('shop_id', $request->input('shop_id'));
-                    }),
-            ],
-            'shopify_product_id' => [
-                'nullable',
-                'string',
-                'max:255',
-                Rule::unique('products', 'shopify_product_id')
-                    ->ignore($product->id)
-                    ->where(function ($query) use ($request) {
-                        return $query->where('shop_id', $request->input('shop_id'));
-                    }),
-            ],
-            'description' => 'nullable|string',
-            'short_description' => 'nullable|string|max:255',
-            'category' => 'nullable|string|max:255',
-            'sub_category' => 'nullable|string|max:255',
             'brand' => 'nullable|string|max:255',
-            'product_type' => 'nullable|string|max:255',
-            'tags' => 'nullable|string',
-            'regular_price' => 'nullable|numeric|min:0',
-            'sale_price' => 'nullable|numeric|min:0',
-            'currency' => 'nullable|string|max:10',
-            'tax_class' => 'nullable|string|max:255',
-            'stock_quantity' => 'nullable|integer|min:0',
-            'stock_status' => 'required|in:in_stock,out_of_stock',
-            'track_inventory' => 'nullable|boolean',
+            'model_code' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
             'status' => 'required|in:active,draft,archived,inactive',
-            'featured_image' => 'nullable|image|max:5120',
-            'gallery_images' => 'nullable|array',
-            'gallery_images.*' => 'nullable|image|max:5120',
-            'remove_featured_image' => 'nullable|boolean',
-            'remove_existing_gallery' => 'nullable|boolean',
-            'weight' => 'nullable|numeric|min:0',
-            'length' => 'nullable|numeric|min:0',
-            'width' => 'nullable|numeric|min:0',
-            'height' => 'nullable|numeric|min:0',
-            'shipping_class' => 'nullable|string|max:255',
-
+    
+            'images' => 'nullable|array',
+            'images.*' => 'nullable|image|max:5120',
+            'remove_existing_images' => 'nullable|boolean',
+    
+            'colors' => 'required|array|min:1',
+            'colors.*' => 'required|string|max:100',
+    
+            'sizes' => 'required|array|min:1',
+            'sizes.*' => 'required|string|max:100',
+    
+            'print_area_ids' => 'nullable|array',
+            'print_area_ids.*' => 'integer|exists:print_areas,id',
         ]);
-
-        $featuredImagePath = $product->featured_image;
-        $removeFeaturedImage = (bool) $request->boolean('remove_featured_image', false);
-        if ($removeFeaturedImage && $featuredImagePath) {
-            Storage::disk('public')->delete($featuredImagePath);
-            $featuredImagePath = null;
-        }
-        if ($request->hasFile('featured_image')) {
-            if ($featuredImagePath) {
-                Storage::disk('public')->delete($featuredImagePath);
+    
+        DB::transaction(function () use ($request, $validated, $product) {
+            $existingImages = is_array($product->images) ? $product->images : [];
+    
+            if ($request->boolean('remove_existing_images')) {
+                foreach ($existingImages as $path) {
+                    Storage::disk('public')->delete((string) $path);
+                }
+                $existingImages = [];
             }
-            $featuredImagePath = $request->file('featured_image')->store('products/featured', 'public');
-        }
-
-        $existingGallery = is_array($product->gallery_images) ? $product->gallery_images : [];
-        $removeExistingGallery = (bool) $request->boolean('remove_existing_gallery', false);
-        if ($removeExistingGallery) {
-            foreach ($existingGallery as $galleryPath) {
-                Storage::disk('public')->delete((string) $galleryPath);
+    
+            $newImagePaths = [];
+            if ($request->hasFile('images')) {
+                foreach ((array) $request->file('images') as $file) {
+                    if ($file) {
+                        $newImagePaths[] = $file->store('products/images', 'public');
+                    }
+                }
             }
-            $existingGallery = [];
-        }
-        $newGalleryImages = $this->storeGalleryImages($request);
-        $finalGallery = array_values(array_filter(array_merge($existingGallery, $newGalleryImages)));
-
-        $product->update([
-            'shop_id' => (int) $validated['shop_id'],
-            'title' => $validated['title'],
-            'print_area_id' => (int) $validated['print_area_id'],
-            'sku' => $validated['sku'] ?? null,
-            'shopify_product_id' => $validated['shopify_product_id'] ?? null,
-            'description' => $validated['description'] ?? null,
-            'short_description' => $validated['short_description'] ?? null,
-            'category' => $validated['category'] ?? null,
-            'sub_category' => $validated['sub_category'] ?? null,
-            'brand' => $validated['brand'] ?? null,
-            'product_type' => $validated['product_type'] ?? null,
-            'tags' => $this->normalizeTags($validated['tags'] ?? null),
-            'regular_price' => $validated['regular_price'] ?? null,
-            'sale_price' => $validated['sale_price'] ?? null,
-            'price' => $validated['regular_price'] ?? null,
-            'currency' => $validated['currency'] ?? 'USD',
-            'tax_class' => $validated['tax_class'] ?? null,
-            'stock_quantity' => $validated['stock_quantity'] ?? 0,
-            'stock_status' => $validated['stock_status'],
-            'track_inventory' => (bool) ($validated['track_inventory'] ?? false),
-            'status' => $validated['status'],
-            'featured_image' => $featuredImagePath,
-            'gallery_images' => $finalGallery,
-            'weight' => $validated['weight'] ?? null,
-            'length' => $validated['length'] ?? null,
-            'width' => $validated['width'] ?? null,
-            'height' => $validated['height'] ?? null,
-            'shipping_class' => $validated['shipping_class'] ?? null,
-        ]);
-
-     
-
+    
+            $finalImages = array_values(array_filter(array_merge($existingImages, $newImagePaths)));
+    
+            $product->update([
+                'title' => $validated['title'],
+                'brand' => $validated['brand'] ?? null,
+                'model_code' => $validated['model_code'] ?? null,
+                'category' => $validated['category'] ?? null,
+                'description' => $validated['description'] ?? null,
+                'status' => $validated['status'],
+                'images' => $finalImages ?: null,
+            ]);
+    
+            $colors = collect($validated['colors'])
+                ->map(fn ($color) => trim($color))
+                ->filter()
+                ->unique()
+                ->values();
+    
+            $sizes = collect($validated['sizes'])
+                ->map(fn ($size) => trim($size))
+                ->filter()
+                ->unique()
+                ->values();
+    
+            $desiredCombinations = [];
+    
+            foreach ($colors as $color) {
+                foreach ($sizes as $size) {
+                    $desiredCombinations[] = [
+                        'color' => $color,
+                        'size' => $size,
+                    ];
+                }
+            }
+    
+            $existingVariants = $product->variants->keyBy(function ($variant) {
+                return strtolower($variant->color . '|' . $variant->size);
+            });
+    
+            $keptVariantIds = [];
+    
+            foreach ($desiredCombinations as $combo) {
+                $key = strtolower($combo['color'] . '|' . $combo['size']);
+    
+                if ($existingVariants->has($key)) {
+                    $variant = $existingVariants->get($key);
+                    $variant->update([
+                        'is_active' => true,
+                    ]);
+                } else {
+                    $variant = $product->variants()->create([
+                        'sku' => $this->generateProductVariantSku($product, $combo['color'], $combo['size']),
+                        'color' => $combo['color'],
+                        'size' => $combo['size'],
+                        'is_active' => true,
+                    ]);
+                }
+    
+                $keptVariantIds[] = $variant->id;
+            }
+    
+            $product->variants()
+                ->whereNotIn('id', $keptVariantIds)
+                ->delete();
+    
+            $product->printAreas()->sync($validated['print_area_ids'] ?? []);
+        });
+    
         AdminActivityLog::logActivity(
             auth()->id(),
             'Updated Product',
             'Product',
             $product->id
         );
-
+    
         return redirect()
             ->route('crm.products')
             ->with('success', 'Product updated successfully.');
     }
 
     /**
+     * Generate product variant SKU.
+     */
+    private function generateProductVariantSku(Product $product, string $color, string $size): string
+    {
+        $brandNames = collect(config('dtfta.brand_names', []));
+        $commonColors = collect(config('dtfta.common_colors', []));
+
+        $brandCode = $brandNames->first(function ($item) use ($product) {
+            return strtolower((string) ($item['name'] ?? '')) === strtolower((string) $product->brand);
+        });
+
+        $colorCode = $commonColors->first(function ($item) use ($color) {
+            return strtolower((string) ($item['name'] ?? '')) === strtolower((string) $color);
+        });
+
+        $titlePart = strtoupper($product->category);
+        $brandPart = strtoupper($brandCode['code']);
+        $modelPart = strtoupper($product->model_code);
+        $colorPart = strtoupper($colorCode['code']);
+        $sizePart = strtoupper($size);
+
+        $baseSku = collect([
+            'DTFTA-APP',
+            $titlePart ?: 'PROD',
+            $brandPart ?: 'GEN',
+            $modelPart ?: 'NA',
+            $colorPart ?: 'CLR',
+            $sizePart ?: 'SIZE',
+        ])->implode('-');
+
+        $sku = $baseSku;
+        $counter = 1;
+
+        while (
+            ProductVariant::where('sku', $sku)->exists()
+        ) {
+            $sku = $baseSku . '-' . $counter;
+            $counter++;
+        }
+
+        return $sku;
+    }                   
+
+    /**
      * Delete product from CRM page.
      */
     public function destroyProduct(string $productId): RedirectResponse
     {
-        $product = Product::findOrFail($productId);
-        if (!empty($product->featured_image)) {
-            Storage::disk('public')->delete($product->featured_image);
+        $product = Product::with(['variants', 'printAreas'])->findOrFail($productId);
+    
+        $images = is_array($product->images) ? $product->images : [];
+        foreach ($images as $imagePath) {
+            Storage::disk('public')->delete((string) $imagePath);
         }
-        $galleryImages = is_array($product->gallery_images) ? $product->gallery_images : [];
-        foreach ($galleryImages as $galleryPath) {
-            Storage::disk('public')->delete((string) $galleryPath);
-        }
-        foreach ($product->printAreas as $printArea) {
-            if (!empty($printArea->placement_image) && !str_starts_with($printArea->placement_image, 'http://') && !str_starts_with($printArea->placement_image, 'https://')) {
-                Storage::disk('public')->delete($printArea->placement_image);
-            }
-        }
+    
+        $product->printAreas()->detach();
         $product->delete();
-
+    
         AdminActivityLog::logActivity(
             auth()->id(),
             'Deleted Product',
             'Product',
             $product->id
         );
-
+    
         return redirect()
             ->route('crm.products')
             ->with('success', 'Product deleted successfully.');
