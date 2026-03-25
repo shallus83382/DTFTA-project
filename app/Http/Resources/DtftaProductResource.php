@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 class DtftaProductResource extends JsonResource
 {
@@ -57,8 +58,21 @@ class DtftaProductResource extends JsonResource
                 ->values();
         }, collect());
 
+
         $printAreas = $this->whenLoaded('printAreas', function () {
             return $this->printAreas->map(function ($printArea) {
+                
+                $appUrl = config('app.url');
+                $imageUrl = null;
+
+                if ($printArea->images) {
+                    if (str_contains($appUrl, 'ngrok')) {
+                        $imageUrl = 'https://operators-washer-planning-gst.trycloudflare.com' . Storage::url($printArea->images);
+                    } else {
+                        $imageUrl = url(Storage::url($printArea->images));
+                    }
+                }
+
                 return [
                     'id' => $printArea->id,
                     'title' => $printArea->title,
@@ -70,7 +84,8 @@ class DtftaProductResource extends JsonResource
                     'tshirt_size' => $printArea->tshirt_size,
                     'display_order' => $printArea->display_order,
                     'is_active' => (bool) $printArea->is_active,
-                    'image' => $printArea->images,
+                   // 'image' => $printArea->images ? url(Storage::url($printArea->images)) : null,
+                    'image' => $imageUrl,
                 ];
             })->values();
         }, collect());
@@ -87,7 +102,7 @@ class DtftaProductResource extends JsonResource
             'brand' => $brandCode['name'] ?? null,
             'style' => $blank['style'] ?? $this->model_code,
             'model' => $blank['model'] ?? $this->model_code,
-            'image' => asset('storage/' .$images[0]) ?? asset($fallbackImage),
+            'image' => url(Storage::url($images[0])) ?? asset($fallbackImage),
             'images' => collect($finalImages)
                 ->map(fn ($path) => asset('storage/' . ltrim($path, '/')))
                 ->values()

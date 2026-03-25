@@ -522,32 +522,32 @@ GQL;
         $baseUrl = rtrim((string) ($baseUrl ?: config('app.url')), '/');
         $callbackUrl = $baseUrl . '/api/v1/fulfillment_order_notification';
 
-        $createMutation = <<<'GQL'
-mutation fulfillmentServiceCreate(
-  $name: String!,
-  $callbackUrl: URL!,
-  $inventoryManagement: Boolean!,
-  $trackingSupport: Boolean!
-) {
-  fulfillmentServiceCreate(
-    name: $name,
-    callbackUrl: $callbackUrl,
-    inventoryManagement: $inventoryManagement,
-    trackingSupport: $trackingSupport
-  ) {
-    fulfillmentService {
-      id
-      location {
-        id
-      }
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
-GQL;
+                $createMutation = <<<'GQL'
+        mutation fulfillmentServiceCreate(
+        $name: String!,
+        $callbackUrl: URL!,
+        $inventoryManagement: Boolean!,
+        $trackingSupport: Boolean!
+        ) {
+        fulfillmentServiceCreate(
+            name: $name,
+            callbackUrl: $callbackUrl,
+            inventoryManagement: $inventoryManagement,
+            trackingSupport: $trackingSupport
+        ) {
+            fulfillmentService {
+            id
+            location {
+                id
+            }
+            }
+            userErrors {
+            field
+            message
+            }
+        }
+        }
+        GQL;
 
         $createResult = $this->graphqlRequest($shopId, $createMutation, [
             'name' => 'DTFTA',
@@ -586,20 +586,20 @@ GQL;
 
         $locationUpdateErrors = [];
         if ($createdLocationId !== '') {
-            $locationMutation = <<<'GQL'
-mutation updateLocation($id: ID!, $input: LocationEditInput!) {
-  locationEdit(id: $id, input: $input) {
-    location {
-      id
-      name
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
-GQL;
+                        $locationMutation = <<<'GQL'
+            mutation updateLocation($id: ID!, $input: LocationEditInput!) {
+            locationEdit(id: $id, input: $input) {
+                location {
+                id
+                name
+                }
+                userErrors {
+                field
+                message
+                }
+            }
+            }
+            GQL;
 
             $locationResult = $this->graphqlRequest($shopId, $locationMutation, [
                 'id' => $createdLocationId,
@@ -957,30 +957,30 @@ GQL;
     
     private function createShopifyProduct(int $shopId, array $payload): array
     {
-        $mutation = <<<'GQL'
-    mutation productCreate($product: ProductCreateInput!) {
-      productCreate(product: $product) {
-        product {
-          id
-          title
-          handle
-          status
-          options {
+            $mutation = <<<'GQL'
+        mutation productCreate($product: ProductCreateInput!) {
+        productCreate(product: $product) {
+            product {
             id
-            name
-            optionValues {
-              id
-              name
+            title
+            handle
+            status
+            options {
+                id
+                name
+                optionValues {
+                id
+                name
+                }
             }
-          }
+            }
+            userErrors {
+            field
+            message
+            }
         }
-        userErrors {
-          field
-          message
         }
-      }
-    }
-    GQL;
+        GQL;
     
         $productInput = [
             'title' => (string) ($payload['title'] ?? ''),
@@ -1123,41 +1123,41 @@ GQL;
             'variants' => json_encode($variantInputs, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
         ]);
     
-        $mutation = <<<'GQL'
-    mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkCreate(
-        productId: $productId,
-        variants: $variants,
-        strategy: REMOVE_STANDALONE_VARIANT
-      ) {
-        product {
-          id
-          title
-          handle
-        }
-        productVariants {
-          id
-          title
-          price
-          barcode
-          inventoryPolicy
-          inventoryItem {
+            $mutation = <<<'GQL'
+        mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        productVariantsBulkCreate(
+            productId: $productId,
+            variants: $variants,
+            strategy: REMOVE_STANDALONE_VARIANT
+        ) {
+            product {
             id
-            sku
-            tracked
-          }
-          selectedOptions {
-            name
-            value
-          }
+            title
+            handle
+            }
+            productVariants {
+            id
+            title
+            price
+            barcode
+            inventoryPolicy
+            inventoryItem {
+                id
+                sku
+                tracked
+            }
+            selectedOptions {
+                name
+                value
+            }
+            }
+            userErrors {
+            field
+            message
+            }
         }
-        userErrors {
-          field
-          message
         }
-      }
-    }
-    GQL;
+        GQL;
     
         $result = $this->graphqlRequest($shopId, $mutation, [
             'productId' => $productId,
@@ -1250,11 +1250,11 @@ GQL;
     }
     
     private function uploadArtworkToShopify(
-        int $shopId,
-        string $base64Image,
-        string $filename = 'artwork.png',
-        string $alt = 'Artwork'
-    ): array {
+            int $shopId,
+            string $base64Image,
+            string $filename = 'artwork.png',
+            string $alt = 'Artwork'
+        ): array {
         if (!preg_match('/^data:(image\/[a-zA-Z0-9.+-]+);base64,/', $base64Image, $matches)) {
             return [
                 'success' => false,
@@ -1280,24 +1280,24 @@ GQL;
     
         $fileSize = strlen($binary);
     
-        $stagedMutation = <<<'GQL'
-    mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-      stagedUploadsCreate(input: $input) {
-        stagedTargets {
-          url
-          resourceUrl
-          parameters {
-            name
-            value
-          }
+            $stagedMutation = <<<'GQL'
+        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+        stagedUploadsCreate(input: $input) {
+            stagedTargets {
+            url
+            resourceUrl
+            parameters {
+                name
+                value
+            }
+            }
+            userErrors {
+            field
+            message
+            }
         }
-        userErrors {
-          field
-          message
         }
-      }
-    }
-    GQL;
+        GQL;
     
         $stagedResult = $this->graphqlRequest($shopId, $stagedMutation, [
             'input' => [
@@ -1479,33 +1479,33 @@ GQL;
             'media' => json_encode($media, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
         ]);
     
-        $mutation = <<<'GQL'
-    mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
-      productUpdate(product: $product, media: $media) {
-        product {
-          id
-          title
-          media(first: 20) {
-            nodes {
-              id
-              alt
-              mediaContentType
-              status
-              ... on MediaImage {
-                image {
-                  url
+            $mutation = <<<'GQL'
+        mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
+        productUpdate(product: $product, media: $media) {
+            product {
+            id
+            title
+            media(first: 20) {
+                nodes {
+                id
+                alt
+                mediaContentType
+                status
+                ... on MediaImage {
+                    image {
+                    url
+                    }
                 }
-              }
+                }
             }
-          }
+            }
+            userErrors {
+            field
+            message
+            }
         }
-        userErrors {
-          field
-          message
         }
-      }
-    }
-    GQL;
+        GQL;
     
         $result = $this->graphqlRequest($shopId, $mutation, [
             'product' => [
@@ -1600,24 +1600,24 @@ GQL;
             'metafields' => json_encode($metafields, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
         ]);
     
-        $mutation = <<<'GQL'
-    mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
-      metafieldsSet(metafields: $metafields) {
-        metafields {
-          id
-          namespace
-          key
-          type
-          value
+            $mutation = <<<'GQL'
+        mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+            metafields {
+            id
+            namespace
+            key
+            type
+            value
+            }
+            userErrors {
+            field
+            message
+            code
+            }
         }
-        userErrors {
-          field
-          message
-          code
         }
-      }
-    }
-    GQL;
+        GQL;
     
         $result = $this->graphqlRequest($shopId, $mutation, [
             'metafields' => $metafields,

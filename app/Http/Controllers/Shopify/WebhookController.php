@@ -59,12 +59,21 @@ class WebhookController extends Controller
                
             ]);
 
-            $isValidSignature = $this->appSignatureVerifier->verify(
-                $request,
-                $appTimestamp,
-                $appSignature,
-                AppSignatureVerifier::MODE_TIMESTAMP_ONLY
-            );
+            if($normalizedTopic == 'app/uninstalled'){
+                $isValidSignature = $this->appSignatureVerifier->verify(
+                    $request,
+                    $appTimestamp,
+                    $appSignature,
+                    AppSignatureVerifier::MODE_TIMESTAMP_ONLY
+                );
+            }else{
+                $isValidSignature = $this->appSignatureVerifier->verify(
+                    $request,
+                    $appTimestamp,
+                    $appSignature,
+                    AppSignatureVerifier::MODE_TIMESTAMP_PLUS_PAYLOAD_VARIANTS
+                );
+            }
 
             if (!$isValidSignature) {
                 Log::warning('Shopify webhook rejected: invalid app signature', [

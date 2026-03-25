@@ -180,10 +180,8 @@ class ProductController extends Controller
         ]);
     }
 
-    /**
-     * POST /api/v1/products/create-in-shopify/{shopId}
-     */
-    public function createInShopify(Request $request, int $shopId)
+    
+    private function createInShopify(Request $request, int $shopId)
     {
         DB::beginTransaction();
 

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\FulfillmentServiceController;
 use App\Http\Controllers\Api\FailedWebhookController;
 use App\Http\Controllers\Api\JobController;
+use App\Http\Controllers\Api\ShopifyApiController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\Shopify\WebhookController;
 use App\Http\Controllers\CrmController;
@@ -35,12 +36,21 @@ Route::prefix('v1')->group(function () {
     Route::get('/products/get', [ProductController::class, 'signedIndex']);
     Route::get('/products/get/{id}', [ProductController::class, 'signedShow']);
     Route::post('/products/create-in-shopify-signed', [ProductController::class, 'createInShopifySigned']);
+
+    Route::post('/brand-settings', [ShopifyApiController::class, 'CreateStoreBrandSettings']);
+    Route::get('/brand-settings', [ShopifyApiController::class, 'GetStoreBrandSettings']);
+
+    Route::get('/dashboard-stats', [ShopifyApiController::class, 'GetStoreDashboardStats']);
+    Route::get('/orders', [ShopifyApiController::class, 'GetStoreOrders']);
+    Route::get('/fulfillment-status', [ShopifyApiController::class, 'GetStoreFulfillmentStatus']);
+    
 });
 
 // ============================================
 // PROTECTED ROUTES (Authentication Required)
 // ============================================
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+
     // User can update own profile
     Route::put('/profile', [UserManagementController::class, 'update']);
 
@@ -62,6 +72,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/partner-profiles', [PartnerProfileController::class, 'store']);
     Route::get('/partner-profiles/{shop_id}', [PartnerProfileController::class, 'show']);
     Route::delete('/partner-profiles/{shop_id}', [PartnerProfileController::class, 'destroy']);
+
     // Backward compatibility for older clients
     Route::delete('/profiles/{shop_id}', [PartnerProfileController::class, 'destroy']);
     Route::get('/partner-profiles', [PartnerProfileController::class, 'index']);
