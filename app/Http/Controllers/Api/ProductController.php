@@ -183,6 +183,7 @@ class ProductController extends Controller
     
     private function createInShopify(Request $request, int $shopId)
     {
+
         DB::beginTransaction();
 
         try {
@@ -397,6 +398,10 @@ class ProductController extends Controller
                 ]);
             }
 
+            $payload['line_item_meta'] = [
+                                                ['template_id'=>$customProduct->id],
+                                         ];
+
             $result = $this->ShopifyService->createCustomProductWithPrintAreas($shopId, $payload);
 
             if (!($result['success'] ?? false)) {
@@ -425,9 +430,11 @@ class ProductController extends Controller
                 'shopify_product_id' => $shopifyProductId,
             ]);
 
+
             foreach ($shopifyVariants as $shopifyVariant) {
-                $sku = data_get($shopifyVariant, 'sku');
+                $sku = data_get($shopifyVariant, 'inventoryItem.sku');
                 $shopifyVariantId = data_get($shopifyVariant, 'id');
+
 
                 if (!$sku || !$shopifyVariantId) {
                     continue;
@@ -438,15 +445,13 @@ class ProductController extends Controller
                     ->update([
                         'shopify_variant_id' => $shopifyVariantId,
                     ]);
+
+
+
             }
 
             DB::commit();
 
-            Log::info('Create Shopify product success', [
-                'shop_id' => $shopId,
-                'custom_product_id' => $customProduct->id,
-                'shopify_product_id' => $shopifyProductId,
-            ]);
 
             return response()->json([
                 'success' => true,

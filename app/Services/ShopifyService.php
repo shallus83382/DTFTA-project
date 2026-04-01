@@ -914,10 +914,18 @@ GQL;
                 $product = $attachResult['data']['product'] ?? $product;
             }
     
+            // $metafieldResult = $this->setCustomProductMetafields($shopId, $productId, [
+            //     'print_areas' => $payload['print_areas'] ?? [],
+            //     'artwork' => $artworkUrls,
+            //     'print_plan' => $payload['print_plan'] ?? null,
+            //     'line_item_meta' => $payload['line_item_meta'] ?? [],
+            // ]);
+
             $metafieldResult = $this->setCustomProductMetafields($shopId, $productId, [
-                'print_areas' => $payload['print_areas'] ?? [],
-                'artwork' => $artworkUrls,
-                'print_plan' => $payload['print_plan'] ?? null,
+                'print_areas' => [],
+                'artwork' => [],
+                'print_plan' => [],
+                'line_item_meta' => $payload['line_item_meta'] ?? [],
             ]);
     
             if (!$metafieldResult['success']) {
@@ -1580,6 +1588,19 @@ GQL;
                 'type' => 'json',
                 'value' => json_encode($data['print_plan'], JSON_UNESCAPED_SLASHES),
             ];
+        }
+
+        if(!empty($data['line_item_meta'])){
+            $lineItemMetas = $data['line_item_meta'] ?? [];
+            foreach($lineItemMetas as $lineItemMeta ){
+                $metafields[] = [
+                    'ownerId' => $productId,
+                    'namespace' => 'dtfta',
+                    'key' => 'template_id',
+                    'type' => 'single_line_text_field',
+                    'value' => (string) $lineItemMeta['template_id'],
+                ];
+            }
         }
     
         if (empty($metafields)) {

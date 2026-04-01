@@ -67,7 +67,7 @@ class DtftaProductResource extends JsonResource
 
                 if ($printArea->images) {
                     if (str_contains($appUrl, 'ngrok')) {
-                        $imageUrl = 'https://operators-washer-planning-gst.trycloudflare.com' . Storage::url($printArea->images);
+                        $imageUrl = 'https://cruz-pins-mouth-tuning.trycloudflare.com' . Storage::url($printArea->images);
                     } else {
                         $imageUrl = url(Storage::url($printArea->images));
                     }

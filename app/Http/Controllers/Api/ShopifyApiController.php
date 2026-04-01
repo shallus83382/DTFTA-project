@@ -47,7 +47,7 @@ class ShopifyApiController extends Controller
         $timestamp = (string) $request->header('X-App-Timestamp', '');
         $signature = (string) $request->header('X-App-Signature', '');
 
-        Log::info('Products signed API request received', [
+        Log::info('Store Brand setting API request received', [
             'path' => $request->path(),
             'method' => $request->method(),
             'timestamp_present' => $timestamp !== '',
@@ -61,7 +61,7 @@ class ShopifyApiController extends Controller
             $request,
             $timestamp,
             $signature,
-            AppSignatureVerifier::MODE_TIMESTAMP_PLUS_PAYLOAD_VARIANTS
+            AppSignatureVerifier::MODE_TIMESTAMP_ONLY
         );
 
         if (!$isValidSignature) {
@@ -129,7 +129,7 @@ class ShopifyApiController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Partner profile created successfully',
+            'message' => 'Brand Settings API created successfully',
             'data' => $this->transformResponse($partnerProfile)
         ], 201);
     }
@@ -149,7 +149,7 @@ class ShopifyApiController extends Controller
         )));
         
         if (!$this->isValidShopDomain($shop)) {
-            Log::warning('Create Shopify signed rejected: invalid shop domain', [
+            Log::warning('Brand Settings API rejected: invalid shop domain', [
                 'shop' => $shop,
             ]);
 
@@ -162,7 +162,7 @@ class ShopifyApiController extends Controller
         $timestamp = (string) $request->header('X-App-Timestamp', '');
         $signature = (string) $request->header('X-App-Signature', '');
 
-        Log::info('Products signed API request received', [
+        Log::info('Brand Settings API request received', [
             'path' => $request->path(),
             'method' => $request->method(),
             'timestamp_present' => $timestamp !== '',
