@@ -59,13 +59,7 @@
     <h4 style="margin-bottom:15px;">Product Images</h4>
     @if(count($productImages))
         <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:25px;">
-            @foreach($productImages as $image)
-                <img
-                    src="{{ asset('storage/' . $image) }}"
-                    alt="Product image"
-                    style="width:160px; height:160px; object-fit:cover; border-radius:12px; border:1px solid #e5e7eb;"
-                >
-            @endforeach
+          <x-selected-asset :category="$productImages['category'] ?? null" :asset-key="$productImages['asset_key'] ?? null" dimension="120px" />
         </div>
     @else
         <div style="margin-bottom:25px; color:#94a3b8;">No product images uploaded.</div>
@@ -134,7 +128,6 @@
             @foreach($product->printAreas as $printArea)
                 @php
                     $printAreaImages = is_array($printArea->images) ? $printArea->images : [];
-                    $printAreaFirstImage = $printAreaImages[0] ?? null;
                 @endphp
 
                 <div style="border:1px solid #e5e7eb; border-radius:12px; padding:16px;">
@@ -182,14 +175,10 @@
                         </div>
                     </div>
 
-                    @if($printAreaFirstImage)
+                    @if($printAreaImages)
                         <div>
                             <strong>Preview:</strong><br><br>
-                            <img
-                                src="{{ asset('storage/' . $printAreaFirstImage) }}"
-                                alt="Print area image"
-                                style="width:100%; max-width:220px; height:220px; object-fit:contain; border-radius:12px; border:1px solid #e5e7eb; padding:10px;"
-                            >
+                            <x-selected-asset :category="$printAreaImages['category'] ?? null" :asset-key="$printAreaImages['asset_key'] ?? null" dimension="120px" />
                         </div>
                     @else
                         <div style="color:#94a3b8;">No print area image.</div>

@@ -98,11 +98,11 @@
                                     name="print_areas[{{ $index }}][display_order]"
                                     value="{{ $row['display_order'] ?? $index }}">
                             </div>
-                            <div class="filter-group">
+                            <!-- <div class="filter-group">
                                 <label>Placement Image</label>
                                 <input type="file" class="filter-select" name="print_area_images[{{ $index }}]"
                                     accept="image/*">
-                            </div>
+                            </div> -->
 
                             <div class="filter-group">
                                 <label>Active</label>
@@ -112,6 +112,13 @@
                                 </select>
                             </div>
 
+                        </div>
+
+                        <div style="margin-top:20px;">
+                            <x-asset-selector
+                            category-input-name="print_areas[{{ $index }}][images][category]"
+                            asset-input-name="print_areas[{{ $index }}][images][asset_key]"
+                            />   
                         </div>
 
                         <div style="margin-top:20px;">

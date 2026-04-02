@@ -126,8 +126,7 @@
                         </td>
                         <td>
                             @if(!empty($area->images))
-                                <img src="{{ asset('storage/'.$area->images) }}"
-                                     style="width:50px; height:50px; object-fit:cover; border-radius:6px;">
+                             <x-selected-asset :category="$area->images['category'] ?? null" :asset-key="$area->images['asset_key'] ?? null" />
                             @else
                                 -
                             @endif
@@ -168,9 +167,9 @@
                 @endforelse
             </tbody>
         </table>
-        <div class="pagination">
+        <!-- <div class="pagination">
     {{ $printAreas->links() }}
-</div>
+</div> -->
     </div>
 
 

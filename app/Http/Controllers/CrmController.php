@@ -1048,15 +1048,15 @@ class CrmController extends Controller
         $product = null;
     
         DB::transaction(function () use ($request, $validated, &$product) {
-            $imagePaths = [];
+            // $imagePaths = [];
     
-            if ($request->hasFile('images')) {
-                foreach ((array) $request->file('images') as $file) {
-                    if ($file) {
-                        $imagePaths[] = $file->store('products/images', 'public');
-                    }
-                }
-            }
+            // if ($request->hasFile('images')) {
+            //     foreach ((array) $request->file('images') as $file) {
+            //         if ($file) {
+            //             $imagePaths[] = $file->store('products/images', 'public');
+            //         }
+            //     }
+            // }
     
             $product = Product::create([
                 'title' => $validated['title'],
@@ -1065,7 +1065,7 @@ class CrmController extends Controller
                 'category' => $validated['category'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
-                'images' => $imagePaths ?: null,
+                'images' => $validated['images'] ?: null,
             ]);
     
             $colors = collect($validated['colors'])
@@ -1122,8 +1122,8 @@ class CrmController extends Controller
             'status' => 'required|in:active,draft,archived,inactive',
     
             'images' => 'nullable|array',
-            'images.*' => 'nullable|image|max:5120',
-            'remove_existing_images' => 'nullable|boolean',
+            'images.*' => 'nullable|string|max:5120',
+          //  'remove_existing_images' => 'nullable|boolean',
     
             'colors' => 'required|array|min:1',
             'colors.*' => 'required|string|max:100',
@@ -1136,25 +1136,25 @@ class CrmController extends Controller
         ]);
     
         DB::transaction(function () use ($request, $validated, $product) {
-            $existingImages = is_array($product->images) ? $product->images : [];
+            // $existingImages = is_array($product->images) ? $product->images : [];
     
-            if ($request->boolean('remove_existing_images')) {
-                foreach ($existingImages as $path) {
-                    Storage::disk('public')->delete((string) $path);
-                }
-                $existingImages = [];
-            }
+            // if ($request->boolean('remove_existing_images')) {
+            //     foreach ($existingImages as $path) {
+            //         Storage::disk('public')->delete((string) $path);
+            //     }
+            //     $existingImages = [];
+            // }
     
-            $newImagePaths = [];
-            if ($request->hasFile('images')) {
-                foreach ((array) $request->file('images') as $file) {
-                    if ($file) {
-                        $newImagePaths[] = $file->store('products/images', 'public');
-                    }
-                }
-            }
+            // $newImagePaths = [];
+            // if ($request->hasFile('images')) {
+            //     foreach ((array) $request->file('images') as $file) {
+            //         if ($file) {
+            //             $newImagePaths[] = $file->store('products/images', 'public');
+            //         }
+            //     }
+            // }
     
-            $finalImages = array_values(array_filter(array_merge($existingImages, $newImagePaths)));
+            // $finalImages = array_values(array_filter(array_merge($existingImages, $newImagePaths)));
     
             $product->update([
                 'title' => $validated['title'],
@@ -1163,7 +1163,7 @@ class CrmController extends Controller
                 'category' => $validated['category'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
-                'images' => $finalImages ?: null,
+                'images' => $validated['images'] ?: null,
             ]);
     
             $colors = collect($validated['colors'])

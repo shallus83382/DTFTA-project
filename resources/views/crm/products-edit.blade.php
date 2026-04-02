@@ -108,32 +108,12 @@
                 </div>
 
                 <div class="filter-group" style="width: 100%;">
-                    <label for="images">Add Product Images</label>
-                    <input
-                        id="images"
-                        name="images[]"
-                        type="file"
-                        class="filter-select"
-                        accept="image/*"
-                        multiple
-                    >
-
-                    <label style="margin-top: 8px; display: block;">
-                        <input type="checkbox" name="remove_existing_images" value="1" {{ old('remove_existing_images') ? 'checked' : '' }}>
-                        Remove existing images
-                    </label>
-
-                    @if(!empty($existingImages))
-                        <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
-                            @foreach($existingImages as $imagePath)
-                                <img
-                                    src="{{ asset('storage/' . $imagePath) }}"
-                                    alt="Product image"
-                                    style="width: 72px; height: 72px; object-fit: cover; border-radius: 8px;"
-                                >
-                            @endforeach
-                        </div>
-                    @endif
+                <x-asset-selector
+                        :selected-category="old('images[category]', $product->images['category'] ?? null)"
+                        :selected-asset-key="old('images[asset_key]', $product->images['asset_key'] ?? null)"
+                        category-input-name="images[category]"
+                        asset-input-name="images[asset_key]"
+                        />   
                 </div>
             </div>
 

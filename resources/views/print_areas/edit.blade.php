@@ -101,19 +101,8 @@
                                     value="{{ old('print_areas.0.display_order', $row['display_order']) }}">
                             </div>
 
-                            <input type="file" id="imageInput" class="filter-select" name="print_area_images[0]"
-                                accept="image/*">
-
-                            @if ($printArea->images)
-                                <div style="margin-top:8px;">
-                                    <img id="imagePreview" src="{{ asset('storage/' . $printArea->images) }}"
-                                        style="width:72px; height:72px; object-fit:cover; border-radius:8px;">
-                                </div>
-                            @endif
-
-
-
-                        </div>
+                            <!-- <input type="file" id="imageInput" class="filter-select" name="print_area_images[0]"
+                                accept="image/*"> -->
 
                         <div class="filter-group">
                             <label>Active</label>
@@ -130,6 +119,15 @@
                         </div>
 
                     </div>
+                    <div style="margin-top:20px;">
+                        <x-asset-selector
+                        :selected-category="old('print_areas[0][images][category]', $printArea->images['category'] ?? null)"
+                        :selected-asset-key="old('print_areas[0][images][asset_key]', $printArea->images['asset_key'] ?? null)"
+                        category-input-name="print_areas[0][images][category]"
+                        asset-input-name="print_areas[0][images][asset_key]"
+                        />   
+                    </div>
+
 
                     <div style="margin-top:20px;">
                         <button type="submit" class="btn-primary">

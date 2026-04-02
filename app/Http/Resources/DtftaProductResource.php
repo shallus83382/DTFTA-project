@@ -62,16 +62,16 @@ class DtftaProductResource extends JsonResource
         $printAreas = $this->whenLoaded('printAreas', function () {
             return $this->printAreas->map(function ($printArea) {
                 
-                $appUrl = config('app.url');
-                $imageUrl = null;
+                // $appUrl = config('app.url');
+                // $imageUrl = null;
 
-                if ($printArea->images) {
-                    if (str_contains($appUrl, 'ngrok')) {
-                        $imageUrl = 'https://cruz-pins-mouth-tuning.trycloudflare.com' . Storage::url($printArea->images);
-                    } else {
-                        $imageUrl = url(Storage::url($printArea->images));
-                    }
-                }
+                // if ($printArea->images) {
+                //     if (str_contains($appUrl, 'ngrok')) {
+                //         $imageUrl = 'https://murray-frames-ethernet-fashion.trycloudflare.com' . Storage::url($printArea->images);
+                //     } else {
+                //         $imageUrl = url(Storage::url($printArea->images));
+                //     }
+                // }
 
                 return [
                     'id' => $printArea->id,
@@ -85,7 +85,7 @@ class DtftaProductResource extends JsonResource
                     'display_order' => $printArea->display_order,
                     'is_active' => (bool) $printArea->is_active,
                    // 'image' => $printArea->images ? url(Storage::url($printArea->images)) : null,
-                    'image' => $imageUrl,
+                    'image' => $printArea->images['asset_key'],
                 ];
             })->values();
         }, collect());
@@ -102,11 +102,12 @@ class DtftaProductResource extends JsonResource
             'brand' => $brandCode['name'] ?? null,
             'style' => $blank['style'] ?? $this->model_code,
             'model' => $blank['model'] ?? $this->model_code,
-            'image' => url(Storage::url($images[0])) ?? asset($fallbackImage),
-            'images' => collect($finalImages)
-                ->map(fn ($path) => asset('storage/' . ltrim($path, '/')))
-                ->values()
-                ->all(),
+            // 'image' => url(Storage::url($images[0])) ?? asset($fallbackImage),
+            // 'images' => collect($finalImages)
+            //     ->map(fn ($path) => asset('storage/' . ltrim($path, '/')))
+            //     ->values()
+            //     ->all(),
+            'image' => $this->images['asset_key'],
             'description' => $this->description,
             'status' => $this->status,
             'price' => 0,

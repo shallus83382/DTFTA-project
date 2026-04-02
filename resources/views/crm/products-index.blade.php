@@ -103,7 +103,6 @@
                         };
 
                         $productImages = is_array($product->images) ? $product->images : [];
-                        $firstImage = $productImages[0] ?? null;
                         $variantCount = $product->variants->count();
                         $printAreaCount = $product->printAreas->count();
                     @endphp
@@ -112,12 +111,8 @@
                         <td>#{{ $product->id }}</td>
 
                         <td>
-                            @if($firstImage)
-                                <img
-                                    src="{{ asset('storage/' . $firstImage) }}"
-                                    alt="Product image"
-                                    style="width: 52px; height: 52px; object-fit: cover; border-radius: 6px;"
-                                >
+                            @if($productImages)
+                            <x-selected-asset :category="$productImages['category'] ?? null" :asset-key="$productImages['asset_key'] ?? null" />
                             @else
                                 -
                             @endif

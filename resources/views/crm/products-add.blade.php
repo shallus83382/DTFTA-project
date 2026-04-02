@@ -92,18 +92,7 @@
                 </div>
 
                 <div class="filter-group" style="width: 100%;">
-                    <label for="images">Product Images</label>
-                    <input
-                        id="images"
-                        name="images[]"
-                        type="file"
-                        class="filter-select"
-                        accept="image/*"
-                        multiple
-                    >
-                    <small style="display:block; margin-top:6px; color:#6b7280;">
-                        You can upload multiple images.
-                    </small>
+                    <x-asset-selector category-input-name="images[category]" asset-input-name="images[asset_key]" />   
                 </div>
             </div>
 
