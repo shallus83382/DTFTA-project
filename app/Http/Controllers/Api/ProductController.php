@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use App\Models\PrintArea;
 use App\Http\Resources\DtftaProductResource;
+use App\Http\Resources\CustomProductResource;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\DB;
 
@@ -548,6 +549,104 @@ class ProductController extends Controller
 
         return $this->createInShopify($request, $existingShop->id);
     }
+
+
+        /**
+     * GET /api/v1/custom-products/{customProduct}
+     * List products with app signature verification (timestamp + empty payload).
+     */
+    public function customProduct(customProduct $customProduct, Request $request)
+    {
+        $shop = strtolower(trim((string) (
+            $request->header('X-Shop')
+            ?? $request->input('shop')
+            ?? $request->input('shop_domain')
+            ?? ''
+        )));
+
+        $timestamp = (string) $request->header('X-App-Timestamp', '');
+        $signature = (string) $request->header('X-App-Signature', '');
+
+        if (!$this->isValidShopDomain($shop)) {
+            Log::warning('Custom Products API rejected: invalid shop domain', [
+                'shop' => $shop,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid shop domain.',
+            ], 422);
+        }
+
+        $existingShop = Shop::where('shop_domain', $shop)
+        ->orderByDesc('id')
+        ->first();
+
+        if (!$existingShop) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Store does not exist.',
+            ], 404);
+        }
+
+        Log::info('Signed request shop found', [
+            'shop_domain' => $shop,
+            'shop_id' => $existingShop->id,
+        ]);
+
+        Log::info('Custom Products API request received', [
+            'path' => $request->path(),
+            'method' => $request->method(),
+            'timestamp_present' => $timestamp !== '',
+            'signature_present' => $signature !== '',
+            'signature_prefix' => $signature !== '' ? substr($signature, 0, 12) : null,
+            'query' => $request->query(),
+            'ip' => $request->ip(),
+        ]);
+
+        $isValidSignature = $this->appSignatureVerifier->verify(
+            $request,
+            $timestamp,
+            $signature,
+            AppSignatureVerifier::MODE_TIMESTAMP_ONLY
+        );
+
+        if (!$isValidSignature) {
+            Log::warning('Custom Products Get API rejected: invalid app signature', [
+                'timestamp' => $timestamp,
+                'signature_prefix' => $signature !== '' ? substr($signature, 0, 12) : null,
+                'query' => $request->query(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid app signature',
+            ], 401);
+        }
+
+        Log::info('Custom Products signed API signature verified', [
+            'timestamp' => $timestamp,
+            'query' => $request->query(),
+        ]);
+
+        $customProduct->load([
+            'product',
+            'variants.customProduct.product',
+            'variants.productVariant',
+            'artworks',
+        ]);
+    
+        $resource = new CustomProductResource($customProduct);
+
+        $response = [
+            'success' => true,
+            'message' => 'Products retrieved successfully.',
+            'data' => $resource->toArray($request),
+        ];
+        
+        return response()->json($response);
+    }
+
 
     private function isValidShopDomain(string $shop): bool
     {

@@ -15,6 +15,7 @@ use App\Services\AppSignatureVerifier;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
 use App\Models\OrderItem;
+use Carbon\Carbon;
 
 class WebhookController extends Controller
 {
@@ -59,7 +60,7 @@ class WebhookController extends Controller
                
             ]);
 
-            if($normalizedTopic == 'app/uninstalled'){
+            if(in_array($normalizedTopic, ['app/uninstalled', 'APP_UNINSTALLED'], true)){
                 $isValidSignature = $this->appSignatureVerifier->verify(
                     $request,
                     $appTimestamp,
@@ -155,18 +156,23 @@ class WebhookController extends Controller
     {
         switch ($topic) {
             case 'orders/create':
-                $this->handleOrderCreate($webhook->shop_id, $payload);
+            case 'ORDERS_CREATE':
+                    $this->handleOrderCreate($webhook->shop_id, $payload);
                 break;
             case 'orders/updated':
-                $this->handleOrderUpdate($webhook->shop_id, $payload);
+            case 'ORDERS_UPDATED':
+                        $this->handleOrderUpdate($webhook->shop_id, $payload);
                 break;
             case 'orders/deleted':
+            case 'ORDERS_DELETED':
                 $this->handleOrderDelete($webhook->shop_id, $payload);
                 break;
             case 'orders/cancelled':
+            case 'ORDERS_CANCELLED':                
                 $this->handleOrderCancelled($webhook->shop_id, $payload);
                 break;
             case 'app/uninstalled':
+            case 'APP_UNISTALLED':                
                 $this->handleAppUninstalled($webhook->shop_id);
                 break;
             case 'fulfillments/create':
@@ -299,7 +305,9 @@ class WebhookController extends Controller
             ->update([
                 'fulfillment_status' => $payload['fulfillment_status'] ?? null,
                 'financial_status' => $payload['financial_status'] ?? null,
-                'updated_at_shopify' => $payload['updated_at'] ?? now(),
+                'updated_at_shopify' => isset($payload['updated_at']) 
+                    ? Carbon::parse($payload['updated_at'])->format('Y-m-d H:i:s')
+                    : now(),
                 'payload' => $payload
             ]);
     }

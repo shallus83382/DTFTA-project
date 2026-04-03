@@ -28,4 +28,10 @@ class CustomProductVariant extends Model
     {
         return $this->belongsTo(CustomProduct::class);
     }
+
+    public function productVariant()
+    {
+        return $this->belongsTo(ProductVariant::class);
+    }
+
 }

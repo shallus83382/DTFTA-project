@@ -36,6 +36,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/products/get', [ProductController::class, 'signedIndex']);
     Route::get('/products/get/{id}', [ProductController::class, 'signedShow']);
     Route::post('/products/create-in-shopify-signed', [ProductController::class, 'createInShopifySigned']);
+    Route::get('/custom-products/{customProduct}', [ProductController::class, 'customProduct']);
 
     Route::post('/brand-settings', [ShopifyApiController::class, 'CreateStoreBrandSettings']);
     Route::get('/brand-settings', [ShopifyApiController::class, 'GetStoreBrandSettings']);
