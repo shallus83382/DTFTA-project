@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Shop;
+use App\Models\FulfillmentService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -46,17 +47,24 @@ class ShopifyService
         if (!$shop) {
             return ['success' => false, 'message' => 'Shop not found'];
         }
-
+    
         if (empty($shop->shopify_access_token)) {
             return ['success' => false, 'message' => 'Shop access token not available'];
         }
-
+    
         try {
             $token = decrypt($shop->shopify_access_token);
+    
+            Log::info('Shopify auth resolved', [
+                'shop_id' => $shopId,
+                'shop_domain' => $shop->shop_domain,
+                'token_present' => $token !== '',
+                'token_prefix' => substr($token, 0, 6),
+            ]);
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => 'Failed to decrypt access token'];
         }
-
+    
         return ['success' => true, 'shop' => $shop, 'token' => $token];
     }
 
@@ -80,6 +88,14 @@ class ShopifyService
         $shop = $auth['shop'];
         $token = $auth['token'];
         $url = rtrim($this->baseUrl($shop->shop_domain, $apiVersion), '/') . '/' . ltrim($path, '/') . '.json';
+
+        Log::error('Shopify API request', [
+            'shop_id' => $shopId,
+            'path' => $url,
+            'query' => $query,
+            'payload' => $payload,
+        ]);
+
 
         try {
             $client = Http::withHeaders([
@@ -172,6 +188,7 @@ class ShopifyService
         }
     }
 
+
     /**
      * Convert a fulfillment order ID to a GraphQL global ID format if it's not already
      */
@@ -191,52 +208,52 @@ class ShopifyService
         $fulfillmentOrderId,
         ?string $message = null
     ): array {
-        $gid = $this->toFulfillmentOrderGid($fulfillmentOrderId);
-        $selection = $mutationName;
+                $gid = $this->toFulfillmentOrderGid($fulfillmentOrderId);
+                $selection = $mutationName;
 
-        $query = <<<GQL
-mutation {$mutationName}(\$id: ID!, \$message: String) {
-  {$selection}(id: \$id, message: \$message) {
-    fulfillmentOrder {
-      id
-      status
-      requestStatus
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
-GQL;
-
-        $result = $this->graphqlRequest($shopId, $query, [
-            'id' => $gid,
-            'message' => $message,
-        ]);
-        if (!$result['success']) {
-            return $result;
+                $query = <<<GQL
+        mutation {$mutationName}(\$id: ID!, \$message: String) {
+        {$selection}(id: \$id, message: \$message) {
+            fulfillmentOrder {
+            id
+            status
+            requestStatus
+            }
+            userErrors {
+            field
+            message
+            }
         }
-
-        $payload = $result['data'][$selection] ?? [];
-        $userErrors = $payload['userErrors'] ?? [];
-        if (!empty($userErrors)) {
-            return [
-                'success' => false,
-                'status' => 422,
-                'message' => 'Shopify mutation returned user errors',
-                'data' => $payload,
-                'errors' => $userErrors,
-            ];
         }
+        GQL;
 
-        return [
-            'success' => true,
-            'status' => $result['status'],
-            'message' => 'Mutation completed successfully',
-            'data' => $payload['fulfillmentOrder'] ?? $payload,
-            'errors' => [],
-        ];
+                $result = $this->graphqlRequest($shopId, $query, [
+                    'id' => $gid,
+                    'message' => $message,
+                ]);
+                if (!$result['success']) {
+                    return $result;
+                }
+
+                $payload = $result['data'][$selection] ?? [];
+                $userErrors = $payload['userErrors'] ?? [];
+                if (!empty($userErrors)) {
+                    return [
+                        'success' => false,
+                        'status' => 422,
+                        'message' => 'Shopify mutation returned user errors',
+                        'data' => $payload,
+                        'errors' => $userErrors,
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'status' => $result['status'],
+                    'message' => 'Mutation completed successfully',
+                    'data' => $payload['fulfillmentOrder'] ?? $payload,
+                    'errors' => [],
+                ];
     }
 
     /**
@@ -387,6 +404,12 @@ GQL;
             ];
 
             $result = $this->request((int) $shopId, 'POST', 'fulfillments', $payload);
+
+            Log::info('Shopify Create ORDER Fullfillment response', [
+                'shop_id' => $shopId,
+                'response' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            ]);
+
             if (!$result['success']) {
                 return $result;
             }
@@ -467,6 +490,65 @@ GQL;
         ];
     }
 
+
+     /**
+     * getFulfillment - Retrieve a specific fulfillment from Shopify.
+     * This is used to get details about a fulfillment, including its status and tracking information.
+     */
+    public function getFulfillment($shopId, $fulfillmentId): array
+    {
+        $result = $this->request((int) $shopId, 'GET', "fulfillments/{$fulfillmentId}");
+
+        if (!$result['success']) {
+            return $result;
+        }
+
+        return [
+            'success' => true,
+            'data' => $result['data']['fulfillment'] ?? null,
+            'status' => $result['status'],
+            'message' => 'Fulfillment fetched successfully',
+        ];
+    }
+
+
+    public function getOrderIdFromFulfillmentOrderGid(int $shopId, string $fulfillmentOrderGid): array
+    {
+            $query = <<<'GRAPHQL'
+        query GetFulfillmentOrderOrderId($id: ID!) {
+        fulfillmentOrder(id: $id) {
+            id
+            order {
+            id
+            legacyResourceId
+            name
+            }
+        }
+        }
+        GRAPHQL;
+        
+            $response = $this->graphqlRequest($shopId, $query, [
+                'id' => $fulfillmentOrderGid,
+            ]);
+        
+            if (!$response['success']) {
+                return $response;
+            }
+        
+            $order = $response['data']['fulfillmentOrder']['order'] ?? null;
+        
+            return [
+                'success' => true,
+                'status' => $response['status'],
+                'message' => 'Order resolved successfully',
+                'data' => [
+                    'order_gid' => $order['id'] ?? null,
+                    'order_id' => $order['legacyResourceId'] ?? null,
+                ],
+                'errors' => [],
+            ];
+    }
+
     /**
      * createFulfillmentService - Create a fulfillment service in Shopify. This is used to register a fulfillment service with Shopify that can handle fulfillment orders.
      */
@@ -497,6 +579,636 @@ GQL;
         ];
     }
 
+
+    public function createDeliveryProfile(int $shopId, string $locationId, string $profileName = 'DTFTA Shipping'): array
+    {
+            try {
+                $locationGid = str_starts_with($locationId, 'gid://')
+                    ? $locationId
+                    : "gid://shopify/Location/{$locationId}";
+        
+                $query = <<<'GRAPHQL'
+        mutation CreateDeliveryProfile($profile: DeliveryProfileInput!) {
+        deliveryProfileCreate(profile: $profile) {
+            profile {
+            id
+            name
+            profileLocationGroups {
+                locationGroup {
+                id
+                locations(first: 10) {
+                    nodes {
+                    id
+                    name
+                    }
+                }
+                }
+            }
+            }
+            userErrors {
+            field
+            message
+            }
+        }
+        }
+        GRAPHQL;
+        
+            $variables = [
+                'profile' => [
+                    'name' => $profileName,
+                    'locationGroupsToCreate' => [
+                        [
+                            'locationsToAdd' => [$locationGid],
+                            'zonesToCreate' => [
+                                [
+                                    'name' => 'United States',
+                                    'countries' => [
+                                        [
+                                            'code' => 'US',
+                                            'provinces' => [
+                                                ['code' => 'AL'],
+                                                ['code' => 'AK'],
+                                                ['code' => 'AZ'],
+                                                ['code' => 'AR'],
+                                                ['code' => 'CA'],
+                                                ['code' => 'CO'],
+                                                ['code' => 'CT'],
+                                                ['code' => 'DE'],
+                                                ['code' => 'FL'],
+                                                ['code' => 'GA'],
+                                                ['code' => 'HI'],
+                                                ['code' => 'ID'],
+                                                ['code' => 'IL'],
+                                                ['code' => 'IN'],
+                                                ['code' => 'IA'],
+                                                ['code' => 'KS'],
+                                                ['code' => 'KY'],
+                                                ['code' => 'LA'],
+                                                ['code' => 'ME'],
+                                                ['code' => 'MD'],
+                                                ['code' => 'MA'],
+                                                ['code' => 'MI'],
+                                                ['code' => 'MN'],
+                                                ['code' => 'MS'],
+                                                ['code' => 'MO'],
+                                                ['code' => 'MT'],
+                                                ['code' => 'NE'],
+                                                ['code' => 'NV'],
+                                                ['code' => 'NH'],
+                                                ['code' => 'NJ'],
+                                                ['code' => 'NM'],
+                                                ['code' => 'NY'],
+                                                ['code' => 'NC'],
+                                                ['code' => 'ND'],
+                                                ['code' => 'OH'],
+                                                ['code' => 'OK'],
+                                                ['code' => 'OR'],
+                                                ['code' => 'PA'],
+                                                ['code' => 'RI'],
+                                                ['code' => 'SC'],
+                                                ['code' => 'SD'],
+                                                ['code' => 'TN'],
+                                                ['code' => 'TX'],
+                                                ['code' => 'UT'],
+                                                ['code' => 'VT'],
+                                                ['code' => 'VA'],
+                                                ['code' => 'WA'],
+                                                ['code' => 'WV'],
+                                                ['code' => 'WI'],
+                                                ['code' => 'WY'],
+                                            ],
+                                        ],
+                                    ],
+                                    'methodDefinitionsToCreate' => [
+                                        [
+                                            'name' => 'Standard',
+                                            'rateDefinition' => [
+                                                'price' => [
+                                                    'amount' => 4.99,
+                                                    'currencyCode' => 'USD',
+                                                ],
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+        
+                Log::info('Shopify deliveryProfileCreate request', [
+                    'shop_id' => $shopId,
+                    'location_gid' => $locationGid,
+                    'variables' => $variables,
+                ]);
+        
+                $result = $this->graphqlRequest($shopId, $query, $variables);
+        
+                Log::info('Shopify deliveryProfileCreate response', [
+                    'shop_id' => $shopId,
+                    'result' => $result,
+                ]);
+        
+                if (!($result['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'message' => $result['message'] ?? 'GraphQL request failed',
+                        'errors' => $result['errors'] ?? [],
+                        'data' => $result['data'] ?? null,
+                    ];
+                }
+        
+                if (!empty($result['errors'])) {
+                    return [
+                        'success' => false,
+                        'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
+                        'errors' => $result['errors'],
+                        'data' => $result['data'] ?? null,
+                    ];
+                }
+        
+                $payload = data_get($result, 'data.deliveryProfileCreate');
+        
+                if (!$payload) {
+                    return [
+                        'success' => false,
+                        'message' => 'Missing deliveryProfileCreate payload in Shopify response',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+        
+                if (!empty($payload['userErrors'])) {
+                    return [
+                        'success' => false,
+                        'message' => $payload['userErrors'][0]['message'] ?? 'Failed to create delivery profile',
+                        'errors' => $payload['userErrors'],
+                        'data' => $payload,
+                    ];
+                }
+        
+                return [
+                    'success' => true,
+                    'message' => 'Delivery profile created successfully',
+                    'data' => $payload['profile'] ?? null,
+                ];
+            } catch (\Throwable $e) {
+                Log::error('createDeliveryProfile exception', [
+                    'shop_id' => $shopId,
+                    'location_id' => $locationId,
+                    'error' => $e->getMessage(),
+                ]);
+        
+                return [
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ];
+            }
+    }
+
+    public function getDeliveryProfileDetails(int $shopId, string $deliveryProfileId): array
+    {
+            try {
+                $profileGid = str_starts_with($deliveryProfileId, 'gid://')
+                    ? $deliveryProfileId
+                    : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
+
+                $query = <<<'GRAPHQL'
+        query GetDeliveryProfile($id: ID!) {
+        node(id: $id) {
+            ... on DeliveryProfile {
+            id
+            name
+            profileLocationGroups {
+                locationGroup {
+                id
+                locations(first: 20) {
+                    nodes {
+                    id
+                    name
+                    }
+                }
+                }
+                locationGroupZones(first: 20) {
+                nodes {
+                    zone {
+                    id
+                    name
+                    countries {
+                        code {
+                        countryCode
+                        }
+                        provinces {
+                        code
+                        }
+                    }
+                    }
+                    methodDefinitions(first: 20) {
+                    nodes {
+                        id
+                        name
+                        active
+                        rateProvider {
+                        ... on DeliveryRateDefinition {
+                            id
+                            price {
+                            amount
+                            currencyCode
+                            }
+                        }
+                        }
+                    }
+                    }
+                }
+                }
+            }
+            }
+        }
+        }
+        GRAPHQL;
+
+                $result = $this->graphqlRequest($shopId, $query, [
+                    'id' => $profileGid,
+                ]);
+
+                if (!($result['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'message' => $result['message'] ?? 'GraphQL request failed',
+                        'errors' => $result['errors'] ?? [],
+                        'data' => $result['data'] ?? null,
+                    ];
+                }
+
+                if (!empty($result['errors'])) {
+                    return [
+                        'success' => false,
+                        'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
+                        'errors' => $result['errors'],
+                        'data' => $result['data'] ?? null,
+                    ];
+                }
+
+                $profile = data_get($result, 'data.node');
+
+                if (!$profile) {
+                    return [
+                        'success' => false,
+                        'message' => 'Delivery profile not found',
+                        'data' => $result['data'] ?? null,
+                    ];
+                }
+
+                return [
+                    'success' => true,
+                    'message' => 'Delivery profile fetched successfully',
+                    'data' => $profile,
+                ];
+            } catch (\Throwable $e) {
+                Log::error('getDeliveryProfileDetails exception', [
+                    'shop_id' => $shopId,
+                    'delivery_profile_id' => $deliveryProfileId,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return [
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ];
+            }
+    }
+
+    private function getUsProvinceCodes(): array
+    {
+        return [
+            'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+            'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+            'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+            'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+            'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+        ];
+    }
+
+    private function buildStandardUsZoneInput(float $amount = 4.99, string $currencyCode = 'USD'): array
+    {
+        return [
+            'name' => 'United States',
+            'countries' => [
+                [
+                    'code' => 'US',
+                    'provinces' => array_map(
+                        fn (string $code) => ['code' => $code],
+                        $this->getUsProvinceCodes()
+                    ),
+                ],
+            ],
+            'methodDefinitionsToCreate' => [
+                [
+                    'name' => 'Standard',
+                    'rateDefinition' => [
+                        'price' => [
+                            'amount' => $amount,
+                            'currencyCode' => $currencyCode,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    public function syncDeliveryProfileConfiguration(
+        int $shopId,
+        string $deliveryProfileId,
+        string $locationId,
+        string $profileName = 'DTFTA Shipping',
+        float $standardRate = 4.99,
+        string $currencyCode = 'USD'
+    ): array {
+                try {
+                    $profileGid = str_starts_with($deliveryProfileId, 'gid://')
+                        ? $deliveryProfileId
+                        : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
+            
+                    $locationGid = str_starts_with($locationId, 'gid://')
+                        ? $locationId
+                        : "gid://shopify/Location/{$locationId}";
+            
+                    $details = $this->getDeliveryProfileDetails($shopId, $profileGid);
+                    if (!($details['success'] ?? false)) {
+                        return $details;
+                    }
+            
+                    $profile = $details['data'] ?? [];
+                    $profileLocationGroups = $profile['profileLocationGroups'] ?? [];
+            
+                    $existingGroup = $profileLocationGroups[0] ?? null;
+                    $locationGroup = $existingGroup['locationGroup'] ?? null;
+                    $existingZones = data_get($existingGroup, 'locationGroupZones.nodes', []);
+            
+                    $groupId = $locationGroup['id'] ?? null;
+                    $existingLocationIds = collect(data_get($locationGroup, 'locations.nodes', []))
+                        ->pluck('id')
+                        ->filter()
+                        ->values()
+                        ->all();
+            
+                    $hasNewLocation = in_array($locationGid, $existingLocationIds, true);
+            
+                    $usZoneNode = null;
+                    foreach ($existingZones as $zoneNode) {
+                        $zoneName = data_get($zoneNode, 'zone.name');
+                        $countryCode = data_get($zoneNode, 'zone.countries.0.code.countryCode');
+                        if ($zoneName === 'United States' || $countryCode === 'US') {
+                            $usZoneNode = $zoneNode;
+                            break;
+                        }
+                    }
+            
+                    $profileInput = [
+                        'name' => $profileName,
+                    ];
+            
+                    // Case A: no location group exists at all -> create full nested structure
+                    if (!$groupId) {
+                        $profileInput['locationGroupsToCreate'] = [
+                            [
+                                'locationsToAdd' => [$locationGid],
+                                'zonesToCreate' => [
+                                    $this->buildStandardUsZoneInput($standardRate, $currencyCode),
+                                ],
+                            ],
+                        ];
+                    } else {
+                        $groupUpdate = [
+                            'id' => $groupId,
+                        ];
+            
+                        if (!$hasNewLocation) {
+                            $groupUpdate['locationsToAdd'] = [$locationGid];
+                        }
+            
+                        // Optional: remove orphaned old locations if you want strict single-location ownership
+                        $locationsToRemove = array_values(array_filter(
+                            $existingLocationIds,
+                            fn (string $id) => $id !== $locationGid
+                        ));
+                        if (!empty($locationsToRemove)) {
+                            $groupUpdate['locationsToRemove'] = $locationsToRemove;
+                        }
+            
+                        // Case B1: location group exists but US zone is missing -> create zone
+                        if (!$usZoneNode) {
+                            $groupUpdate['zonesToCreate'] = [
+                                $this->buildStandardUsZoneInput($standardRate, $currencyCode),
+                            ];
+                        } else {
+                            // Case B2: zone exists -> update method(s) if present, otherwise recreate method(s)
+                            $zoneId = data_get($usZoneNode, 'zone.id');
+                            $methodNodes = data_get($usZoneNode, 'methodDefinitions.nodes', []);
+            
+                            $zoneUpdate = [
+                                'id' => $zoneId,
+                                'name' => 'United States',
+                            ];
+            
+                            if (!empty($methodNodes)) {
+                                $zoneUpdate['methodDefinitionsToUpdate'] = array_map(
+                                    function (array $method) use ($standardRate, $currencyCode) {
+                                        return [
+                                            'id' => $method['id'],
+                                            'name' => $method['name'] ?? 'Standard',
+                                            'active' => true,
+                                            'rateDefinition' => [
+                                                'price' => [
+                                                    'amount' => $standardRate,
+                                                    'currencyCode' => $currencyCode,
+                                                ],
+                                            ],
+                                        ];
+                                    },
+                                    $methodNodes
+                                );
+                            } else {
+                                $zoneUpdate['methodDefinitionsToCreate'] = [
+                                    [
+                                        'name' => 'Standard',
+                                        'rateDefinition' => [
+                                            'price' => [
+                                                'amount' => $standardRate,
+                                                'currencyCode' => $currencyCode,
+                                            ],
+                                        ],
+                                    ],
+                                ];
+                            }
+            
+                            $groupUpdate['zonesToUpdate'] = [$zoneUpdate];
+                        }
+            
+                        $profileInput['locationGroupsToUpdate'] = [$groupUpdate];
+                    }
+            
+                    $mutation = <<<'GRAPHQL'
+            mutation SyncDeliveryProfile($id: ID!, $profile: DeliveryProfileInput!) {
+            deliveryProfileUpdate(id: $id, profile: $profile) {
+                profile {
+                id
+                name
+                profileLocationGroups {
+                    locationGroup {
+                    id
+                    locations(first: 20) {
+                        nodes {
+                        id
+                        name
+                        }
+                    }
+                    }
+                    locationGroupZones(first: 20) {
+                    nodes {
+                        zone {
+                        id
+                        name
+                        }
+                        methodDefinitions(first: 20) {
+                        nodes {
+                            id
+                            name
+                            active
+                        }
+                        }
+                    }
+                    }
+                }
+                }
+                userErrors {
+                field
+                message
+                }
+            }
+            }
+            GRAPHQL;
+            
+                    $variables = [
+                        'id' => $profileGid,
+                        'profile' => $profileInput,
+                    ];
+            
+                    Log::info('Shopify deliveryProfileUpdate sync request', [
+                        'shop_id' => $shopId,
+                        'delivery_profile_id' => $profileGid,
+                        'location_id' => $locationGid,
+                        'variables' => $variables,
+                    ]);
+            
+                    $result = $this->graphqlRequest($shopId, $mutation, $variables);
+            
+                    Log::info('Shopify deliveryProfileUpdate sync response', [
+                        'shop_id' => $shopId,
+                        'result' => $result,
+                    ]);
+            
+                    if (!($result['success'] ?? false)) {
+                        return [
+                            'success' => false,
+                            'message' => $result['message'] ?? 'GraphQL request failed',
+                            'errors' => $result['errors'] ?? [],
+                            'data' => $result['data'] ?? null,
+                        ];
+                    }
+            
+                    if (!empty($result['errors'])) {
+                        return [
+                            'success' => false,
+                            'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
+                            'errors' => $result['errors'],
+                            'data' => $result['data'] ?? null,
+                        ];
+                    }
+            
+                    $payload = data_get($result, 'data.deliveryProfileUpdate');
+            
+                    if (!$payload) {
+                        return [
+                            'success' => false,
+                            'message' => 'Missing deliveryProfileUpdate payload in Shopify response',
+                            'data' => $result['data'] ?? null,
+                            'errors' => $result['errors'] ?? [],
+                        ];
+                    }
+            
+                    if (!empty($payload['userErrors'])) {
+                        return [
+                            'success' => false,
+                            'message' => $payload['userErrors'][0]['message'] ?? 'Failed to sync delivery profile',
+                            'errors' => $payload['userErrors'],
+                            'data' => $payload,
+                        ];
+                    }
+            
+                    return [
+                        'success' => true,
+                        'message' => 'Delivery profile synchronized successfully',
+                        'data' => $payload['profile'] ?? null,
+                    ];
+                } catch (\Throwable $e) {
+                    Log::error('syncDeliveryProfileConfiguration exception', [
+                        'shop_id' => $shopId,
+                        'delivery_profile_id' => $deliveryProfileId,
+                        'location_id' => $locationId,
+                        'error' => $e->getMessage(),
+                    ]);
+            
+                    return [
+                        'success' => false,
+                        'message' => $e->getMessage(),
+                    ];
+                }
+    }
+
+    public function removeDeliveryProfile(int $shopId, string $profileId): array
+    {
+                $mutation = <<<'GQL'
+        mutation RemoveDeliveryProfile($id: ID!) {
+        deliveryProfileRemove(id: $id) {
+            job {
+            id
+            }
+            userErrors {
+            field
+            message
+            }
+        }
+        }
+        GQL;
+
+            $result = $this->graphqlRequest($shopId, $mutation, [
+                'id' => $profileId,
+            ]);
+
+            if (!($result['success'] ?? false)) {
+                return $result;
+            }
+
+            $payload = data_get($result, 'data.deliveryProfileRemove');
+
+            if (!empty($payload['userErrors'])) {
+                return [
+                    'success' => false,
+                    'message' => $payload['userErrors'][0]['message'] ?? 'Failed to remove delivery profile',
+                    'errors' => $payload['userErrors'],
+                    'data' => $payload,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Delivery profile removal queued',
+                'data' => $payload,
+            ];
+    }   
+
     /**
      * Ensure the shop has a fulfillment service and a US-configured location.
      * Uses Shopify GraphQL as requested by frontend integration.
@@ -520,7 +1232,7 @@ GQL;
         }
 
         $baseUrl = rtrim((string) ($baseUrl ?: config('app.url')), '/');
-        $callbackUrl = $baseUrl . '/api/v1/fulfillment_order_notification';
+        $callbackUrl = $baseUrl . '/api/v1';
 
                 $createMutation = <<<'GQL'
         mutation fulfillmentServiceCreate(
@@ -751,31 +1463,93 @@ GQL;
     public function provisionShopOnInstall(int $shopId, ?string $baseUrl = null): array
     {
         $shop = Shop::find($shopId);
+    
         if (!$shop) {
             return ['success' => false, 'message' => 'Shop not found'];
         }
-
-        $baseUrl = $baseUrl ?: (string) config('app.url');
-        $baseUrl = rtrim($baseUrl, '/');
-        $fulfillmentCallbackUrl = "{$baseUrl}/api/v1/fulfillment_order_notification";
+    
+        $baseUrl = rtrim($baseUrl ?: (string) config('app.url'), '/');
+        $fulfillmentCallbackUrl = "{$baseUrl}/api/v1";
 
         $serviceResult = null;
-        if (empty($shop->fulfillment_service_id)) {
-            $serviceResult = $this->createFulfillmentService($shopId, $fulfillmentCallbackUrl, 'DTFTA Fulfillment Service');
-            if ($serviceResult['success']) {
-                $service = $serviceResult['data'] ?? [];
-                $shop->fulfillment_service_id = (string) ($service['id'] ?? '');
-                $shop->location_id = isset($service['location_id']) ? (string) $service['location_id'] : ($shop->location_id ?? null);
-                $shop->save();
+        $deliveryProfileResult = null;
+    
+        if (empty($shop->fulfillment_service_id) || empty($shop->location_id)) {
+            $serviceResult = $this->createFulfillmentService(
+                $shopId,
+                $fulfillmentCallbackUrl,
+                'DTFTA Fulfillment Service'
+            );
+    
+            if (!$serviceResult['success']) {
+                return [
+                    'success' => false,
+                    'message' => $serviceResult['message'] ?? 'Failed to create fulfillment service',
+                    'data' => [
+                        'fulfillment_service' => $serviceResult['data'] ?? null,
+                    ],
+                ];
+            }
+    
+            $service = $serviceResult['data'] ?? [];
+    
+            $shop->fulfillment_service_id = !empty($service['id']) ? "gid://shopify/FulfillmentService/{$service['id']}" : $shop->fulfillment_service_id;
+            $shop->location_id = !empty($service['location_id']) ? "gid://shopify/Location/{$service['location_id']}" : $shop->location_id;
+    
+            $shop->save();
+        }
+    
+        if (!empty($shop->location_id)) {
+
+            if (empty($shop->shipping_profile_id)) {
+                $create = $this->createDeliveryProfile(
+                    (int) $shop->id,
+                    (string) $shop->location_id,
+                    'DTFTA Shipping'
+                );
+
+                if ($create['success']) {
+                    $profile = $create['data'] ?? [];
+                    $shop->shipping_profile_id = (string) ($profile['id'] ?? null);
+
+                    $groupId = data_get($profile, 'profileLocationGroups.0.locationGroup.id');
+                    if ($groupId) {
+                        $shop->delivery_location_group_id = (string) $groupId;
+                    }
+
+                    $shop->save();
+                }
+            } else {
+                $sync = $this->syncDeliveryProfileConfiguration(
+                    (int) $shop->id,
+                    (string) $shop->shipping_profile_id,
+                    (string) $shop->location_id,
+                    'DTFTA Shipping',
+                    4.99,
+                    'USD'
+                );
+
+                if ($sync['success']) {
+                    $profile = $sync['data'] ?? [];
+                    $groupId = data_get($profile, 'profileLocationGroups.0.locationGroup.id');
+                    if ($groupId) {
+                        $shop->delivery_location_group_id = (string) $groupId;
+                        $shop->save();
+                    }
+                }
             }
         }
-
+    
         $webhooks = $this->ensureRequiredWebhooks($shopId, $baseUrl);
-
+    
         return [
-            'success' => ($serviceResult ? (bool) $serviceResult['success'] : true) && (bool) $webhooks['success'],
+            'success' =>
+                ($serviceResult ? (bool) $serviceResult['success'] : true) &&
+                ($deliveryProfileResult ? (bool) $deliveryProfileResult['success'] : true) &&
+                (bool) $webhooks['success'],
             'data' => [
                 'fulfillment_service' => $serviceResult['data'] ?? null,
+                'delivery_profile' => $deliveryProfileResult['data'] ?? null,
                 'webhooks' => $webhooks['data'] ?? [],
             ],
             'message' => 'Provisioning completed',
@@ -838,11 +1612,7 @@ GQL;
     public function createCustomProductWithPrintAreas(int $shopId, array $payload): array
     {
         try {
-            Log::info('Shopify custom product create started', [
-                'shop_id' => $shopId,
-                'payload' => json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-            ]);
-    
+
             $productCreateResult = $this->createShopifyProduct($shopId, $payload);
             if (!$productCreateResult['success']) {
                 return $productCreateResult;
@@ -1021,11 +1791,6 @@ GQL;
                 'errors' => [],
             ];
         }
-    
-        Log::info('Shopify productCreate request', [
-            'shop_id' => $shopId,
-            'product_input' => json_encode($productInput, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
     
         $result = $this->graphqlRequest($shopId, $mutation, [
             'product' => $productInput,
@@ -1675,6 +2440,356 @@ GQL;
             ],
             'errors' => [],
         ];
+    }
+
+
+    /**
+     * Assign one or more product variants to an existing Shopify delivery profile.
+     *
+     * $deliveryProfileId can be either:
+     * - gid://shopify/DeliveryProfile/123
+     * - 123
+     *
+     * $variantIds can be:
+     * - ["gid://shopify/ProductVariant/111", "gid://shopify/ProductVariant/222"]
+     * - [111, 222]
+     */
+    public function assignVariantsToDeliveryProfile(
+        int $shopId,
+        string $deliveryProfileId,
+        array $variantIds
+    ): array {
+        try {
+            $profileGid = str_starts_with($deliveryProfileId, 'gid://')
+                ? $deliveryProfileId
+                : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
+
+            $variantGids = array_values(array_filter(array_map(function ($id) {
+                $value = trim((string) $id);
+                if ($value === '') {
+                    return null;
+                }
+
+                return str_starts_with($value, 'gid://')
+                    ? $value
+                    : "gid://shopify/ProductVariant/{$value}";
+            }, $variantIds)));
+
+            if (empty($variantGids)) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => 'At least one valid variant ID is required',
+                    'data' => null,
+                    'errors' => [],
+                ];
+            }
+
+                    $mutation = <<<'GRAPHQL'
+            mutation AssignVariantsToDeliveryProfile($id: ID!, $profile: DeliveryProfileInput!) {
+            deliveryProfileUpdate(id: $id, profile: $profile) {
+                profile {
+                id
+                name
+                productVariantsCount {
+                    count
+                }
+                profileItems(first: 20) {
+                    edges {
+                    node {
+                        id
+                        product {
+                        id
+                        title
+                        }
+                        variants(first: 20) {
+                        edges {
+                            node {
+                            id
+                            title
+                            sku
+                            }
+                        }
+                        }
+                    }
+                    }
+                }
+                }
+                userErrors {
+                field
+                message
+                }
+            }
+            }
+            GRAPHQL;
+
+            $variables = [
+                'id' => $profileGid,
+                'profile' => [
+                    'variantsToAssociate' => $variantGids,
+                ],
+            ];
+
+            Log::info('Shopify assignVariantsToDeliveryProfile request', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $profileGid,
+                'variant_ids' => $variantGids,
+            ]);
+
+            $result = $this->graphqlRequest($shopId, $mutation, $variables);
+
+            Log::info('Shopify assignVariantsToDeliveryProfile response', [
+                'shop_id' => $shopId,
+                'result' => $result,
+            ]);
+
+            if (!($result['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'status' => $result['status'] ?? 500,
+                    'message' => $result['message'] ?? 'GraphQL request failed',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+
+            $payload = data_get($result, 'data.deliveryProfileUpdate');
+
+            if (!$payload) {
+                return [
+                    'success' => false,
+                    'status' => 500,
+                    'message' => 'Missing deliveryProfileUpdate payload in Shopify response',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+
+            if (!empty($payload['userErrors'])) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => $payload['userErrors'][0]['message'] ?? 'Failed to assign variants to delivery profile',
+                    'data' => $payload,
+                    'errors' => $payload['userErrors'],
+                ];
+            }
+
+            return [
+                'success' => true,
+                'status' => $result['status'],
+                'message' => 'Variants assigned to delivery profile successfully',
+                'data' => $payload['profile'] ?? null,
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('assignVariantsToDeliveryProfile exception', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $deliveryProfileId,
+                'variant_ids' => $variantIds,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
+    /**
+     * Assign a product variant to a specific Shopify inventory/fulfillment location.
+     *
+     * This works by:
+     * 1) Resolving the variant's inventoryItem ID
+     * 2) Activating that inventory item at the target location
+     *
+     * $variantId can be:
+     * - gid://shopify/ProductVariant/123
+     * - 123
+     *
+     * $locationId can be:
+     * - gid://shopify/Location/456
+     * - 456
+     */
+    public function assignVariantToInventoryLocation(
+        int $shopId,
+        string $variantId,
+        string $locationId,
+        ?int $available = null,
+        ?int $onHand = null
+    ): array {
+        try {
+            $variantGid = str_starts_with($variantId, 'gid://')
+                ? $variantId
+                : "gid://shopify/ProductVariant/{$variantId}";
+
+            $locationGid = str_starts_with($locationId, 'gid://')
+                ? $locationId
+                : "gid://shopify/Location/{$locationId}";
+
+                    // Step 1: Resolve inventory item from variant
+                    $variantQuery = <<<'GRAPHQL'
+            query GetVariantInventoryItem($id: ID!) {
+            productVariant(id: $id) {
+                id
+                title
+                inventoryItem {
+                id
+                sku
+                tracked
+                }
+            }
+            }
+            GRAPHQL;
+
+            $variantResult = $this->graphqlRequest($shopId, $variantQuery, [
+                'id' => $variantGid,
+            ]);
+
+            if (!($variantResult['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'status' => $variantResult['status'] ?? 500,
+                    'message' => $variantResult['message'] ?? 'Failed to resolve variant inventory item',
+                    'data' => $variantResult['data'] ?? null,
+                    'errors' => $variantResult['errors'] ?? [],
+                ];
+            }
+
+            $variantData = data_get($variantResult, 'data.productVariant');
+            $inventoryItemId = data_get($variantData, 'inventoryItem.id');
+
+            if (!$inventoryItemId) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => 'Inventory item not found for variant',
+                    'data' => $variantData,
+                    'errors' => [],
+                ];
+            }
+
+                // Step 2: Activate inventory item at location
+                        $mutation = <<<'GRAPHQL'
+                mutation ActivateInventoryAtLocation(
+                $inventoryItemId: ID!,
+                $locationId: ID!,
+                $available: Int,
+                $onHand: Int
+                ) {
+                inventoryActivate(
+                    inventoryItemId: $inventoryItemId,
+                    locationId: $locationId,
+                    available: $available,
+                    onHand: $onHand
+                ) {
+                    inventoryLevel {
+                    id
+                    item {
+                        id
+                    }
+                    location {
+                        id
+                        name
+                    }
+                    quantities(names: ["available", "on_hand"]) {
+                        name
+                        quantity
+                    }
+                    }
+                    userErrors {
+                    field
+                    message
+                    }
+                }
+                }
+                GRAPHQL;
+
+            $variables = [
+                'inventoryItemId' => $inventoryItemId,
+                'locationId' => $locationGid,
+                'available' => $available,
+                'onHand' => $onHand,
+            ];
+
+            Log::info('Shopify assignVariantToInventoryLocation request', [
+                'shop_id' => $shopId,
+                'variant_id' => $variantGid,
+                'inventory_item_id' => $inventoryItemId,
+                'location_id' => $locationGid,
+                'available' => $available,
+                'on_hand' => $onHand,
+            ]);
+
+            $result = $this->graphqlRequest($shopId, $mutation, $variables);
+
+            Log::info('Shopify assignVariantToInventoryLocation response', [
+                'shop_id' => $shopId,
+                'result' => $result,
+            ]);
+
+            if (!($result['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'status' => $result['status'] ?? 500,
+                    'message' => $result['message'] ?? 'GraphQL request failed',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+
+            $payload = data_get($result, 'data.inventoryActivate');
+
+            if (!$payload) {
+                return [
+                    'success' => false,
+                    'status' => 500,
+                    'message' => 'Missing inventoryActivate payload in Shopify response',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+
+            if (!empty($payload['userErrors'])) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => $payload['userErrors'][0]['message'] ?? 'Failed to assign variant to inventory location',
+                    'data' => $payload,
+                    'errors' => $payload['userErrors'],
+                ];
+            }
+
+            return [
+                'success' => true,
+                'status' => $result['status'],
+                'message' => 'Variant assigned to inventory location successfully',
+                'data' => [
+                    'variant' => $variantData,
+                    'inventory_level' => $payload['inventoryLevel'] ?? null,
+                ],
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('assignVariantToInventoryLocation exception', [
+                'shop_id' => $shopId,
+                'variant_id' => $variantId,
+                'location_id' => $locationId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
     }
 
 }

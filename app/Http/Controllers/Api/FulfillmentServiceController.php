@@ -48,10 +48,10 @@ class FulfillmentServiceController extends Controller
         $services = $query->paginate(20);
 
         return response()->json([
-            'success' => true,
-            'message' => 'Fulfillment services retrieved successfully.',
-            'data' => $services
-        ]);
+                'success' => true, 
+                'message' => 'Fulfillment services retrieved successfully.',
+                'data' => $services
+            ]);
     }
 
     /**

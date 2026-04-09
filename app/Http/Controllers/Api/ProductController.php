@@ -446,9 +446,6 @@ class ProductController extends Controller
                     ->update([
                         'shopify_variant_id' => $shopifyVariantId,
                     ]);
-
-
-
             }
 
             DB::commit();

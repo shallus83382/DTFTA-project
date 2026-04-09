@@ -24,6 +24,12 @@
     </style>
     
     @stack('styles')
+
+    @if(session('auth_token'))
+        <script>
+            localStorage.setItem('auth_token', "{{ session('auth_token') }}");
+        </script>
+    @endif
 </head>
 <body>
     <div class="container">
