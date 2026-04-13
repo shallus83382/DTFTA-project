@@ -2626,14 +2626,13 @@ class ShopifyService
             $variantGid = str_starts_with($variantId, 'gid://')
                 ? $variantId
                 : "gid://shopify/ProductVariant/{$variantId}";
-
+    
             $locationGid = str_starts_with($locationId, 'gid://')
                 ? $locationId
                 : "gid://shopify/Location/{$locationId}";
-
-                    // Step 1: Resolve inventory item from variant
+    
                     $variantQuery = <<<'GRAPHQL'
-            query GetVariantInventoryItem($id: ID!) {
+            query GetVariantInventoryItemAndLevels($id: ID!) {
             productVariant(id: $id) {
                 id
                 title
@@ -2641,15 +2640,26 @@ class ShopifyService
                 id
                 sku
                 tracked
+                inventoryLevels(first: 50) {
+                    edges {
+                    node {
+                        id
+                        location {
+                        id
+                        name
+                        }
+                    }
+                    }
+                }
                 }
             }
             }
             GRAPHQL;
-
+    
             $variantResult = $this->graphqlRequest($shopId, $variantQuery, [
                 'id' => $variantGid,
             ]);
-
+    
             if (!($variantResult['success'] ?? false)) {
                 return [
                     'success' => false,
@@ -2659,10 +2669,10 @@ class ShopifyService
                     'errors' => $variantResult['errors'] ?? [],
                 ];
             }
-
+    
             $variantData = data_get($variantResult, 'data.productVariant');
             $inventoryItemId = data_get($variantData, 'inventoryItem.id');
-
+    
             if (!$inventoryItemId) {
                 return [
                     'success' => false,
@@ -2672,35 +2682,102 @@ class ShopifyService
                     'errors' => [],
                 ];
             }
-
-                // Step 2: Activate inventory item at location
-                        $mutation = <<<'GRAPHQL'
-                mutation ActivateInventoryAtLocation(
-                $inventoryItemId: ID!,
-                $locationId: ID!,
-                $available: Int,
-                $onHand: Int
-                ) {
-                inventoryActivate(
-                    inventoryItemId: $inventoryItemId,
-                    locationId: $locationId,
-                    available: $available,
-                    onHand: $onHand
-                ) {
-                    inventoryLevel {
+    
+                    // STEP 1: Activate target location first
+                    $activateMutation = <<<'GRAPHQL'
+            mutation ActivateInventoryAtLocation(
+            $inventoryItemId: ID!,
+            $locationId: ID!,
+            $available: Int,
+            $onHand: Int
+            ) {
+            inventoryActivate(
+                inventoryItemId: $inventoryItemId,
+                locationId: $locationId,
+                available: $available,
+                onHand: $onHand
+            ) {
+                inventoryLevel {
+                id
+                location {
                     id
-                    item {
-                        id
-                    }
-                    location {
-                        id
-                        name
-                    }
-                    quantities(names: ["available", "on_hand"]) {
-                        name
-                        quantity
-                    }
-                    }
+                    name
+                }
+                quantities(names: ["available", "on_hand"]) {
+                    name
+                    quantity
+                }
+                }
+                userErrors {
+                field
+                message
+                }
+            }
+            }
+            GRAPHQL;
+    
+            $activateResult = $this->graphqlRequest($shopId, $activateMutation, [
+                'inventoryItemId' => $inventoryItemId,
+                'locationId' => $locationGid,
+                'available' => $available,
+                'onHand' => $onHand,
+            ]);
+    
+            if (!($activateResult['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'status' => $activateResult['status'] ?? 500,
+                    'message' => $activateResult['message'] ?? 'Failed to activate inventory at target location',
+                    'data' => $activateResult['data'] ?? null,
+                    'errors' => $activateResult['errors'] ?? [],
+                ];
+            }
+    
+            $activatePayload = data_get($activateResult, 'data.inventoryActivate');
+            if (!empty($activatePayload['userErrors'])) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => $activatePayload['userErrors'][0]['message'] ?? 'Failed to activate target location',
+                    'data' => $activatePayload,
+                    'errors' => $activatePayload['userErrors'],
+                ];
+            }
+    
+            // STEP 2: Re-fetch levels after activation
+            $refreshResult = $this->graphqlRequest($shopId, $variantQuery, [
+                'id' => $variantGid,
+            ]);
+    
+            if (!($refreshResult['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'status' => $refreshResult['status'] ?? 500,
+                    'message' => 'Target location activated, but failed to refresh inventory levels',
+                    'data' => $refreshResult['data'] ?? null,
+                    'errors' => $refreshResult['errors'] ?? [],
+                ];
+            }
+    
+            $inventoryLevels = data_get($refreshResult, 'data.productVariant.inventoryItem.inventoryLevels.edges', []);
+            $deactivated = [];
+    
+            // STEP 3: Deactivate all other locations
+            foreach ($inventoryLevels as $edge) {
+                $inventoryLevelId = data_get($edge, 'node.id');
+                $existingLocationId = data_get($edge, 'node.location.id');
+    
+                if (!$inventoryLevelId || !$existingLocationId) {
+                    continue;
+                }
+    
+                if ($existingLocationId === $locationGid) {
+                    continue;
+                }
+    
+                            $deactivateMutation = <<<'GRAPHQL'
+                mutation DeactivateInventoryLevel($inventoryLevelId: ID!) {
+                inventoryDeactivate(inventoryLevelId: $inventoryLevelId) {
                     userErrors {
                     field
                     message
@@ -2708,69 +2785,48 @@ class ShopifyService
                 }
                 }
                 GRAPHQL;
-
-            $variables = [
-                'inventoryItemId' => $inventoryItemId,
-                'locationId' => $locationGid,
-                'available' => $available,
-                'onHand' => $onHand,
-            ];
-
-            Log::info('Shopify assignVariantToInventoryLocation request', [
-                'shop_id' => $shopId,
-                'variant_id' => $variantGid,
-                'inventory_item_id' => $inventoryItemId,
-                'location_id' => $locationGid,
-                'available' => $available,
-                'on_hand' => $onHand,
-            ]);
-
-            $result = $this->graphqlRequest($shopId, $mutation, $variables);
-
-            Log::info('Shopify assignVariantToInventoryLocation response', [
-                'shop_id' => $shopId,
-                'result' => $result,
-            ]);
-
-            if (!($result['success'] ?? false)) {
-                return [
-                    'success' => false,
-                    'status' => $result['status'] ?? 500,
-                    'message' => $result['message'] ?? 'GraphQL request failed',
-                    'data' => $result['data'] ?? null,
-                    'errors' => $result['errors'] ?? [],
+    
+                $deactivateResult = $this->graphqlRequest($shopId, $deactivateMutation, [
+                    'inventoryLevelId' => $inventoryLevelId,
+                ]);
+    
+                if (!($deactivateResult['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'status' => $deactivateResult['status'] ?? 500,
+                        'message' => 'Activated target location, but failed to deactivate another location',
+                        'data' => $deactivateResult['data'] ?? null,
+                        'errors' => $deactivateResult['errors'] ?? [],
+                    ];
+                }
+    
+                $deactivatePayload = data_get($deactivateResult, 'data.inventoryDeactivate');
+                $deactivateErrors = $deactivatePayload['userErrors'] ?? [];
+    
+                if (!empty($deactivateErrors)) {
+                    return [
+                        'success' => false,
+                        'status' => 422,
+                        'message' => $deactivateErrors[0]['message'] ?? 'Failed to deactivate another location',
+                        'data' => $deactivatePayload,
+                        'errors' => $deactivateErrors,
+                    ];
+                }
+    
+                $deactivated[] = [
+                    'inventory_level_id' => $inventoryLevelId,
+                    'location_id' => $existingLocationId,
                 ];
             }
-
-            $payload = data_get($result, 'data.inventoryActivate');
-
-            if (!$payload) {
-                return [
-                    'success' => false,
-                    'status' => 500,
-                    'message' => 'Missing inventoryActivate payload in Shopify response',
-                    'data' => $result['data'] ?? null,
-                    'errors' => $result['errors'] ?? [],
-                ];
-            }
-
-            if (!empty($payload['userErrors'])) {
-                return [
-                    'success' => false,
-                    'status' => 422,
-                    'message' => $payload['userErrors'][0]['message'] ?? 'Failed to assign variant to inventory location',
-                    'data' => $payload,
-                    'errors' => $payload['userErrors'],
-                ];
-            }
-
+    
             return [
                 'success' => true,
-                'status' => $result['status'],
-                'message' => 'Variant assigned to inventory location successfully',
+                'status' => 200,
+                'message' => 'Variant assigned to target location and removed from other locations successfully',
                 'data' => [
                     'variant' => $variantData,
-                    'inventory_level' => $payload['inventoryLevel'] ?? null,
+                    'target_inventory_level' => $activatePayload['inventoryLevel'] ?? null,
+                    'deactivated_locations' => $deactivated,
                 ],
                 'errors' => [],
             ];
@@ -2781,7 +2837,7 @@ class ShopifyService
                 'location_id' => $locationId,
                 'error' => $e->getMessage(),
             ]);
-
+    
             return [
                 'success' => false,
                 'status' => 500,

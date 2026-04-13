@@ -237,6 +237,17 @@ class ProductController extends Controller
                 ], 404);
             }
 
+             $shop = Shop::find($shopId);
+
+            if (!$shop) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Shop not found.',
+                ], 404);
+            }
+
             $title = $validated['title']
                 ?? $product->title
                 ?? $product->name
@@ -431,6 +442,7 @@ class ProductController extends Controller
                 'shopify_product_id' => $shopifyProductId,
             ]);
 
+            $shopifyVariantIds = [];
 
             foreach ($shopifyVariants as $shopifyVariant) {
                 $sku = data_get($shopifyVariant, 'inventoryItem.sku');
@@ -441,11 +453,79 @@ class ProductController extends Controller
                     continue;
                 }
 
+                $shopifyVariantIds[] = $shopifyVariantId;
+
                 $customProduct->variants()
                     ->where('sku', $sku)
                     ->update([
                         'shopify_variant_id' => $shopifyVariantId,
                     ]);
+            }
+
+            $deliveryProfileResult = null;
+
+            if (!empty($shop->shipping_profile_id) && !empty($shopifyVariantIds)) {
+                $deliveryProfileResult = $this->ShopifyService->assignVariantsToDeliveryProfile(
+                    (int) $shopId,
+                    (string) $shop->shipping_profile_id,
+                    $shopifyVariantIds
+                );
+
+                if (!($deliveryProfileResult['success'] ?? false)) {
+                    DB::rollBack();
+
+                    Log::warning('Assign variants to delivery profile failed', [
+                        'shop_id' => $shopId,
+                        'shipping_profile_id' => $shop->shipping_profile_id,
+                        'variant_ids' => $shopifyVariantIds,
+                        'result' => $deliveryProfileResult,
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $deliveryProfileResult['message'] ?? 'Failed to assign variants to delivery profile.',
+                        'errors' => $deliveryProfileResult['errors'] ?? [],
+                        'data' => $deliveryProfileResult['data'] ?? null,
+                    ], $deliveryProfileResult['status'] ?? 422);
+                }
+            }
+
+            $inventoryAssignmentResults = [];
+
+            if (!empty($shop->location_id) && !empty($shopifyVariantIds)) {
+                foreach ($shopifyVariantIds as $shopifyVariantId) {
+                    $inventoryResult = $this->ShopifyService->assignVariantToInventoryLocation(
+                        (int) $shopId,
+                        (string) $shopifyVariantId,
+                        (string) $shop->location_id
+                    );
+
+                    $inventoryAssignmentResults[] = [
+                        'variant_id' => $shopifyVariantId,
+                        'success' => $inventoryResult['success'] ?? false,
+                        'message' => $inventoryResult['message'] ?? null,
+                        'data' => $inventoryResult['data'] ?? null,
+                        'errors' => $inventoryResult['errors'] ?? [],
+                    ];
+
+                    if (!($inventoryResult['success'] ?? false)) {
+                        DB::rollBack();
+
+                        Log::warning('Assign variant to inventory location failed', [
+                            'shop_id' => $shopId,
+                            'location_id' => $shop->location_id,
+                            'variant_id' => $shopifyVariantId,
+                            'result' => $inventoryResult,
+                        ]);
+
+                        return response()->json([
+                            'success' => false,
+                            'message' => $inventoryResult['message'] ?? 'Failed to assign variant to inventory location.',
+                            'errors' => $inventoryResult['errors'] ?? [],
+                            'data' => $inventoryResult['data'] ?? null,
+                        ], $inventoryResult['status'] ?? 422);
+                    }
+                }
             }
 
             DB::commit();
@@ -457,8 +537,11 @@ class ProductController extends Controller
                 'data' => [
                     'custom_product_id' => $customProduct->id,
                     'shopify' => $result['data'] ?? null,
+                    'delivery_profile_assignment' => $deliveryProfileResult,
+                    'inventory_location_assignments' => $inventoryAssignmentResults,
                 ],
             ], 200);
+            
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
 
