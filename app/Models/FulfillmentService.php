@@ -9,6 +9,9 @@ class FulfillmentService extends Model
 {
     use SoftDeletes;
 
+    public const STATUS_ACTIVE = 'active';
+    public const DEFAULT_NAME = 'DTFTA Fulfillment Service';
+
     protected $fillable = [
         'shop_id',
         'service_id',
@@ -17,7 +20,8 @@ class FulfillmentService extends Model
         'tracking_support',
         'requires_shipping_method',
         'inventory_management',
-        'handle'
+        'handle',
+        'deleted_at'
     ];
 
     public function shop()

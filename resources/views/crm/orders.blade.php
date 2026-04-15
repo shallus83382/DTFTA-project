@@ -21,7 +21,7 @@
                     <option value="cancelled">Cancelled/Exception</option>
                 </select>
             </div>
-            <!-- View Toggle Buttons -->
+
             <div class="view-toggle-section">
                 <button class="view-toggle-btn active" id="boardViewBtnTop" data-view-toggle="board" onclick="switchView('board')">
                     <span class="view-toggle-icon-board" aria-hidden="true"></span>
@@ -32,7 +32,6 @@
             </div>
         </div>
 
-        <!-- Leads Board (kanban style) -->
         <div class="leads-board">
             <!-- Column: New (Pending) -->
             <div class="lead-column" data-type="New">
@@ -42,22 +41,31 @@
                 </div>
                 <div class="lead-column-body" data-status="pending">
                     @forelse($jobsByStatus['pending'] as $job)
-                        <div class="lead-card job-card" draggable="true" data-job-id="{{ $job->id }}" data-order-id="{{ $job->order_id }}" data-current-status="pending" data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}" data-job-type="{{ strtolower($job->job_type ?? '') }}" data-created-date="{{ $job->created_at->format('Y-m-d') }}" onclick="navigateToOrder(event, {{ $job->order_id }})" style="cursor: grab;">
-                                <div class="lead-card-header">
-                                    <div class="lead-card-info">
-                                        <div class="lead-avatar avatar-blue">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
-                                        <div>
-                                            <div class="lead-name">Job #{{ $job->id }}</div>
-                                            <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
-                                        </div>
+                        <div class="lead-card job-card"
+                             draggable="true"
+                             data-job-id="{{ $job->id }}"
+                             data-order-id="{{ $job->order_id }}"
+                             data-current-status="pending"
+                             data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-job-type="{{ strtolower($job->job_type ?? '') }}"
+                             data-created-date="{{ $job->created_at->format('Y-m-d') }}"
+                             onclick="navigateToOrder(event, {{ $job->order_id }})"
+                             style="cursor: grab;">
+                            <div class="lead-card-header">
+                                <div class="lead-card-info">
+                                    <div class="lead-avatar avatar-blue">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
+                                    <div>
+                                        <div class="lead-name">Job #{{ $job->id }}</div>
+                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
                                     </div>
-                                    <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
                                 </div>
-                                <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
-                                <div class="lead-tags">
-                                    <span class="status-badge status-new">{{ strtoupper($job->status) }}</span>
-                                    <span class="status-badge tag-muted">{{ $job->job_type }}</span>
-                                </div>
+                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                            </div>
+                            <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
+                            <div class="lead-tags">
+                                <span class="status-badge status-pending">{{ strtoupper(str_replace('_', ' ', $job->status)) }}</span>
+                                <span class="status-badge tag-muted">{{ $job->job_type }}</span>
+                            </div>
                         </div>
                     @empty
                         <p style="padding: 20px; text-align: center; color: #999;">No new jobs</p>
@@ -73,22 +81,31 @@
                 </div>
                 <div class="lead-column-body" data-status="artwork_needed">
                     @forelse($jobsByStatus['artwork_needed'] as $job)
-                        <div class="lead-card job-card" draggable="true" data-job-id="{{ $job->id }}" data-order-id="{{ $job->order_id }}" data-current-status="artwork_needed" data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}" data-job-type="{{ strtolower($job->job_type ?? '') }}" data-created-date="{{ $job->created_at->format('Y-m-d') }}" onclick="navigateToOrder(event, {{ $job->order_id }})" style="cursor: grab;">
-                                <div class="lead-card-header">
-                                    <div class="lead-card-info">
-                                        <div class="lead-avatar avatar-orange">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
-                                        <div>
-                                            <div class="lead-name">Job #{{ $job->id }}</div>
-                                            <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
-                                        </div>
+                        <div class="lead-card job-card"
+                             draggable="true"
+                             data-job-id="{{ $job->id }}"
+                             data-order-id="{{ $job->order_id }}"
+                             data-current-status="artwork_needed"
+                             data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-job-type="{{ strtolower($job->job_type ?? '') }}"
+                             data-created-date="{{ $job->created_at->format('Y-m-d') }}"
+                             onclick="navigateToOrder(event, {{ $job->order_id }})"
+                             style="cursor: grab;">
+                            <div class="lead-card-header">
+                                <div class="lead-card-info">
+                                    <div class="lead-avatar avatar-orange">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
+                                    <div>
+                                        <div class="lead-name">Job #{{ $job->id }}</div>
+                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
                                     </div>
-                                    <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
                                 </div>
-                                <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
-                                <div class="lead-tags">
-                                    <span class="status-badge status-artwork">{{ strtoupper($job->status) }}</span>
-                                    <span class="status-badge tag-orange">{{ $job->job_type }}</span>
-                                </div>
+                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                            </div>
+                            <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
+                            <div class="lead-tags">
+                                <span class="status-badge status-artwork-needed">{{ strtoupper(str_replace('_', ' ', $job->status)) }}</span>
+                                <span class="status-badge tag-orange">{{ $job->job_type }}</span>
+                            </div>
                         </div>
                     @empty
                         <p style="padding: 20px; text-align: center; color: #999;">No artwork needed</p>
@@ -104,22 +121,31 @@
                 </div>
                 <div class="lead-column-body" data-status="in_production">
                     @forelse($jobsByStatus['in_production'] as $job)
-                        <div class="lead-card job-card" draggable="true" data-job-id="{{ $job->id }}" data-order-id="{{ $job->order_id }}" data-current-status="in_production" data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}" data-job-type="{{ strtolower($job->job_type ?? '') }}" data-created-date="{{ $job->created_at->format('Y-m-d') }}" onclick="navigateToOrder(event, {{ $job->order_id }})" style="cursor: grab;">
-                                <div class="lead-card-header">
-                                    <div class="lead-card-info">
-                                        <div class="lead-avatar avatar-purple">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
-                                        <div>
-                                            <div class="lead-name">Job #{{ $job->id }}</div>
-                                            <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
-                                        </div>
+                        <div class="lead-card job-card"
+                             draggable="true"
+                             data-job-id="{{ $job->id }}"
+                             data-order-id="{{ $job->order_id }}"
+                             data-current-status="in_production"
+                             data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-job-type="{{ strtolower($job->job_type ?? '') }}"
+                             data-created-date="{{ $job->created_at->format('Y-m-d') }}"
+                             onclick="navigateToOrder(event, {{ $job->order_id }})"
+                             style="cursor: grab;">
+                            <div class="lead-card-header">
+                                <div class="lead-card-info">
+                                    <div class="lead-avatar avatar-purple">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
+                                    <div>
+                                        <div class="lead-name">Job #{{ $job->id }}</div>
+                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
                                     </div>
-                                    <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
                                 </div>
-                                <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
-                                <div class="lead-tags">
-                                    <span class="status-badge status-production">{{ strtoupper($job->status) }}</span>
-                                    <span class="status-badge tag-purple">{{ $job->job_type }}</span>
-                                </div>
+                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                            </div>
+                            <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
+                            <div class="lead-tags">
+                                <span class="status-badge status-in-production">{{ strtoupper(str_replace('_', ' ', $job->status)) }}</span>
+                                <span class="status-badge tag-purple">{{ $job->job_type }}</span>
+                            </div>
                         </div>
                     @empty
                         <p style="padding: 20px; text-align: center; color: #999;">No jobs in production</p>
@@ -135,22 +161,31 @@
                 </div>
                 <div class="lead-column-body" data-status="shipped">
                     @forelse($jobsByStatus['shipped'] as $job)
-                        <div class="lead-card job-card" draggable="true" data-job-id="{{ $job->id }}" data-order-id="{{ $job->order_id }}" data-current-status="shipped" data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}" data-job-type="{{ strtolower($job->job_type ?? '') }}" data-created-date="{{ $job->created_at->format('Y-m-d') }}" onclick="navigateToOrder(event, {{ $job->order_id }})" style="cursor: grab;">
-                                <div class="lead-card-header">
-                                    <div class="lead-card-info">
-                                        <div class="lead-avatar avatar-green">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
-                                        <div>
-                                            <div class="lead-name">Job #{{ $job->id }}</div>
-                                            <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
-                                        </div>
+                        <div class="lead-card job-card"
+                             draggable="true"
+                             data-job-id="{{ $job->id }}"
+                             data-order-id="{{ $job->order_id }}"
+                             data-current-status="shipped"
+                             data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-job-type="{{ strtolower($job->job_type ?? '') }}"
+                             data-created-date="{{ $job->created_at->format('Y-m-d') }}"
+                             onclick="navigateToOrder(event, {{ $job->order_id }})"
+                             style="cursor: grab;">
+                            <div class="lead-card-header">
+                                <div class="lead-card-info">
+                                    <div class="lead-avatar avatar-green">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
+                                    <div>
+                                        <div class="lead-name">Job #{{ $job->id }}</div>
+                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
                                     </div>
-                                    <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
                                 </div>
-                                <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
-                                <div class="lead-tags">
-                                    <span class="status-badge status-shipped">{{ strtoupper($job->status) }}</span>
-                                    <span class="status-badge tag-green">{{ $job->job_type }}</span>
-                                </div>
+                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                            </div>
+                            <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
+                            <div class="lead-tags">
+                                <span class="status-badge status-shipped">{{ strtoupper(str_replace('_', ' ', $job->status)) }}</span>
+                                <span class="status-badge tag-green">{{ $job->job_type }}</span>
+                            </div>
                         </div>
                     @empty
                         <p style="padding: 20px; text-align: center; color: #999;">No shipped jobs</p>
@@ -166,22 +201,31 @@
                 </div>
                 <div class="lead-column-body" data-status="cancelled">
                     @forelse($jobsByStatus['cancelled'] as $job)
-                        <div class="lead-card job-card" draggable="true" data-job-id="{{ $job->id }}" data-order-id="{{ $job->order_id }}" data-current-status="cancelled" data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}" data-job-type="{{ strtolower($job->job_type ?? '') }}" data-created-date="{{ $job->created_at->format('Y-m-d') }}" onclick="navigateToOrder(event, {{ $job->order_id }})" style="cursor: grab;">
-                                <div class="lead-card-header">
-                                    <div class="lead-card-info">
-                                        <div class="lead-avatar avatar-red">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
-                                        <div>
-                                            <div class="lead-name">Job #{{ $job->id }}</div>
-                                            <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
-                                        </div>
+                        <div class="lead-card job-card"
+                             draggable="true"
+                             data-job-id="{{ $job->id }}"
+                             data-order-id="{{ $job->order_id }}"
+                             data-current-status="cancelled"
+                             data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-job-type="{{ strtolower($job->job_type ?? '') }}"
+                             data-created-date="{{ $job->created_at->format('Y-m-d') }}"
+                             onclick="navigateToOrder(event, {{ $job->order_id }})"
+                             style="cursor: grab;">
+                            <div class="lead-card-header">
+                                <div class="lead-card-info">
+                                    <div class="lead-avatar avatar-red">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
+                                    <div>
+                                        <div class="lead-name">Job #{{ $job->id }}</div>
+                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
                                     </div>
-                                    <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
                                 </div>
-                                <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
-                                <div class="lead-tags">
-                                    <span class="status-badge status-exception">{{ strtoupper($job->status) }}</span>
-                                    <span class="status-badge tag-red">{{ $job->job_type }}</span>
-                                </div>
+                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                            </div>
+                            <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
+                            <div class="lead-tags">
+                                <span class="status-badge status-cancelled">{{ strtoupper(str_replace('_', ' ', $job->status)) }}</span>
+                                <span class="status-badge tag-red">{{ $job->job_type }}</span>
+                            </div>
                         </div>
                     @empty
                         <p style="padding: 20px; text-align: center; color: #999;">No cancelled/exception jobs</p>
@@ -193,7 +237,6 @@
 
     <!-- Table View Content (Orders) -->
     <div id="tableView" class="view-content" style="display: none;">
-        <!-- Filters Section -->
         <div class="filters-section">
             <div class="filter-group">
                 <label>Status</label>
@@ -234,9 +277,8 @@
 
             <button class="btn-secondary lead-clear-filters" onclick="clearFilters()">Clear Filters</button>
 
-            <!-- View Toggle Buttons -->
             <div class="view-toggle-section">
-                <button class="view-toggle-btn " id="boardViewBtnBottom" data-view-toggle="board" onclick="switchView('board')">
+                <button class="view-toggle-btn" id="boardViewBtnBottom" data-view-toggle="board" onclick="switchView('board')">
                     <span class="view-toggle-icon-board" aria-hidden="true"></span>
                 </button>
                 <button class="view-toggle-btn active" id="tableViewBtnBottom" data-view-toggle="table" onclick="switchView('table')">
@@ -245,7 +287,6 @@
             </div>
         </div>
 
-        <!-- Jobs Table -->
         <div class="table-container">
             <table class="jobs-table">
                 <thead>
@@ -262,16 +303,34 @@
                 <tbody id="jobsTableBody">
                     @forelse($allJobs as $job)
                         @php
-                            $orderStatus = strtolower($job->order->fulfillment_status ?? 'pending');
-                            $orderStatusClass = str_replace('_', '-', $orderStatus);
-                            $orderStatusLabel = strtoupper(str_replace('_', ' ', $orderStatus));
+                            $jobStatus = in_array($job->status, ['failed', 'exception', 'cancelled'], true)
+                                ? 'cancelled'
+                                : strtolower($job->status ?? 'pending');
+
+                            $jobStatusClass = str_replace('_', '-', $jobStatus);
+
+                            $jobStatusLabel = match ($jobStatus) {
+                                'pending' => 'NEW',
+                                'artwork_needed' => 'ARTWORK NEEDED',
+                                'in_production' => 'IN PRODUCTION',
+                                'shipped' => 'SHIPPED',
+                                'cancelled' => 'CANCELLED/EXCEPTION',
+                                default => strtoupper(str_replace('_', ' ', $jobStatus)),
+                            };
                         @endphp
-                        <tr data-job-id="{{ $job->id }}" data-order-id="{{ $job->order_id }}" data-store="{{ strtolower($job->shop->shop_domain ?? 'n/a') }}" data-product-type="{{ strtolower($job->job_type ?? '-') }}" data-status="{{ $orderStatus }}" data-created-date="{{ $job->created_at->format('Y-m-d') }}">
+                        <tr
+                            data-job-id="{{ $job->id }}"
+                            data-order-id="{{ $job->order_id }}"
+                            data-store="{{ strtolower($job->shop->shop_domain ?? 'n/a') }}"
+                            data-product-type="{{ strtolower($job->job_type ?? '-') }}"
+                            data-status="{{ $jobStatus }}"
+                            data-created-date="{{ $job->created_at->format('Y-m-d') }}"
+                        >
                             <td>#{{ $job->id }}</td>
                             <td>{{ $job->shop->shop_domain ?? 'N/A' }}</td>
                             <td>#{{ $job->order_id ?? 'N/A' }}</td>
                             <td>{{ $job->job_type ?? '-' }}</td>
-                            <td><span class="status-badge status-{{ $orderStatusClass }}">{{ $orderStatusLabel }}</span></td>
+                            <td><span class="status-badge status-{{ $jobStatusClass }}">{{ $jobStatusLabel }}</span></td>
                             <td>{{ $job->created_at->format('Y-m-d H:i') }}</td>
                             <td><a href="{{ route('crm.order-detail', $job->order_id) }}" class="btn-link">View</a></td>
                         </tr>
@@ -284,14 +343,15 @@
             </table>
         </div>
 
-        <!-- Pagination -->
         <div class="pagination">
             @if($allJobs->onFirstPage())
                 <button class="btn-pagination" disabled>Previous</button>
             @else
                 <a href="{{ $allJobs->previousPageUrl() }}" class="btn-pagination">Previous</a>
             @endif
+
             <span class="page-info">Page {{ $allJobs->currentPage() }} of {{ $allJobs->lastPage() }}</span>
+
             @if($allJobs->hasMorePages())
                 <a href="{{ $allJobs->nextPageUrl() }}" class="btn-pagination">Next</a>
             @else
@@ -348,6 +408,13 @@
             return status;
         }
 
+        function normalizeBoardStatus(status) {
+            if (status === 'failed' || status === 'exception') {
+                return 'cancelled';
+            }
+            return status;
+        }
+
         function switchView(viewType) {
             const boardView = document.getElementById('boardView');
             const tableView = document.getElementById('tableView');
@@ -369,14 +436,12 @@
             }
         }
 
-        // Navigate to order detail
         function navigateToOrder(event, orderId) {
             if (event.target.closest('[draggable]') === event.currentTarget) {
                 window.location.href = `/crm/order/detail/${orderId}`;
             }
         }
 
-        // Setup drag and drop for all cards
         function setupDragAndDrop() {
             const cards = document.querySelectorAll('.job-card');
             const columns = document.querySelectorAll('.lead-column-body');
@@ -400,7 +465,7 @@
             e.dataTransfer.effectAllowed = 'move';
         }
 
-        function handleDragEnd(e) {
+        function handleDragEnd() {
             if (draggedOrderCard) {
                 draggedOrderCard.style.opacity = '1';
             }
@@ -412,7 +477,7 @@
             this.style.backgroundColor = '#f0f0f0';
         }
 
-        function handleDragLeave(e) {
+        function handleDragLeave() {
             this.style.backgroundColor = '';
         }
 
@@ -420,7 +485,7 @@
             e.preventDefault();
             this.style.backgroundColor = '';
 
-            if (!draggedJobId) return;
+            if (!draggedJobId || !draggedOrderCard) return;
 
             const newStatus = this.dataset.status;
             const oldStatus = draggedOrderCard.dataset.currentStatus;
@@ -430,14 +495,10 @@
                 return;
             }
 
-            // Get the order ID from the card
-            const orderId = draggedOrderCard.dataset.orderId;
-            
-            // Update status via AJAX
-            updateOrderStatusAjax(orderId, newStatus, draggedOrderCard);
+            updateJobStatusAjax(draggedJobId, newStatus, draggedOrderCard);
         }
 
-        function updateOrderStatusAjax(orderId, newStatus, cardElement) {
+        function updateJobStatusAjax(jobId, newStatus, cardElement) {
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
             fetch(`/api/v1/update-status`, {
@@ -447,24 +508,22 @@
                     'X-CSRF-TOKEN': csrfToken
                 },
                 body: JSON.stringify({
-                    id: orderId,
-                    type: 'order',
+                    id: jobId,
+                    type: 'job',
                     status: newStatus
                 })
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    updateKanbanCardsByOrder(orderId, newStatus);
-
-                    // Update table status
-                    updateTableOrderStatus(orderId, newStatus);
-
-                    console.log('Order status updated successfully');
+                    updateSingleKanbanCard(jobId, newStatus);
+                    updateTableJobStatus(jobId, newStatus);
+                    console.log('Job status updated successfully');
                 } else {
                     window.crmAlert('Error updating status', 'error');
                     cardElement.style.opacity = '1';
                 }
+
                 draggedOrderCard = null;
                 draggedJobId = null;
             })
@@ -477,18 +536,17 @@
             });
         }
 
-        function updateKanbanCardsByOrder(orderId, newStatus) {
+        function updateSingleKanbanCard(jobId, newStatus) {
             const normalizedStatus = normalizeBoardStatus(newStatus);
             const targetColumn = document.querySelector(`.lead-column-body[data-status="${normalizedStatus}"]`);
-            if (!targetColumn) return;
+            const card = document.querySelector(`.job-card[data-job-id="${jobId}"]`);
 
-            const matchingCards = document.querySelectorAll(`.job-card[data-order-id="${orderId}"]`);
-            matchingCards.forEach(card => {
-                targetColumn.appendChild(card);
-                card.dataset.currentStatus = normalizedStatus;
-                updateCardStatusBadge(card, normalizedStatus);
-                card.style.opacity = '1';
-            });
+            if (!targetColumn || !card) return;
+
+            targetColumn.appendChild(card);
+            card.dataset.currentStatus = normalizedStatus;
+            updateCardStatusBadge(card, normalizedStatus);
+            card.style.opacity = '1';
 
             applyBoardFilters();
             refreshColumnEmptyStates();
@@ -501,8 +559,23 @@
 
             const displayStatus = getStatusDisplayName(status);
             const className = getStatusClassName(status);
+
             statusBadge.textContent = displayStatus;
             statusBadge.className = `status-badge status-${className}`;
+        }
+
+        function updateTableJobStatus(jobId, newStatus) {
+            const row = document.querySelector(`#jobsTableBody tr[data-job-id="${jobId}"]`);
+            if (!row) return;
+
+            const statusCell = row.querySelector('td:nth-child(5)');
+            if (statusCell) {
+                const displayStatus = getStatusDisplayName(newStatus);
+                const className = getStatusClassName(newStatus);
+                statusCell.innerHTML = `<span class="status-badge status-${className}">${displayStatus}</span>`;
+            }
+
+            row.dataset.status = normalizeFilterStatus(newStatus);
         }
 
         function refreshColumnCounts() {
@@ -514,6 +587,7 @@
 
                 const totalCards = Array.from(body.querySelectorAll('.job-card'))
                     .filter(card => card.style.display !== 'none').length;
+
                 const title = header.textContent.split('(')[0].trim();
                 header.textContent = `${title} (${totalCards})`;
             });
@@ -524,6 +598,7 @@
             columns.forEach(column => {
                 const cards = Array.from(column.querySelectorAll('.job-card'))
                     .filter(card => card.style.display !== 'none');
+
                 const emptyMessage = column.querySelector('p');
 
                 if (cards.length > 0 && emptyMessage) {
@@ -549,14 +624,8 @@
                 shipped: 'No shipped jobs',
                 cancelled: 'No cancelled/exception jobs'
             };
-            return messages[status] || 'No jobs';
-        }
 
-        function normalizeBoardStatus(status) {
-            if (status === 'failed' || status === 'exception') {
-                return 'cancelled';
-            }
-            return status;
+            return messages[status] || 'No jobs';
         }
 
         function applyBoardFilters() {
@@ -614,6 +683,7 @@
 
             if (boardFilterBtn) boardFilterBtn.addEventListener('click', applyBoardFilters);
             if (boardStatusFilter) boardStatusFilter.addEventListener('change', applyBoardFilters);
+
             if (boardSearchInput) {
                 boardSearchInput.addEventListener('keyup', (e) => {
                     if (e.key === 'Enter') {
@@ -648,56 +718,34 @@
             applyBoardFilters();
         }
 
-        function updateTableOrderStatus(orderId, newStatus) {
-            // Find the table row with this order ID
-            const table = document.querySelector('.jobs-table');
-            if (!table) return;
-
-            const rows = table.querySelectorAll('tbody tr');
-            rows.forEach(row => {
-                const orderIdCell = row.querySelector('td:nth-child(3)');
-                if (orderIdCell && orderIdCell.textContent.includes(`#${orderId}`)) {
-                    // Update the status cell (5th column)
-                    const statusCell = row.querySelector('td:nth-child(5)');
-                    if (statusCell) {
-                        const displayStatus = getStatusDisplayName(newStatus);
-                        const className = getStatusClassName(newStatus);
-                        statusCell.innerHTML = `<span class="status-badge status-${className}">${displayStatus}</span>`;
-                    }
-                    row.dataset.status = normalizeFilterStatus(newStatus);
-                }
-            });
-        }
-
-        // Map database status to display names
         function getStatusDisplayName(status) {
             const statusMap = {
-                'pending': 'NEW',
-                'artwork_needed': 'ARTWORK NEEDED',
-                'in_production': 'IN PRODUCTION',
-                'shipped': 'SHIPPED',
-                'cancelled': 'CANCELLED/EXCEPTION',
-                'failed': 'CANCELLED/EXCEPTION',
-                'exception': 'CANCELLED/EXCEPTION'
+                pending: 'NEW',
+                artwork_needed: 'ARTWORK NEEDED',
+                in_production: 'IN PRODUCTION',
+                shipped: 'SHIPPED',
+                cancelled: 'CANCELLED/EXCEPTION',
+                failed: 'CANCELLED/EXCEPTION',
+                exception: 'CANCELLED/EXCEPTION'
             };
+
             return statusMap[status] || status.toUpperCase().replace(/_/g, ' ');
         }
 
-        // Get status class name
         function getStatusClassName(status) {
             const classMap = {
-                'pending': 'pending',
-                'artwork_needed': 'artwork-needed',
-                'in_production': 'in-production',
-                'shipped': 'shipped',
-                'cancelled': 'cancelled',
-                'failed': 'cancelled',
-                'exception': 'cancelled'
+                pending: 'pending',
+                artwork_needed: 'artwork-needed',
+                in_production: 'in-production',
+                shipped: 'shipped',
+                cancelled: 'cancelled',
+                failed: 'cancelled',
+                exception: 'cancelled'
             };
+
             return classMap[status] || status.replace(/_/g, '-');
         }
 
-        // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             setupDragAndDrop();
             setupFilters();

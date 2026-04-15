@@ -6,6 +6,7 @@ use App\Models\Shop;
 use App\Models\FulfillmentService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ShopifyService
 {
@@ -189,6 +190,147 @@ class ShopifyService
     }
 
 
+
+    public function getFulfillmentOrder(int $shopId, string $fulfillmentOrderId): array
+    {
+        $gid = $this->toFulfillmentOrderGid($fulfillmentOrderId);
+    
+        $query = <<<'GQL'
+        query GetFulfillmentOrder($id: ID!) {
+          fulfillmentOrder(id: $id) {
+            id
+            status
+            requestStatus
+            fulfillAt
+            fulfillBy
+            supportedActions {
+              action
+              externalUrl
+            }
+            order {
+              id
+              legacyResourceId
+              name
+            }
+            assignedLocation {
+              location {
+                id
+                name
+              }
+            }
+            destination {
+              firstName
+              lastName
+              company
+              address1
+              address2
+              city
+              zip
+              countryCode
+              phone
+              email
+            }
+            merchantRequests(first: 10) {
+              edges {
+                node {
+                  kind
+                  message
+                  sentAt
+                }
+              }
+            }
+            lineItems(first: 100) {
+              edges {
+                node {
+                  id
+                  totalQuantity
+                  remainingQuantity
+                  inventoryItemId
+                  lineItem {
+                    id
+                    sku
+                    name
+                  }
+                }
+              }
+            }
+          }
+        }
+        GQL;
+    
+        $result = $this->graphqlRequest($shopId, $query, [
+            'id' => $gid,
+        ]);
+    
+        if (!$result['success']) {
+            return $result;
+        }
+    
+        $fo = $result['data']['fulfillmentOrder'] ?? null;
+    
+        if (!$fo) {
+            return [
+                'success' => false,
+                'status' => 404,
+                'message' => 'Fulfillment order not found',
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Fulfillment order fetched successfully',
+            'data' => [
+                'fulfillment_order' => [
+                    'id' => $fo['id'] ?? null,
+                    'legacy_id' => $this->legacyIdFromGid($fo['id'] ?? null),
+                    'status' => $fo['status'] ?? null,
+                    'request_status' => $fo['requestStatus'] ?? null,
+                    'assignment_status' => $fo['assignmentStatus'] ?? null,
+                    'fulfill_at' => $fo['fulfillAt'] ?? null,
+                    'fulfill_by' => $fo['fulfillBy'] ?? null,
+                    'supported_actions' => $fo['supportedActions'] ?? [],
+                    'order_gid' => data_get($fo, 'order.id'),
+                    'order_id' => data_get($fo, 'order.legacyResourceId'),
+                    'order_name' => data_get($fo, 'order.name'),
+                    'assigned_location_gid' => data_get($fo, 'assignedLocation.location.id'),
+                    'assigned_location_id' => $this->legacyIdFromGid(data_get($fo, 'assignedLocation.location.id')),
+                    'assigned_location_name' => data_get($fo, 'assignedLocation.location.name'),
+                    'destination' => $fo['destination'] ?? null,
+                    'merchant_requests' => collect(data_get($fo, 'merchantRequests.edges', []))
+                        ->pluck('node')
+                        ->values()
+                        ->all(),
+                    'line_items' => collect(data_get($fo, 'lineItems.edges', []))
+                        ->map(function ($edge) {
+                            $node = $edge['node'] ?? [];
+    
+                            return [
+                                'id' => $node['id'] ?? null,
+                                'legacy_id' => $this->legacyIdFromGid($node['id'] ?? null),
+                                'total_quantity' => $node['totalQuantity'] ?? null,
+                                'remaining_quantity' => $node['remainingQuantity'] ?? null,
+                                'inventory_item_id' => $node['inventoryItemId'] ?? null,
+                                'line_item_gid' => data_get($node, 'lineItem.id'),
+                                'line_item_id' => $this->legacyIdFromGid(data_get($node, 'lineItem.id')),
+                                'sku' => data_get($node, 'lineItem.sku'),
+                                'name' => data_get($node, 'lineItem.name'),
+                                'raw' => $node,
+                            ];
+                        })
+                        ->values()
+                        ->all(),
+                    'raw' => $fo,
+                ],
+            ],
+            'errors' => [],
+        ];
+    }
+
+
+
     /**
      * Convert a fulfillment order ID to a GraphQL global ID format if it's not already
      */
@@ -206,13 +348,36 @@ class ShopifyService
         int $shopId,
         string $mutationName,
         $fulfillmentOrderId,
-        ?string $message = null
+        ?string $message = null,
+        ?string $estimatedShippedAt = null
     ): array {
-                $gid = $this->toFulfillmentOrderGid($fulfillmentOrderId);
-                $selection = $mutationName;
-
-                $query = <<<GQL
-        mutation {$mutationName}(\$id: ID!, \$message: String) {
+        $gid = $this->toFulfillmentOrderGid($fulfillmentOrderId);
+        $selection = $mutationName;
+    
+        $usesEstimatedShippedAt = $mutationName === 'fulfillmentOrderAcceptFulfillmentRequest';
+    
+            $query = $usesEstimatedShippedAt
+                ? <<<'GQL'
+        mutation Mutation($id: ID!, $message: String, $estimatedShippedAt: DateTime) {
+        fulfillmentOrderAcceptFulfillmentRequest(
+            id: $id,
+            message: $message,
+            estimatedShippedAt: $estimatedShippedAt
+        ) {
+            fulfillmentOrder {
+            id
+            status
+            requestStatus
+            }
+            userErrors {
+            field
+            message
+            }
+        }
+        }
+        GQL
+                : <<<GQL
+        mutation Mutation(\$id: ID!, \$message: String) {
         {$selection}(id: \$id, message: \$message) {
             fulfillmentOrder {
             id
@@ -226,34 +391,42 @@ class ShopifyService
         }
         }
         GQL;
-
-                $result = $this->graphqlRequest($shopId, $query, [
-                    'id' => $gid,
-                    'message' => $message,
-                ]);
-                if (!$result['success']) {
-                    return $result;
-                }
-
-                $payload = $result['data'][$selection] ?? [];
-                $userErrors = $payload['userErrors'] ?? [];
-                if (!empty($userErrors)) {
-                    return [
-                        'success' => false,
-                        'status' => 422,
-                        'message' => 'Shopify mutation returned user errors',
-                        'data' => $payload,
-                        'errors' => $userErrors,
-                    ];
-                }
-
-                return [
-                    'success' => true,
-                    'status' => $result['status'],
-                    'message' => 'Mutation completed successfully',
-                    'data' => $payload['fulfillmentOrder'] ?? $payload,
-                    'errors' => [],
-                ];
+    
+        $variables = [
+            'id' => $gid,
+            'message' => $message,
+        ];
+    
+        if ($usesEstimatedShippedAt) {
+            $variables['estimatedShippedAt'] = $estimatedShippedAt;
+        }
+    
+        $result = $this->graphqlRequest($shopId, $query, $variables);
+    
+        if (!$result['success']) {
+            return $result;
+        }
+    
+        $payload = $result['data'][$selection] ?? [];
+        $userErrors = $payload['userErrors'] ?? [];
+    
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => $userErrors[0]['message'] ?? 'Shopify mutation returned user errors',
+                'data' => $payload,
+                'errors' => $userErrors,
+            ];
+        }
+    
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Mutation completed successfully',
+            'data' => $payload['fulfillmentOrder'] ?? $payload,
+            'errors' => [],
+        ];
     }
 
     /**
@@ -273,6 +446,12 @@ class ShopifyService
             'message' => 'Order fetched successfully',
         ];
     }
+
+    public function getOrderById(int $shopId, $shopifyOrderId): array
+    {
+        return $this->getOrder($shopId, $shopifyOrderId);
+    }
+    
 
     /**
      * getFulfillmentOrdersForOrder - Retrieve fulfillment orders for a specific Shopify order. This is used to determine which fulfillment orders are associated with an order when creating fulfillments.
@@ -310,16 +489,77 @@ class ShopifyService
         ];
     }
 
+    public function getAssignedFulfillmentOrdersGraphql(int $shopId, ?array $locationIds = null): array
+    {
+            $query = <<<'GQL'
+        query AssignedFulfillmentOrders($first: Int!, $assignmentStatus: FulfillmentOrderAssignmentStatus, $locationIds: [ID!]) {
+        assignedFulfillmentOrders(
+            first: $first,
+            assignmentStatus: $assignmentStatus,
+            locationIds: $locationIds
+        ) {
+            edges {
+            node {
+                id
+                status
+                requestStatus
+                assignmentStatus
+                order {
+                id
+                legacyResourceId
+                name
+                }
+                assignedLocation {
+                location {
+                    id
+                    name
+                }
+                }
+            }
+            }
+        }
+        }
+        GQL;
+
+        $variables = [
+            'first' => 50,
+            'assignmentStatus' => null,
+            'locationIds' => $locationIds,
+        ];
+
+        $result = $this->graphqlRequest($shopId, $query, $variables);
+
+        if (!$result['success']) {
+            return $result;
+        }
+
+        return [
+            'success' => true,
+            'status' => $result['status'],
+            'message' => 'Assigned fulfillment orders fetched successfully',
+            'data' => collect(data_get($result, 'data.assignedFulfillmentOrders.edges', []))
+                ->pluck('node')
+                ->values()
+                ->all(),
+            'errors' => [],
+        ];
+    }
+
     /**
      * acceptFulfillmentRequest - Accept a fulfillment request for a specific fulfillment order. This is used when the app wants to accept responsibility for fulfilling a fulfillment order that has requested fulfillment.
      */
-    public function acceptFulfillmentRequest(int $shopId, $fulfillmentOrderId, ?string $message = null): array
-    {
+    public function acceptFulfillmentRequest(
+        int $shopId,
+        $fulfillmentOrderId,
+        ?string $message = null,
+        ?string $estimatedShippedAt = null
+    ): array {
         return $this->runFulfillmentOrderMutation(
             $shopId,
             'fulfillmentOrderAcceptFulfillmentRequest',
             $fulfillmentOrderId,
-            $message
+            $message,
+            $estimatedShippedAt
         );
     }
 
@@ -369,59 +609,144 @@ class ShopifyService
     {
         try {
             $lineItemsByFO = $data['line_items_by_fulfillment_order'] ?? [];
-
+    
             if (empty($lineItemsByFO)) {
                 if (!empty($data['fulfillment_order_id'])) {
                     $lineItemsByFO[] = [
-                        'fulfillment_order_id' => $data['fulfillment_order_id'],
-                        'fulfillment_order_line_items' => $data['line_items'] ?? [],
+                        'fulfillmentOrderId' => $this->toFulfillmentOrderGid($data['fulfillment_order_id']),
+                        'fulfillmentOrderLineItems' => collect($data['line_items'] ?? [])
+                            ->map(function ($item) {
+                                return array_filter([
+                                    'id' => !empty($item['id'])
+                                        ? (str_starts_with((string) $item['id'], 'gid://')
+                                            ? (string) $item['id']
+                                            : 'gid://shopify/FulfillmentOrderLineItem/' . $item['id'])
+                                        : null,
+                                    'quantity' => isset($item['quantity']) ? (int) $item['quantity'] : null,
+                                ], fn ($v) => $v !== null);
+                            })
+                            ->values()
+                            ->all(),
                     ];
                 } else {
-                    $fo = $this->getFulfillmentOrdersForOrder((int) $shopId, $shopifyOrderId);
-                    if (!$fo['success'] || empty($fo['data'])) {
+                    return [
+                        'success' => false,
+                        'status' => 422,
+                        'message' => 'fulfillment_order_id or line_items_by_fulfillment_order is required',
+                        'data' => null,
+                        'errors' => [],
+                    ];
+                }
+            } else {
+                $lineItemsByFO = collect($lineItemsByFO)
+                    ->map(function ($fo) {
                         return [
-                            'success' => false,
-                            'message' => 'No fulfillment order found for this Shopify order',
-                            'data' => $fo['data'] ?? null,
+                            'fulfillmentOrderId' => $this->toFulfillmentOrderGid($fo['fulfillment_order_id'] ?? $fo['fulfillmentOrderId']),
+                            'fulfillmentOrderLineItems' => collect($fo['fulfillment_order_line_items'] ?? $fo['fulfillmentOrderLineItems'] ?? [])
+                                ->map(function ($item) {
+                                    return array_filter([
+                                        'id' => !empty($item['id'])
+                                            ? (str_starts_with((string) $item['id'], 'gid://')
+                                                ? (string) $item['id']
+                                                : 'gid://shopify/FulfillmentOrderLineItem/' . $item['id'])
+                                            : null,
+                                        'quantity' => isset($item['quantity']) ? (int) $item['quantity'] : null,
+                                    ], fn ($v) => $v !== null);
+                                })
+                                ->values()
+                                ->all(),
                         ];
+                    })
+                    ->values()
+                    ->all();
+            }
+    
+            $trackingInfo = null;
+            if (!empty($data['tracking_info']) && is_array($data['tracking_info'])) {
+                $trackingInfo = array_filter([
+                    'company' => $data['tracking_info']['company'] ?? $data['tracking_info']['tracking_company'] ?? null,
+                    'number' => $data['tracking_info']['number'] ?? $data['tracking_info']['tracking_number'] ?? null,
+                    'numbers' => !empty($data['tracking_info']['numbers']) ? array_values($data['tracking_info']['numbers']) : null,
+                    'url' => $data['tracking_info']['url'] ?? $data['tracking_info']['tracking_url'] ?? null,
+                    'urls' => !empty($data['tracking_info']['urls']) ? array_values($data['tracking_info']['urls']) : null,
+                ], fn ($v) => $v !== null && $v !== '');
+            }
+    
+                    $mutation = <<<'GQL'
+            mutation FulfillmentCreate($fulfillment: FulfillmentInput!, $message: String) {
+            fulfillmentCreate(fulfillment: $fulfillment, message: $message) {
+                fulfillment {
+                id
+                status
+                trackingInfo(first: 10) {
+                    company
+                    number
+                    url
+                }
+                fulfillmentLineItems(first: 50) {
+                    edges {
+                    node {
+                        id
+                        quantity
+                        lineItem {
+                        id
+                        name
+                        }
                     }
-
-                    foreach ($fo['data'] as $fulfillmentOrder) {
-                        $lineItemsByFO[] = [
-                            'fulfillment_order_id' => $fulfillmentOrder['id'],
-                            'fulfillment_order_line_items' => [],
-                        ];
                     }
                 }
+                }
+                userErrors {
+                field
+                message
+                }
             }
-
-            $payload = [
+            }
+            GQL;
+    
+            $variables = [
                 'fulfillment' => [
-                    'line_items_by_fulfillment_order' => $lineItemsByFO,
-                    'tracking_info' => $data['tracking_info'] ?? null,
-                    'notify_customer' => (bool) ($data['notify_customer'] ?? true),
-                ]
+                    'lineItemsByFulfillmentOrder' => $lineItemsByFO,
+                    'notifyCustomer' => (bool) ($data['notify_customer'] ?? true),
+                    'trackingInfo' => $trackingInfo,
+                ],
+                'message' => $data['message'] ?? null,
             ];
-
-            $result = $this->request((int) $shopId, 'POST', 'fulfillments', $payload);
-
-            Log::info('Shopify Create ORDER Fullfillment response', [
-                'shop_id' => $shopId,
-                'response' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-            ]);
-
+    
+            $result = $this->graphqlRequest((int) $shopId, $mutation, $variables);
+    
             if (!$result['success']) {
                 return $result;
             }
-
+    
+            $payload = data_get($result, 'data.fulfillmentCreate');
+            $userErrors = $payload['userErrors'] ?? [];
+    
+            if (!empty($userErrors)) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => $userErrors[0]['message'] ?? 'Failed to create fulfillment',
+                    'data' => $payload,
+                    'errors' => $userErrors,
+                ];
+            }
+    
             return [
                 'success' => true,
-                'data' => $result['data']['fulfillment'] ?? $result['data'],
                 'status' => $result['status'],
                 'message' => 'Fulfillment created successfully',
+                'data' => $payload['fulfillment'] ?? null,
+                'errors' => [],
             ];
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
         }
     }
 
@@ -579,6 +904,113 @@ class ShopifyService
         ];
     }
 
+    private function legacyIdFromGid(string $gid): string
+    {
+        return Str::afterLast($gid, '/');
+    }
+
+    private function buildWeightBasedMethodDefinition(
+        string $name,
+        float $amount,
+        string $currencyCode,
+        float $minWeightLb,
+        ?float $maxWeightLb = null
+    ): array {
+        $conditions = [
+            [
+                'operator' => 'GREATER_THAN_OR_EQUAL_TO',
+                'criteria' => [
+                    'value' => $minWeightLb,
+                    'unit' => 'POUNDS',
+                ],
+            ],
+        ];
+    
+        if ($maxWeightLb !== null) {
+            $conditions[] = [
+                'operator' => 'LESS_THAN_OR_EQUAL_TO',
+                'criteria' => [
+                    'value' => $maxWeightLb,
+                    'unit' => 'POUNDS',
+                ],
+            ];
+        }
+    
+        return [
+            'name' => $name,
+            'active' => true,
+            'rateDefinition' => [
+                'price' => [
+                    'amount' => $amount,
+                    'currencyCode' => $currencyCode,
+                ],
+            ],
+            'weightConditionsToCreate' => $conditions,
+        ];
+    }
+    
+    private function getFallbackWeightRateSlabs(string $currencyCode = 'USD'): array
+    {
+        return [
+            $this->buildWeightBasedMethodDefinition('Standard', 4.99, $currencyCode, 0, 1),
+            $this->buildWeightBasedMethodDefinition('Standard', 7.99, $currencyCode, 1.0001, 5),
+            $this->buildWeightBasedMethodDefinition('Standard', 12.99, $currencyCode, 5.0001, null),
+        ];
+    }
+    
+    private function buildWeightBasedUsZoneInput(string $currencyCode = 'USD'): array
+    {
+        return [
+            'name' => 'United States',
+            'countries' => [
+                [
+                    'code' => 'US',
+                    'provinces' => array_map(
+                        fn (string $code) => ['code' => $code],
+                        $this->getUsProvinceCodes()
+                    ),
+                ],
+            ],
+            'methodDefinitionsToCreate' => $this->getFallbackWeightRateSlabs($currencyCode),
+        ];
+    }
+
+
+    public function createCarrierService(
+        int $shopId,
+        string $callbackUrl,
+        string $name = 'DTFTA USPS Rates'
+    ): array {
+            $query = <<<'GRAPHQL'
+        mutation CarrierServiceCreate($input: DeliveryCarrierServiceCreateInput!) {
+        carrierServiceCreate(input: $input) {
+            carrierService {
+            id
+            name
+            callbackUrl
+            active
+            supportsServiceDiscovery
+            }
+            userErrors {
+            field
+            message
+            }
+        }
+        }
+        GRAPHQL;
+    
+        $variables = [
+            'input' => [
+                'name' => $name,
+                'callbackUrl' => $callbackUrl,
+                'supportsServiceDiscovery' => true,
+                'active' => true,
+            ],
+        ];
+    
+        return $this->graphqlRequest($shopId, $query, $variables);
+    }
+
 
     public function createDeliveryProfile(int $shopId, string $locationId, string $profileName = 'DTFTA Shipping'): array
     {
@@ -619,79 +1051,9 @@ class ShopifyService
                     'locationGroupsToCreate' => [
                         [
                             'locationsToAdd' => [$locationGid],
-                            'zonesToCreate' => [
-                                [
-                                    'name' => 'United States',
-                                    'countries' => [
-                                        [
-                                            'code' => 'US',
-                                            'provinces' => [
-                                                ['code' => 'AL'],
-                                                ['code' => 'AK'],
-                                                ['code' => 'AZ'],
-                                                ['code' => 'AR'],
-                                                ['code' => 'CA'],
-                                                ['code' => 'CO'],
-                                                ['code' => 'CT'],
-                                                ['code' => 'DE'],
-                                                ['code' => 'FL'],
-                                                ['code' => 'GA'],
-                                                ['code' => 'HI'],
-                                                ['code' => 'ID'],
-                                                ['code' => 'IL'],
-                                                ['code' => 'IN'],
-                                                ['code' => 'IA'],
-                                                ['code' => 'KS'],
-                                                ['code' => 'KY'],
-                                                ['code' => 'LA'],
-                                                ['code' => 'ME'],
-                                                ['code' => 'MD'],
-                                                ['code' => 'MA'],
-                                                ['code' => 'MI'],
-                                                ['code' => 'MN'],
-                                                ['code' => 'MS'],
-                                                ['code' => 'MO'],
-                                                ['code' => 'MT'],
-                                                ['code' => 'NE'],
-                                                ['code' => 'NV'],
-                                                ['code' => 'NH'],
-                                                ['code' => 'NJ'],
-                                                ['code' => 'NM'],
-                                                ['code' => 'NY'],
-                                                ['code' => 'NC'],
-                                                ['code' => 'ND'],
-                                                ['code' => 'OH'],
-                                                ['code' => 'OK'],
-                                                ['code' => 'OR'],
-                                                ['code' => 'PA'],
-                                                ['code' => 'RI'],
-                                                ['code' => 'SC'],
-                                                ['code' => 'SD'],
-                                                ['code' => 'TN'],
-                                                ['code' => 'TX'],
-                                                ['code' => 'UT'],
-                                                ['code' => 'VT'],
-                                                ['code' => 'VA'],
-                                                ['code' => 'WA'],
-                                                ['code' => 'WV'],
-                                                ['code' => 'WI'],
-                                                ['code' => 'WY'],
-                                            ],
-                                        ],
-                                    ],
-                                    'methodDefinitionsToCreate' => [
-                                        [
-                                            'name' => 'Standard',
-                                            'rateDefinition' => [
-                                                'price' => [
-                                                    'amount' => 4.99,
-                                                    'currencyCode' => 'USD',
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
+                        'zonesToCreate' => [
+                            $this->buildWeightBasedUsZoneInput('USD'),
+                        ],
                         ],
                     ],
                 ],
@@ -767,54 +1129,237 @@ class ShopifyService
             }
     }
 
-    public function getDeliveryProfileDetails(int $shopId, string $deliveryProfileId): array
-    {
-            try {
-                $profileGid = str_starts_with($deliveryProfileId, 'gid://')
-                    ? $deliveryProfileId
-                    : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
-
-                $query = <<<'GRAPHQL'
-        query GetDeliveryProfile($id: ID!) {
-        node(id: $id) {
-            ... on DeliveryProfile {
-            id
-            name
-            profileLocationGroups {
-                locationGroup {
+    public function createDeliveryProfileWithCarrierRate(
+        int $shopId,
+        string $locationId,
+        string $carrierServiceId,
+        string $profileName = 'DTFTA Shipping',
+        string $methodName = 'Standard'
+    ): array {
+        try {
+            $locationGid = str_starts_with($locationId, 'gid://')
+                ? $locationId
+                : "gid://shopify/Location/{$locationId}";
+    
+            $carrierServiceGid = str_starts_with($carrierServiceId, 'gid://')
+                ? $carrierServiceId
+                : "gid://shopify/DeliveryCarrierService/{$carrierServiceId}";
+    
+                    $query = <<<'GRAPHQL'
+            mutation CreateDeliveryProfile($profile: DeliveryProfileInput!) {
+            deliveryProfileCreate(profile: $profile) {
+                profile {
                 id
-                locations(first: 20) {
-                    nodes {
+                name
+                profileLocationGroups {
+                    locationGroup {
                     id
-                    name
-                    }
-                }
-                }
-                locationGroupZones(first: 20) {
-                nodes {
-                    zone {
-                    id
-                    name
-                    countries {
-                        code {
-                        countryCode
-                        }
-                        provinces {
-                        code
-                        }
-                    }
-                    }
-                    methodDefinitions(first: 20) {
-                    nodes {
+                    locations(first: 10) {
+                        nodes {
                         id
                         name
-                        active
-                        rateProvider {
-                        ... on DeliveryRateDefinition {
+                        }
+                    }
+                    }
+                    locationGroupZones(first: 10) {
+                    nodes {
+                        zone {
+                        id
+                        name
+                        }
+                        methodDefinitions(first: 20) {
+                        nodes {
                             id
-                            price {
-                            amount
-                            currencyCode
+                            name
+                            active
+                            rateProvider {
+                            ... on DeliveryParticipant {
+                                id
+                                carrierService {
+                                id
+                                name
+                                }
+                                participantServices {
+                                name
+                                active
+                                }
+                            }
+                            ... on DeliveryRateDefinition {
+                                id
+                            }
+                            }
+                        }
+                        }
+                    }
+                    }
+                }
+                }
+                userErrors {
+                field
+                message
+                }
+            }
+            }
+            GRAPHQL;
+    
+            $variables = [
+                'profile' => [
+                    'name' => $profileName,
+                    'locationGroupsToCreate' => [
+                        [
+                            'locationsToAdd' => [$locationGid],
+                            'zonesToCreate' => [
+                                $this->buildAppCalculatedUsZoneInput($carrierServiceGid, $methodName),
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+    
+            $result = $this->graphqlRequest($shopId, $query, $variables);
+    
+            if (!($result['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'message' => $result['message'] ?? 'GraphQL request failed',
+                    'errors' => $result['errors'] ?? [],
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            if (!empty($result['errors'])) {
+                return [
+                    'success' => false,
+                    'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
+                    'errors' => $result['errors'],
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            $payload = data_get($result, 'data.deliveryProfileCreate');
+    
+            if (!$payload) {
+                return [
+                    'success' => false,
+                    'message' => 'Missing deliveryProfileCreate payload in Shopify response',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+    
+            if (!empty($payload['userErrors'])) {
+                return [
+                    'success' => false,
+                    'message' => $payload['userErrors'][0]['message'] ?? 'Failed to create delivery profile',
+                    'errors' => $payload['userErrors'],
+                    'data' => $payload,
+                ];
+            }
+    
+            return [
+                'success' => true,
+                'message' => 'Delivery profile with app-calculated carrier rate created successfully',
+                'data' => $payload['profile'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('createDeliveryProfileWithCarrierRate exception', [
+                'shop_id' => $shopId,
+                'location_id' => $locationId,
+                'carrier_service_id' => $carrierServiceId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    public function getDeliveryProfileDetails(int $shopId, string $deliveryProfileId): array
+    {
+        try {
+            $profileGid = str_starts_with($deliveryProfileId, 'gid://')
+                ? $deliveryProfileId
+                : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
+    
+                    $query = <<<'GRAPHQL'
+            query GetDeliveryProfile($id: ID!) {
+            node(id: $id) {
+                ... on DeliveryProfile {
+                id
+                name
+                profileLocationGroups {
+                    locationGroup {
+                    id
+                    locations(first: 20) {
+                        nodes {
+                        id
+                        name
+                        }
+                    }
+                    }
+                    locationGroupZones(first: 20) {
+                    nodes {
+                        zone {
+                        id
+                        name
+                        countries {
+                            code {
+                            countryCode
+                            }
+                            provinces {
+                            code
+                            }
+                        }
+                        }
+                        methodDefinitions(first: 50) {
+                        nodes {
+                            id
+                            name
+                            description
+                            active
+                            methodConditions {
+                            id
+                            field
+                            operator
+                            conditionCriteria {
+                                ... on Weight {
+                                value
+                                unit
+                                }
+                                ... on MoneyV2 {
+                                amount
+                                currencyCode
+                                }
+                            }
+                            }
+                            rateProvider {
+                            ... on DeliveryRateDefinition {
+                                id
+                                price {
+                                amount
+                                currencyCode
+                                }
+                            }
+                            ... on DeliveryParticipant {
+                                id
+                                carrierService {
+                                id
+                                name
+                                active
+                                callbackUrl
+                                }
+                                participantServices {
+                                name
+                                active
+                                }
+                                fixedFee {
+                                amount
+                                currencyCode
+                                }
+                                percentageOfRateFee
+                            }
                             }
                         }
                         }
@@ -824,59 +1369,68 @@ class ShopifyService
                 }
             }
             }
-        }
-        }
-        GRAPHQL;
-
-                $result = $this->graphqlRequest($shopId, $query, [
-                    'id' => $profileGid,
-                ]);
-
-                if (!($result['success'] ?? false)) {
-                    return [
-                        'success' => false,
-                        'message' => $result['message'] ?? 'GraphQL request failed',
-                        'errors' => $result['errors'] ?? [],
-                        'data' => $result['data'] ?? null,
-                    ];
-                }
-
-                if (!empty($result['errors'])) {
-                    return [
-                        'success' => false,
-                        'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
-                        'errors' => $result['errors'],
-                        'data' => $result['data'] ?? null,
-                    ];
-                }
-
-                $profile = data_get($result, 'data.node');
-
-                if (!$profile) {
-                    return [
-                        'success' => false,
-                        'message' => 'Delivery profile not found',
-                        'data' => $result['data'] ?? null,
-                    ];
-                }
-
-                return [
-                    'success' => true,
-                    'message' => 'Delivery profile fetched successfully',
-                    'data' => $profile,
-                ];
-            } catch (\Throwable $e) {
-                Log::error('getDeliveryProfileDetails exception', [
-                    'shop_id' => $shopId,
-                    'delivery_profile_id' => $deliveryProfileId,
-                    'error' => $e->getMessage(),
-                ]);
-
+            GRAPHQL;
+    
+            Log::info('Shopify getDeliveryProfileDetails request', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $profileGid,
+            ]);
+    
+            $result = $this->graphqlRequest($shopId, $query, [
+                'id' => $profileGid,
+            ]);
+    
+            Log::info('Shopify getDeliveryProfileDetails response', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $profileGid,
+                'result' => $result,
+            ]);
+    
+            if (!($result['success'] ?? false)) {
                 return [
                     'success' => false,
-                    'message' => $e->getMessage(),
+                    'message' => $result['message'] ?? 'GraphQL request failed',
+                    'errors' => $result['errors'] ?? [],
+                    'data' => $result['data'] ?? null,
                 ];
             }
+    
+            if (!empty($result['errors'])) {
+                return [
+                    'success' => false,
+                    'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
+                    'errors' => $result['errors'],
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            $profile = data_get($result, 'data.node');
+    
+            if (!$profile) {
+                return [
+                    'success' => false,
+                    'message' => 'Delivery profile not found',
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            return [
+                'success' => true,
+                'message' => 'Delivery profile fetched successfully',
+                'data' => $profile,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('getDeliveryProfileDetails exception', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $deliveryProfileId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
     }
 
     private function getUsProvinceCodes(): array
@@ -917,138 +1471,247 @@ class ShopifyService
         ];
     }
 
+    private function buildAppCalculatedUsZoneInput(
+        string $carrierServiceId,
+        string $methodName = 'Standard'
+    ): array {
+        return [
+            'name' => 'United States',
+            'countries' => [
+                [
+                    'code' => 'US',
+                    'provinces' => array_map(
+                        fn (string $code) => ['code' => $code],
+                        $this->getUsProvinceCodes()
+                    ),
+                ],
+            ],
+            'methodDefinitionsToCreate' => [
+                [
+                    'name' => $methodName,
+                    'active' => true,
+                    'participant' => [
+                        'carrierServiceId' => $carrierServiceId,
+                        'adaptToNewServices' => true,
+                        'participantServices' => [
+                            [
+                                'name' => $methodName,
+                                'active' => true,
+                            ],
+                        ],
+                        // optional merchant markup:
+                        // 'fixedFee' => [
+                        //     'amount' => 0,
+                        //     'currencyCode' => 'USD',
+                        // ],
+                        // 'percentageOfRateFee' => 0,
+                    ],
+                ],
+            ],
+        ];
+    }
+
     public function syncDeliveryProfileConfiguration(
         int $shopId,
         string $deliveryProfileId,
         string $locationId,
+        string $carrierServiceId,
         string $profileName = 'DTFTA Shipping',
-        float $standardRate = 4.99,
-        string $currencyCode = 'USD'
+        string $methodName = 'Standard'
     ): array {
-                try {
-                    $profileGid = str_starts_with($deliveryProfileId, 'gid://')
-                        ? $deliveryProfileId
-                        : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
-            
-                    $locationGid = str_starts_with($locationId, 'gid://')
-                        ? $locationId
-                        : "gid://shopify/Location/{$locationId}";
-            
-                    $details = $this->getDeliveryProfileDetails($shopId, $profileGid);
-                    if (!($details['success'] ?? false)) {
-                        return $details;
-                    }
-            
-                    $profile = $details['data'] ?? [];
-                    $profileLocationGroups = $profile['profileLocationGroups'] ?? [];
-            
-                    $existingGroup = $profileLocationGroups[0] ?? null;
-                    $locationGroup = $existingGroup['locationGroup'] ?? null;
-                    $existingZones = data_get($existingGroup, 'locationGroupZones.nodes', []);
-            
-                    $groupId = $locationGroup['id'] ?? null;
-                    $existingLocationIds = collect(data_get($locationGroup, 'locations.nodes', []))
-                        ->pluck('id')
-                        ->filter()
-                        ->values()
-                        ->all();
-            
-                    $hasNewLocation = in_array($locationGid, $existingLocationIds, true);
-            
-                    $usZoneNode = null;
-                    foreach ($existingZones as $zoneNode) {
-                        $zoneName = data_get($zoneNode, 'zone.name');
-                        $countryCode = data_get($zoneNode, 'zone.countries.0.code.countryCode');
-                        if ($zoneName === 'United States' || $countryCode === 'US') {
-                            $usZoneNode = $zoneNode;
-                            break;
-                        }
-                    }
-            
-                    $profileInput = [
-                        'name' => $profileName,
-                    ];
-            
-                    // Case A: no location group exists at all -> create full nested structure
-                    if (!$groupId) {
-                        $profileInput['locationGroupsToCreate'] = [
+        try {
+            $profileGid = str_starts_with($deliveryProfileId, 'gid://')
+                ? $deliveryProfileId
+                : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
+    
+            $locationGid = str_starts_with($locationId, 'gid://')
+                ? $locationId
+                : "gid://shopify/Location/{$locationId}";
+    
+            $carrierServiceGid = str_starts_with($carrierServiceId, 'gid://')
+                ? $carrierServiceId
+                : "gid://shopify/DeliveryCarrierService/{$carrierServiceId}";
+    
+            $details = $this->getDeliveryProfileDetails($shopId, $profileGid);
+            if (!($details['success'] ?? false)) {
+                return $details;
+            }
+    
+            $profile = $details['data'] ?? [];
+            $profileLocationGroups = $profile['profileLocationGroups'] ?? [];
+    
+            $existingGroup = $profileLocationGroups[0] ?? null;
+            $locationGroup = $existingGroup['locationGroup'] ?? null;
+            $existingZones = data_get($existingGroup, 'locationGroupZones.nodes', []);
+    
+            $groupId = $locationGroup['id'] ?? null;
+            $existingLocationIds = collect(data_get($locationGroup, 'locations.nodes', []))
+                ->pluck('id')
+                ->filter()
+                ->values()
+                ->all();
+    
+            $hasLocationAlready = in_array($locationGid, $existingLocationIds, true);
+    
+            $usZoneNode = null;
+            foreach ($existingZones as $zoneNode) {
+                $zoneName = data_get($zoneNode, 'zone.name');
+                $countryCode = data_get($zoneNode, 'zone.countries.0.code.countryCode');
+    
+                if ($zoneName === 'United States' || $countryCode === 'US') {
+                    $usZoneNode = $zoneNode;
+                    break;
+                }
+            }
+    
+            $profileInput = [
+                'name' => $profileName,
+            ];
+    
+            if (!$groupId) {
+                // No location group exists yet -> create full structure
+                $profileInput['locationGroupsToCreate'] = [
+                    [
+                        'locationsToAdd' => [$locationGid],
+                        'zonesToCreate' => [
                             [
-                                'locationsToAdd' => [$locationGid],
-                                'zonesToCreate' => [
-                                    $this->buildStandardUsZoneInput($standardRate, $currencyCode),
-                                ],
-                            ],
-                        ];
-                    } else {
-                        $groupUpdate = [
-                            'id' => $groupId,
-                        ];
-            
-                        if (!$hasNewLocation) {
-                            $groupUpdate['locationsToAdd'] = [$locationGid];
-                        }
-            
-                        // Optional: remove orphaned old locations if you want strict single-location ownership
-                        $locationsToRemove = array_values(array_filter(
-                            $existingLocationIds,
-                            fn (string $id) => $id !== $locationGid
-                        ));
-                        if (!empty($locationsToRemove)) {
-                            $groupUpdate['locationsToRemove'] = $locationsToRemove;
-                        }
-            
-                        // Case B1: location group exists but US zone is missing -> create zone
-                        if (!$usZoneNode) {
-                            $groupUpdate['zonesToCreate'] = [
-                                $this->buildStandardUsZoneInput($standardRate, $currencyCode),
-                            ];
-                        } else {
-                            // Case B2: zone exists -> update method(s) if present, otherwise recreate method(s)
-                            $zoneId = data_get($usZoneNode, 'zone.id');
-                            $methodNodes = data_get($usZoneNode, 'methodDefinitions.nodes', []);
-            
-                            $zoneUpdate = [
-                                'id' => $zoneId,
                                 'name' => 'United States',
-                            ];
-            
-                            if (!empty($methodNodes)) {
-                                $zoneUpdate['methodDefinitionsToUpdate'] = array_map(
-                                    function (array $method) use ($standardRate, $currencyCode) {
-                                        return [
-                                            'id' => $method['id'],
-                                            'name' => $method['name'] ?? 'Standard',
-                                            'active' => true,
-                                            'rateDefinition' => [
-                                                'price' => [
-                                                    'amount' => $standardRate,
-                                                    'currencyCode' => $currencyCode,
+                                'countries' => [
+                                    [
+                                        'code' => 'US',
+                                        'provinces' => array_map(
+                                            fn (string $code) => ['code' => $code],
+                                            $this->getUsProvinceCodes()
+                                        ),
+                                    ],
+                                ],
+                                'methodDefinitionsToCreate' => [
+                                    [
+                                        'name' => $methodName,
+                                        'active' => true,
+                                        'participant' => [
+                                            'carrierServiceId' => $carrierServiceGid,
+                                            'adaptToNewServices' => true,
+                                            'participantServices' => [
+                                                [
+                                                    'name' => $methodName,
+                                                    'active' => true,
                                                 ],
                                             ],
-                                        ];
-                                    },
-                                    $methodNodes
-                                );
-                            } else {
-                                $zoneUpdate['methodDefinitionsToCreate'] = [
-                                    [
-                                        'name' => 'Standard',
-                                        'rateDefinition' => [
-                                            'price' => [
-                                                'amount' => $standardRate,
-                                                'currencyCode' => $currencyCode,
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ];
+            } else {
+                $groupUpdate = [
+                    'id' => $groupId,
+                ];
+    
+                if (!$hasLocationAlready) {
+                    $groupUpdate['locationsToAdd'] = [$locationGid];
+                }
+    
+                // Optional cleanup: keep only this location in the group
+                $locationsToRemove = array_values(array_filter(
+                    $existingLocationIds,
+                    fn (string $id) => $id !== $locationGid
+                ));
+    
+                if (!empty($locationsToRemove)) {
+                    $groupUpdate['locationsToRemove'] = $locationsToRemove;
+                }
+    
+                if (!$usZoneNode) {
+                    // Group exists, but US zone does not -> create zone with carrier/app-calculated rate
+                    $groupUpdate['zonesToCreate'] = [
+                        [
+                            'name' => 'United States',
+                            'countries' => [
+                                [
+                                    'code' => 'US',
+                                    'provinces' => array_map(
+                                        fn (string $code) => ['code' => $code],
+                                        $this->getUsProvinceCodes()
+                                    ),
+                                ],
+                            ],
+                            'methodDefinitionsToCreate' => [
+                                [
+                                    'name' => $methodName,
+                                    'active' => true,
+                                    'participant' => [
+                                        'carrierServiceId' => $carrierServiceGid,
+                                        'adaptToNewServices' => true,
+                                        'participantServices' => [
+                                            [
+                                                'name' => $methodName,
+                                                'active' => true,
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                } else {
+                    // Zone already exists -> update existing method(s) or create one if missing
+                    $zoneId = data_get($usZoneNode, 'zone.id');
+                    $methodNodes = data_get($usZoneNode, 'methodDefinitions.nodes', []);
+    
+                    $zoneUpdate = [
+                        'id' => $zoneId,
+                        'name' => 'United States',
+                    ];
+    
+                    if (!empty($methodNodes)) {
+                        $zoneUpdate['methodDefinitionsToUpdate'] = array_map(
+                            function (array $method) use ($carrierServiceGid, $methodName) {
+                                return [
+                                    'id' => $method['id'],
+                                    'name' => $method['name'] ?? $methodName,
+                                    'active' => true,
+                                    'participant' => [
+                                        'carrierServiceId' => $carrierServiceGid,
+                                        'adaptToNewServices' => true,
+                                        'participantServices' => [
+                                            [
+                                                'name' => $method['name'] ?? $methodName,
+                                                'active' => true,
                                             ],
                                         ],
                                     ],
                                 ];
-                            }
-            
-                            $groupUpdate['zonesToUpdate'] = [$zoneUpdate];
-                        }
-            
-                        $profileInput['locationGroupsToUpdate'] = [$groupUpdate];
+                            },
+                            $methodNodes
+                        );
+                    } else {
+                        $zoneUpdate['methodDefinitionsToCreate'] = [
+                            [
+                                'name' => $methodName,
+                                'active' => true,
+                                'participant' => [
+                                    'carrierServiceId' => $carrierServiceGid,
+                                    'adaptToNewServices' => true,
+                                    'participantServices' => [
+                                        [
+                                            'name' => $methodName,
+                                            'active' => true,
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ];
                     }
-            
+    
+                    $groupUpdate['zonesToUpdate'] = [$zoneUpdate];
+                }
+    
+                $profileInput['locationGroupsToUpdate'] = [$groupUpdate];
+            }
+    
                     $mutation = <<<'GRAPHQL'
             mutation SyncDeliveryProfile($id: ID!, $profile: DeliveryProfileInput!) {
             deliveryProfileUpdate(id: $id, profile: $profile) {
@@ -1070,12 +1733,47 @@ class ShopifyService
                         zone {
                         id
                         name
+                        countries {
+                            code {
+                            countryCode
+                            }
+                            provinces {
+                            code
+                            }
+                        }
                         }
                         methodDefinitions(first: 20) {
                         nodes {
                             id
                             name
                             active
+                            rateProvider {
+                            ... on DeliveryRateDefinition {
+                                id
+                                price {
+                                amount
+                                currencyCode
+                                }
+                            }
+                            ... on DeliveryParticipant {
+                                id
+                                carrierService {
+                                id
+                                name
+                                active
+                                callbackUrl
+                                }
+                                participantServices {
+                                name
+                                active
+                                }
+                                fixedFee {
+                                amount
+                                currencyCode
+                                }
+                                percentageOfRateFee
+                            }
+                            }
                         }
                         }
                     }
@@ -1089,82 +1787,312 @@ class ShopifyService
             }
             }
             GRAPHQL;
-            
-                    $variables = [
-                        'id' => $profileGid,
-                        'profile' => $profileInput,
-                    ];
-            
-                    Log::info('Shopify deliveryProfileUpdate sync request', [
-                        'shop_id' => $shopId,
-                        'delivery_profile_id' => $profileGid,
-                        'location_id' => $locationGid,
-                        'variables' => $variables,
-                    ]);
-            
-                    $result = $this->graphqlRequest($shopId, $mutation, $variables);
-            
-                    Log::info('Shopify deliveryProfileUpdate sync response', [
-                        'shop_id' => $shopId,
-                        'result' => $result,
-                    ]);
-            
-                    if (!($result['success'] ?? false)) {
-                        return [
-                            'success' => false,
-                            'message' => $result['message'] ?? 'GraphQL request failed',
-                            'errors' => $result['errors'] ?? [],
-                            'data' => $result['data'] ?? null,
-                        ];
-                    }
-            
-                    if (!empty($result['errors'])) {
-                        return [
-                            'success' => false,
-                            'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
-                            'errors' => $result['errors'],
-                            'data' => $result['data'] ?? null,
-                        ];
-                    }
-            
-                    $payload = data_get($result, 'data.deliveryProfileUpdate');
-            
-                    if (!$payload) {
-                        return [
-                            'success' => false,
-                            'message' => 'Missing deliveryProfileUpdate payload in Shopify response',
-                            'data' => $result['data'] ?? null,
-                            'errors' => $result['errors'] ?? [],
-                        ];
-                    }
-            
-                    if (!empty($payload['userErrors'])) {
-                        return [
-                            'success' => false,
-                            'message' => $payload['userErrors'][0]['message'] ?? 'Failed to sync delivery profile',
-                            'errors' => $payload['userErrors'],
-                            'data' => $payload,
-                        ];
-                    }
-            
-                    return [
-                        'success' => true,
-                        'message' => 'Delivery profile synchronized successfully',
-                        'data' => $payload['profile'] ?? null,
-                    ];
-                } catch (\Throwable $e) {
-                    Log::error('syncDeliveryProfileConfiguration exception', [
-                        'shop_id' => $shopId,
-                        'delivery_profile_id' => $deliveryProfileId,
-                        'location_id' => $locationId,
-                        'error' => $e->getMessage(),
-                    ]);
-            
-                    return [
-                        'success' => false,
-                        'message' => $e->getMessage(),
-                    ];
+    
+            $variables = [
+                'id' => $profileGid,
+                'profile' => $profileInput,
+            ];
+    
+            Log::info('Shopify deliveryProfileUpdate sync request', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $profileGid,
+                'location_id' => $locationGid,
+                'carrier_service_id' => $carrierServiceGid,
+                'variables' => $variables,
+            ]);
+    
+            $result = $this->graphqlRequest($shopId, $mutation, $variables);
+    
+            Log::info('Shopify deliveryProfileUpdate sync response', [
+                'shop_id' => $shopId,
+                'result' => $result,
+            ]);
+    
+            if (!($result['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'message' => $result['message'] ?? 'GraphQL request failed',
+                    'errors' => $result['errors'] ?? [],
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            if (!empty($result['errors'])) {
+                return [
+                    'success' => false,
+                    'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
+                    'errors' => $result['errors'],
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            $payload = data_get($result, 'data.deliveryProfileUpdate');
+    
+            if (!$payload) {
+                return [
+                    'success' => false,
+                    'message' => 'Missing deliveryProfileUpdate payload in Shopify response',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+    
+            if (!empty($payload['userErrors'])) {
+                return [
+                    'success' => false,
+                    'message' => $payload['userErrors'][0]['message'] ?? 'Failed to sync delivery profile',
+                    'errors' => $payload['userErrors'],
+                    'data' => $payload,
+                ];
+            }
+    
+            return [
+                'success' => true,
+                'message' => 'Delivery profile synchronized successfully',
+                'data' => $payload['profile'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('syncDeliveryProfileConfiguration exception', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $deliveryProfileId,
+                'location_id' => $locationId,
+                'carrier_service_id' => $carrierServiceId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
+    }
+
+    public function syncDeliveryProfileConfigurationFlat(
+        int $shopId,
+        string $deliveryProfileId,
+        string $locationId,
+        string $profileName = 'DTFTA Shipping',
+        string $currencyCode = 'USD'
+    ): array {
+        try {
+            $profileGid = str_starts_with($deliveryProfileId, 'gid://')
+                ? $deliveryProfileId
+                : "gid://shopify/DeliveryProfile/{$deliveryProfileId}";
+    
+            $locationGid = str_starts_with($locationId, 'gid://')
+                ? $locationId
+                : "gid://shopify/Location/{$locationId}";
+    
+            $details = $this->getDeliveryProfileDetails($shopId, $profileGid);
+            if (!($details['success'] ?? false)) {
+                return $details;
+            }
+    
+            $profile = $details['data'] ?? [];
+            $profileLocationGroups = $profile['profileLocationGroups'] ?? [];
+    
+            $existingGroup = $profileLocationGroups[0] ?? null;
+            $locationGroup = $existingGroup['locationGroup'] ?? null;
+            $existingZones = data_get($existingGroup, 'locationGroupZones.nodes', []);
+    
+            $groupId = $locationGroup['id'] ?? null;
+            $existingLocationIds = collect(data_get($locationGroup, 'locations.nodes', []))
+                ->pluck('id')
+                ->filter()
+                ->values()
+                ->all();
+    
+            $hasLocationAlready = in_array($locationGid, $existingLocationIds, true);
+    
+            $usZoneNode = null;
+            foreach ($existingZones as $zoneNode) {
+                $zoneName = data_get($zoneNode, 'zone.name');
+                $countryCode = data_get($zoneNode, 'zone.countries.0.code.countryCode');
+    
+                if ($zoneName === 'United States' || $countryCode === 'US') {
+                    $usZoneNode = $zoneNode;
+                    break;
                 }
+            }
+    
+            $profileInput = [
+                'name' => $profileName,
+            ];
+    
+            if (!$groupId) {
+                $profileInput['locationGroupsToCreate'] = [
+                    [
+                        'locationsToAdd' => [$locationGid],
+                        'zonesToCreate' => [
+                            $this->buildWeightBasedUsZoneInput($currencyCode),
+                        ],
+                    ],
+                ];
+            } else {
+                $groupUpdate = [
+                    'id' => $groupId,
+                ];
+    
+                if (!$hasLocationAlready) {
+                    $groupUpdate['locationsToAdd'] = [$locationGid];
+                }
+    
+                $locationsToRemove = array_values(array_filter(
+                    $existingLocationIds,
+                    fn (string $id) => $id !== $locationGid
+                ));
+    
+                if (!empty($locationsToRemove)) {
+                    $groupUpdate['locationsToRemove'] = $locationsToRemove;
+                }
+    
+                if (!$usZoneNode) {
+                    $groupUpdate['zonesToCreate'] = [
+                        $this->buildWeightBasedUsZoneInput($currencyCode),
+                    ];
+                } else {
+                    $zoneId = data_get($usZoneNode, 'zone.id');
+                    $methodNodes = data_get($usZoneNode, 'methodDefinitions.nodes', []);
+    
+                    $zoneUpdate = [
+                        'id' => $zoneId,
+                        'name' => 'United States',
+                    ];
+    
+                    $existingMethodIds = collect($methodNodes)
+                        ->pluck('id')
+                        ->filter()
+                        ->values()
+                        ->all();
+    
+                    if (!empty($existingMethodIds)) {
+                        $zoneUpdate['methodDefinitionsToDelete'] = $existingMethodIds;
+                    }
+    
+                    $zoneUpdate['methodDefinitionsToCreate'] = $this->getFallbackWeightRateSlabs($currencyCode);
+    
+                    $groupUpdate['zonesToUpdate'] = [$zoneUpdate];
+                }
+    
+                $profileInput['locationGroupsToUpdate'] = [$groupUpdate];
+            }
+    
+                        $mutation = <<<'GRAPHQL'
+                mutation SyncDeliveryProfileFlat($id: ID!, $profile: DeliveryProfileInput!) {
+                deliveryProfileUpdate(id: $id, profile: $profile) {
+                    profile {
+                    id
+                    name
+                    profileLocationGroups {
+                        locationGroup {
+                        id
+                        locations(first: 20) {
+                            nodes {
+                            id
+                            name
+                            }
+                        }
+                        }
+                        locationGroupZones(first: 20) {
+                        nodes {
+                            zone {
+                            id
+                            name
+                            }
+                            methodDefinitions(first: 50) {
+                            nodes {
+                                id
+                                name
+                                active
+                            }
+                            }
+                        }
+                        }
+                    }
+                    }
+                    userErrors {
+                    field
+                    message
+                    }
+                }
+                }
+                GRAPHQL;
+    
+            $variables = [
+                'id' => $profileGid,
+                'profile' => $profileInput,
+            ];
+    
+            Log::info('Shopify deliveryProfileUpdate weight-based fallback sync request', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $profileGid,
+                'location_id' => $locationGid,
+                'variables' => $variables,
+            ]);
+    
+            $result = $this->graphqlRequest($shopId, $mutation, $variables);
+    
+            Log::info('Shopify deliveryProfileUpdate weight-based fallback sync response', [
+                'shop_id' => $shopId,
+                'result' => $result,
+            ]);
+    
+            if (!($result['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'message' => $result['message'] ?? 'GraphQL request failed',
+                    'errors' => $result['errors'] ?? [],
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            if (!empty($result['errors'])) {
+                return [
+                    'success' => false,
+                    'message' => $result['errors'][0]['message'] ?? 'Shopify GraphQL returned errors',
+                    'errors' => $result['errors'],
+                    'data' => $result['data'] ?? null,
+                ];
+            }
+    
+            $payload = data_get($result, 'data.deliveryProfileUpdate');
+    
+            if (!$payload) {
+                return [
+                    'success' => false,
+                    'message' => 'Missing deliveryProfileUpdate payload in Shopify response',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+    
+            if (!empty($payload['userErrors'])) {
+                return [
+                    'success' => false,
+                    'message' => $payload['userErrors'][0]['message'] ?? 'Failed to sync weight-based fallback delivery profile',
+                    'errors' => $payload['userErrors'],
+                    'data' => $payload,
+                ];
+            }
+    
+            return [
+                'success' => true,
+                'message' => 'Weight-based fallback delivery profile synchronized successfully',
+                'data' => $payload['profile'] ?? null,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('syncDeliveryProfileConfigurationFlat exception', [
+                'shop_id' => $shopId,
+                'delivery_profile_id' => $deliveryProfileId,
+                'location_id' => $locationId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
     }
 
     public function removeDeliveryProfile(int $shopId, string $profileId): array
@@ -1462,26 +2390,59 @@ class ShopifyService
      */
     public function provisionShopOnInstall(int $shopId, ?string $baseUrl = null): array
     {
+        Log::info('Provision start', ['shop_id' => $shopId]);
+    
         $shop = Shop::find($shopId);
     
         if (!$shop) {
+            Log::error('Provision failed: shop not found', ['shop_id' => $shopId]);
             return ['success' => false, 'message' => 'Shop not found'];
         }
     
         $baseUrl = rtrim($baseUrl ?: (string) config('app.url'), '/');
         $fulfillmentCallbackUrl = "{$baseUrl}/api/v1";
-
-        $serviceResult = null;
-        $deliveryProfileResult = null;
+        $carrierCallbackUrl = "{$baseUrl}/api/v1/carrier-service";
     
+        Log::info('Provision config prepared', [
+            'shop_id' => $shopId,
+            'base_url' => $baseUrl,
+            'fulfillment_callback' => $fulfillmentCallbackUrl,
+            'carrier_callback' => $carrierCallbackUrl,
+            'existing_fulfillment_service_id' => $shop->fulfillment_service_id,
+            'existing_location_id' => $shop->location_id,
+            'existing_carrier_service_id' => $shop->carrier_service_id,
+            'existing_shipping_profile_id' => $shop->shipping_profile_id,
+        ]);
+    
+        $serviceResult = null;
+        $carrierServiceResult = null;
+        $deliveryProfileResult = null;
+        $useFallbackRate = false;
+        $fallbackReason = null;
+    
+        // =============================
+        // Fulfillment Service
+        // =============================
         if (empty($shop->fulfillment_service_id) || empty($shop->location_id)) {
+            Log::info('Creating fulfillment service', ['shop_id' => $shopId]);
+    
             $serviceResult = $this->createFulfillmentService(
                 $shopId,
                 $fulfillmentCallbackUrl,
                 'DTFTA Fulfillment Service'
             );
     
-            if (!$serviceResult['success']) {
+            Log::info('Fulfillment service response', [
+                'shop_id' => $shopId,
+                'result' => $serviceResult,
+            ]);
+    
+            if (!($serviceResult['success'] ?? false)) {
+                Log::error('Fulfillment service creation failed', [
+                    'shop_id' => $shopId,
+                    'result' => $serviceResult,
+                ]);
+    
                 return [
                     'success' => false,
                     'message' => $serviceResult['message'] ?? 'Failed to create fulfillment service',
@@ -1493,66 +2454,300 @@ class ShopifyService
     
             $service = $serviceResult['data'] ?? [];
     
-            $shop->fulfillment_service_id = !empty($service['id']) ? "gid://shopify/FulfillmentService/{$service['id']}" : $shop->fulfillment_service_id;
-            $shop->location_id = !empty($service['location_id']) ? "gid://shopify/Location/{$service['location_id']}" : $shop->location_id;
+            $shop->fulfillment_service_id = !empty($service['id'])
+                ? "gid://shopify/FulfillmentService/{$service['id']}"
+                : $shop->fulfillment_service_id;
+    
+            $shop->location_id = !empty($service['location_id'])
+                ? "gid://shopify/Location/{$service['location_id']}"
+                : $shop->location_id;
     
             $shop->save();
+
+
+    
+            Log::info('Fulfillment service saved', [
+                'shop_id' => $shopId,
+                'fulfillment_service_id' => $shop->fulfillment_service_id,
+                'location_id' => $shop->location_id,
+            ]);
+
+            $service = FulfillmentService::withTrashed()->firstOrNew(['shop_id' => $shop->id]);
+        
+                if ($service->exists && $service->trashed()) {
+                    $service->restore();
+                }
+                
+                $service->fill([
+                    'service_id' => basename($shop->fulfillment_service_id),
+                    'shopify_fulfillment_service_id' => $shop->fulfillment_service_id,
+                    'shopify_location_id' => $shop->location_id,
+                    'name' => FulfillmentService::DEFAULT_NAME,
+                    'status' => FulfillmentService::STATUS_ACTIVE,
+                    'tracking_support' => true,
+                ]);
+                
+                $service->save();
         }
     
-        if (!empty($shop->location_id)) {
-
-            if (empty($shop->shipping_profile_id)) {
-                $create = $this->createDeliveryProfile(
-                    (int) $shop->id,
-                    (string) $shop->location_id,
-                    'DTFTA Shipping'
-                );
-
-                if ($create['success']) {
-                    $profile = $create['data'] ?? [];
-                    $shop->shipping_profile_id = (string) ($profile['id'] ?? null);
-
-                    $groupId = data_get($profile, 'profileLocationGroups.0.locationGroup.id');
-                    if ($groupId) {
-                        $shop->delivery_location_group_id = (string) $groupId;
-                    }
-
-                    $shop->save();
+        // =============================
+        // Carrier Service / CCS detection
+        // =============================
+        if (empty($shop->carrier_service_id)) {
+            Log::info('Creating carrier service', ['shop_id' => $shopId]);
+    
+            $carrierServiceResult = $this->createCarrierService(
+                $shopId,
+                $carrierCallbackUrl,
+                'DTFTA USPS Rates'
+            );
+    
+            Log::info('Carrier service response', [
+                'shop_id' => $shopId,
+                'result' => $carrierServiceResult,
+            ]);
+    
+            $carrierUserErrors = data_get($carrierServiceResult, 'data.carrierServiceCreate.userErrors', []);
+            $carrierErrorMessage = $carrierUserErrors[0]['message'] ?? null;
+    
+            if (!empty($carrierUserErrors)) {
+                if (is_string($carrierErrorMessage) && str_contains($carrierErrorMessage, 'Carrier Calculated Shipping must be enabled')) {
+                    $useFallbackRate = true;
+                    $fallbackReason = $carrierErrorMessage;
+    
+                    Log::warning('CCS not enabled, falling back to flat Standard rate', [
+                        'shop_id' => $shopId,
+                        'user_errors' => $carrierUserErrors,
+                    ]);
+                } else {
+                    Log::error('Carrier service returned user errors', [
+                        'shop_id' => $shopId,
+                        'user_errors' => $carrierUserErrors,
+                        'result' => $carrierServiceResult,
+                    ]);
+    
+                    return [
+                        'success' => false,
+                        'message' => $carrierErrorMessage ?? 'Failed to create carrier service',
+                        'data' => [
+                            'fulfillment_service' => $serviceResult['data'] ?? null,
+                            'carrier_service' => data_get($carrierServiceResult, 'data.carrierServiceCreate.carrierService'),
+                        ],
+                    ];
                 }
+            } elseif (!($carrierServiceResult['success'] ?? false)) {
+                Log::error('Carrier service request failed', [
+                    'shop_id' => $shopId,
+                    'result' => $carrierServiceResult,
+                ]);
+    
+                return [
+                    'success' => false,
+                    'message' => $carrierServiceResult['message'] ?? 'Failed to create carrier service',
+                    'data' => [
+                        'fulfillment_service' => $serviceResult['data'] ?? null,
+                        'carrier_service' => $carrierServiceResult['data'] ?? null,
+                    ],
+                ];
             } else {
-                $sync = $this->syncDeliveryProfileConfiguration(
-                    (int) $shop->id,
-                    (string) $shop->shipping_profile_id,
-                    (string) $shop->location_id,
-                    'DTFTA Shipping',
-                    4.99,
-                    'USD'
-                );
-
-                if ($sync['success']) {
-                    $profile = $sync['data'] ?? [];
-                    $groupId = data_get($profile, 'profileLocationGroups.0.locationGroup.id');
-                    if ($groupId) {
-                        $shop->delivery_location_group_id = (string) $groupId;
-                        $shop->save();
-                    }
+                $carrierService = data_get($carrierServiceResult, 'data.carrierServiceCreate.carrierService', []);
+    
+                if (!empty($carrierService['id'])) {
+                    $shop->carrier_service_id = (string) $carrierService['id'];
+                    $shop->save();
+    
+                    Log::info('Carrier service saved', [
+                        'shop_id' => $shopId,
+                        'carrier_service_id' => $shop->carrier_service_id,
+                    ]);
                 }
             }
+        } else {
+            Log::info('Carrier service already exists, using app-calculated shipping path', [
+                'shop_id' => $shopId,
+                'carrier_service_id' => $shop->carrier_service_id,
+            ]);
         }
     
-        $webhooks = $this->ensureRequiredWebhooks($shopId, $baseUrl);
+        // =============================
+        // Delivery Profile
+        // =============================
+        if (!empty($shop->location_id)) {
+            if (empty($shop->shipping_profile_id)) {
+                if ($useFallbackRate || empty($shop->carrier_service_id)) {
+                    Log::info('Creating flat-rate delivery profile', [
+                        'shop_id' => $shopId,
+                        'location_id' => $shop->location_id,
+                        'fallback_reason' => $fallbackReason,
+                    ]);
+    
+                    $deliveryProfileResult = $this->createDeliveryProfile(
+                        (int) $shop->id,
+                        (string) $shop->location_id,
+                        'DTFTA Shipping'
+                    );
+                } else {
+                    Log::info('Creating carrier-based delivery profile', [
+                        'shop_id' => $shopId,
+                        'location_id' => $shop->location_id,
+                        'carrier_service_id' => $shop->carrier_service_id,
+                    ]);
+    
+                    $deliveryProfileResult = $this->createDeliveryProfileWithCarrierRate(
+                        (int) $shop->id,
+                        (string) $shop->location_id,
+                        (string) $shop->carrier_service_id,
+                        'DTFTA Shipping',
+                        'Standard'
+                    );
+                }
+    
+                Log::info('Delivery profile create response', [
+                    'shop_id' => $shopId,
+                    'result' => $deliveryProfileResult,
+                ]);
+    
+                if (!($deliveryProfileResult['success'] ?? false)) {
+                    Log::error('Delivery profile creation failed', [
+                        'shop_id' => $shopId,
+                        'result' => $deliveryProfileResult,
+                    ]);
+    
+                    return [
+                        'success' => false,
+                        'message' => $deliveryProfileResult['message'] ?? 'Failed to create delivery profile',
+                        'data' => [
+                            'delivery_profile' => $deliveryProfileResult['data'] ?? null,
+                        ],
+                    ];
+                }
+    
+                $profile = $deliveryProfileResult['data'] ?? [];
+    
+                if (!empty($profile['id'])) {
+                    $shop->shipping_profile_id = (string) $profile['id'];
+                }
+    
+                $groupId = data_get($profile, 'profileLocationGroups.0.locationGroup.id');
+                if ($groupId) {
+                    $shop->delivery_location_group_id = (string) $groupId;
+                }
+    
+                $shop->save();
+    
+                Log::info('Delivery profile saved', [
+                    'shop_id' => $shopId,
+                    'shipping_profile_id' => $shop->shipping_profile_id,
+                    'delivery_location_group_id' => $shop->delivery_location_group_id,
+                    'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+                ]);
+            } else {
+                if ($useFallbackRate || empty($shop->carrier_service_id)) {
+                    Log::info('Syncing flat-rate delivery profile', [
+                        'shop_id' => $shopId,
+                        'profile_id' => $shop->shipping_profile_id,
+                        'location_id' => $shop->location_id,
+                        'fallback_reason' => $fallbackReason,
+                    ]);
+    
+                    $deliveryProfileResult = $this->syncDeliveryProfileConfigurationFlat(
+                        (int) $shop->id,
+                        (string) $shop->shipping_profile_id,
+                        (string) $shop->location_id,
+                        'DTFTA Shipping',
+                        'USD'
+                    );
+                } else {
+                    Log::info('Syncing carrier-based delivery profile', [
+                        'shop_id' => $shopId,
+                        'profile_id' => $shop->shipping_profile_id,
+                        'carrier_service_id' => $shop->carrier_service_id,
+                    ]);
+    
+                    $deliveryProfileResult = $this->syncDeliveryProfileConfiguration(
+                        (int) $shop->id,
+                        (string) $shop->shipping_profile_id,
+                        (string) $shop->location_id,
+                        (string) $shop->carrier_service_id,
+                        'DTFTA Shipping',
+                        'Standard'
+                    );
+                }
+    
+                Log::info('Delivery profile sync response', [
+                    'shop_id' => $shopId,
+                    'result' => $deliveryProfileResult,
+                ]);
+    
+                if (!($deliveryProfileResult['success'] ?? false)) {
+                    Log::error('Delivery profile sync failed', [
+                        'shop_id' => $shopId,
+                        'result' => $deliveryProfileResult,
+                    ]);
+    
+                    return [
+                        'success' => false,
+                        'message' => $deliveryProfileResult['message'] ?? 'Failed to sync delivery profile',
+                        'data' => [
+                            'delivery_profile' => $deliveryProfileResult['data'] ?? null,
+                        ],
+                    ];
+                }
+    
+                $profile = $deliveryProfileResult['data'] ?? [];
+                $groupId = data_get($profile, 'profileLocationGroups.0.locationGroup.id');
+    
+                if ($groupId) {
+                    $shop->delivery_location_group_id = (string) $groupId;
+                    $shop->save();
+                }
+    
+                Log::info('Delivery profile sync saved', [
+                    'shop_id' => $shopId,
+                    'delivery_location_group_id' => $shop->delivery_location_group_id,
+                    'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+                ]);
+            }
+        } else {
+            Log::warning('Skipping delivery profile setup because location_id is missing', [
+                'shop_id' => $shopId,
+            ]);
+        }
+    
+        // =============================
+        // Webhooks
+        // =============================
+        // Log::info('Registering webhooks', ['shop_id' => $shopId]);
+    
+        // $webhooks = $this->ensureRequiredWebhooks($shopId, $baseUrl);
+    
+        // Log::info('Webhook result', [
+        //     'shop_id' => $shopId,
+        //     'result' => $webhooks,
+        // ]);
+    
+        Log::info('Provision completed', [
+            'shop_id' => $shopId,
+            'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+            'fallback_reason' => $fallbackReason,
+        ]);
     
         return [
             'success' =>
-                ($serviceResult ? (bool) $serviceResult['success'] : true) &&
-                ($deliveryProfileResult ? (bool) $deliveryProfileResult['success'] : true) &&
-                (bool) $webhooks['success'],
+                ($serviceResult ? (bool) ($serviceResult['success'] ?? false) : true) &&
+                ($deliveryProfileResult ? (bool) ($deliveryProfileResult['success'] ?? false) : true) &&
+                (bool) ($webhooks['success'] ?? false),
             'data' => [
                 'fulfillment_service' => $serviceResult['data'] ?? null,
+                'carrier_service' => data_get($carrierServiceResult, 'data.carrierServiceCreate.carrierService'),
                 'delivery_profile' => $deliveryProfileResult['data'] ?? null,
                 'webhooks' => $webhooks['data'] ?? [],
+                'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+                'fallback_reason' => $fallbackReason,
             ],
-            'message' => 'Provisioning completed',
+            'message' => ($useFallbackRate || empty($shop->carrier_service_id))
+                ? 'Provisioning completed with fallback Standard shipping rate'
+                : 'Provisioning completed',
         ];
     }
 
@@ -2847,5 +4042,7 @@ class ShopifyService
             ];
         }
     }
+
+
 
 }

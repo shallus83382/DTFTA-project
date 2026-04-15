@@ -27,6 +27,7 @@ class Shop extends Model
         'shopify_scopes',
         'fulfillment_service_id',
         'location_id',
+        'carrier_service_id',
         'shipping_profile_id',
         'delivery_location_group_id',
         'status',

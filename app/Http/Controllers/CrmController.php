@@ -743,35 +743,44 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         $data['ordersConfig'] = $this->getFeatures()['orders'] ?? [];
         $data['orderStatuses'] = $this->getStatuses()['order_statuses'] ?? [];
+    
         $statuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled'];
-        $jobsByStatus = array_fill_keys($statuses, collect());
+        $allowedStatuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled', 'failed', 'exception'];
+    
+        $jobsByStatus = [];
+        foreach ($statuses as $status) {
+            $jobsByStatus[$status] = collect();
+        }
+    
         $jobsForBoard = Job::query()
             ->with(['shop', 'order'])
-            ->whereIn('status', ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled', 'failed', 'exception'])
-            ->orderBy('created_at', 'desc')
+            ->whereIn('status', $allowedStatuses)
+            ->orderByDesc('created_at')
             ->get();
-
+    
         foreach ($jobsForBoard as $job) {
             $bucket = in_array($job->status, ['failed', 'exception', 'cancelled'], true)
                 ? 'cancelled'
                 : $job->status;
-
-            if (!array_key_exists($bucket, $jobsByStatus)) {
+    
+            if (!isset($jobsByStatus[$bucket])) {
                 continue;
             }
-
+    
             $jobsByStatus[$bucket]->push($job);
         }
-
+    
         $data['jobsByStatus'] = $jobsByStatus;
-        $data['allJobs'] = Job::with('shop', 'order')
-            ->orderBy('created_at', 'desc')
+    
+        $data['allJobs'] = Job::query()
+            ->with(['shop', 'order'])
+            ->whereIn('status', $allowedStatuses)
+            ->orderByDesc('created_at')
             ->paginate(15);
-
+    
         $data['stores'] = Shop::pluck('shop_domain');
-
-        $data['productTypes'] = Job::distinct('job_type')->pluck('job_type');
-
+        $data['productTypes'] = Job::whereNotNull('job_type')->distinct()->pluck('job_type');
+    
         return view('crm.orders', $data);
     }
 
@@ -1562,40 +1571,76 @@ class CrmController extends Controller
         $id = $request->input('id');
         $type = $request->input('type');
         $status = $request->input('status');
-
+    
+        $allowedStatuses = [
+            'pending',
+            'artwork_needed',
+            'in_production',
+            'shipped',
+            'cancelled',
+            'failed',
+            'exception',
+        ];
+    
+        if (!in_array($status, $allowedStatuses, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid status.',
+            ], 422);
+        }
+    
         try {
             if ($type === 'job') {
                 $job = Job::findOrFail($id);
-                $job->update(['status' => $status]);
-                if ($job->order_id) {
-                    $order = Order::find($job->order_id);
-                    if ($order) {
-                        $order->update(['fulfillment_status' => $status]);
-                    }
-                }
+                $job->update([
+                    'status' => $status,
+                ]);
+    
                 AdminActivityLog::logActivity(
                     auth()->id(),
-                    'Updated Status to ' . $status,
+                    'Updated Job Status to ' . $status,
                     'Job',
-                    $id
+                    $job->id
                 );
-
-                return response()->json(['success' => true, 'message' => 'Job status updated successfully', 'status' => $status]);
+    
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Job status updated successfully',
+                    'status' => $status,
+                    'job_id' => $job->id,
+                ]);
             }
-
-            $order = Order::findOrFail($id);
-            $order->update(['fulfillment_status' => $status]);
-            Job::where('order_id', $order->id)->update(['status' => $status]);
-            AdminActivityLog::logActivity(
-                auth()->id(),
-                'Updated Status to ' . $status,
-                'Order',
-                $id
-            );
-
-            return response()->json(['success' => true, 'message' => 'Order status updated successfully', 'status' => $status]);
+    
+            if ($type === 'order') {
+                $order = Order::findOrFail($id);
+                $order->update([
+                    'fulfillment_status' => $status,
+                ]);
+    
+                AdminActivityLog::logActivity(
+                    auth()->id(),
+                    'Updated Order Status to ' . $status,
+                    'Order',
+                    $order->id
+                );
+    
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Order status updated successfully',
+                    'status' => $status,
+                    'order_id' => $order->id,
+                ]);
+            }
+    
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid type.',
+            ], 422);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
         }
     }
 

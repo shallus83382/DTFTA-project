@@ -236,19 +236,19 @@ class AuthController extends Controller
     
         // Optional: keep this only if provisionShopOnInstall does NOT already create webhooks.
         // If it does, remove this block to avoid duplicate webhook provisioning.
-        if (!$provisioning || empty(data_get($provisioning, 'data.webhooks'))) {
-            $webhookProvision = $this->shopifyService->ensureRequiredWebhooks(
-                (int) $shopRecord->id,
-                config('app.url')
-            );
+        // if (!$provisioning || empty(data_get($provisioning, 'data.webhooks'))) {
+        //     $webhookProvision = $this->shopifyService->ensureRequiredWebhooks(
+        //         (int) $shopRecord->id,
+        //         config('app.url')
+        //     );
     
-            if (!($webhookProvision['success'] ?? false)) {
-                Log::warning('Webhook provisioning partially failed after signed payload install', [
-                    'shop_id' => $shopRecord->id,
-                    'result' => $webhookProvision,
-                ]);
-            }
-        }
+        //     if (!($webhookProvision['success'] ?? false)) {
+        //         Log::warning('Webhook provisioning partially failed after signed payload install', [
+        //             'shop_id' => $shopRecord->id,
+        //             'result' => $webhookProvision,
+        //         ]);
+        //     }
+        // }
     
         Log::info('Signed install flow completed', [
             'shop' => $shopRecord->shop_domain,

@@ -37,6 +37,7 @@ return [
 
     'shopify' => [
         'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET', ''),
+        'external_secret' => env('EXTERNAL_API_SECRET', ''),
         'api_key' => env('SHOPIFY_API_KEY', ''),
         'api_password' => env('SHOPIFY_API_PASSWORD', ''),
         'api_secret' => env('SHOPIFY_API_SECRET', env('SHOPIFY_API_PASSWORD', '')),
