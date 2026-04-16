@@ -254,10 +254,6 @@ class WebhookController extends Controller
         }
 
         $foResult = $this->shopifyService->getFulfillmentOrder($shopId, $fulfillmentOrderId);
- 
-        Log::warning('fetch fulfillment order from Shopify', [
-            'payload_keys' => $foResult,
-        ]);
 
         if (
             empty($foResult['success']) ||
@@ -322,7 +318,7 @@ class WebhookController extends Controller
             [
                 'shop_id' => $shopId,
                 'order_id' => $order->id,
-                'job_type' => 'fulfillment_request',
+                'job_type' => 'dtfta_apparel_pod',
             ],
             [
                 'status' => $this->mapFulfillmentOrderToLocalJobStatus($topic, $fo, $order),
@@ -420,13 +416,13 @@ class WebhookController extends Controller
         }
     
         $job->update([
-            'status' => 'accepted',
+            'status' => 'in_production',
             'started_at' => now(),
             'error_message' => null,
         ]);
     
         $order->update([
-            'status' => 'accepted',
+            'status' => 'in_production',
             'fulfillment_status' => 'accepted',
         ]);
     }
@@ -510,7 +506,7 @@ class WebhookController extends Controller
         }
 
         if ($requestStatus === 'ACCEPTED') {
-            return 'accepted';
+            return 'in_production';
         }
 
         if ($requestStatus === 'SUBMITTED') {
@@ -529,7 +525,7 @@ class WebhookController extends Controller
         }
 
         return match ($jobStatus) {
-            'accepted' => 'accepted',
+            'accepted' => 'in_production',
             'artwork_needed' => 'artwork_needed',
             'cancelled' => 'cancelled',
             'exception' => 'exception',
@@ -839,7 +835,7 @@ class WebhookController extends Controller
                 $job = Job::create([
                     'shop_id' => $shopId,
                     'order_id' => $order->id,
-                    'job_type' => 'fulfillment_request',
+                    'job_type' => 'dtfta_apparel_pod',
                     'status' => 'in_production',
                     'payload' => $payload,
                 ]);
@@ -1092,7 +1088,7 @@ class WebhookController extends Controller
                 [
                     'shop_id' => $shopId,
                     'order_id' => $order->id,
-                    'job_type' => 'fulfillment_request',
+                    'job_type' => 'dtfta_apparel_pod',
                 ],
                 [
                     'status' => 'pending',
@@ -1158,7 +1154,7 @@ class WebhookController extends Controller
             ]);
     
             Job::where('order_id', $order->id)
-                ->where('job_type', 'fulfillment_request')
+                ->where('job_type', 'dtfta_apparel_pod')
                 ->update([
                     'status' => $nextStatus,
                     'started_at' => $hasArtworkNeeded ? null : now(),
@@ -1578,7 +1574,7 @@ class WebhookController extends Controller
                     [
                         'shop_id' => $shop->id,
                         'order_id' => $order->id,
-                        'job_type' => 'fulfillment_request',
+                        'job_type' => 'dtfta_apparel_pod',
                     ],
                     [
                         'status' => $this->mapCallbackKindToInitialJobStatus($kind, $order),

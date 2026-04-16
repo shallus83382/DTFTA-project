@@ -56,12 +56,6 @@ class ShopifyService
         try {
             $token = decrypt($shop->shopify_access_token);
     
-            Log::info('Shopify auth resolved', [
-                'shop_id' => $shopId,
-                'shop_domain' => $shop->shop_domain,
-                'token_present' => $token !== '',
-                'token_prefix' => substr($token, 0, 6),
-            ]);
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => 'Failed to decrypt access token'];
         }
@@ -90,14 +84,6 @@ class ShopifyService
         $token = $auth['token'];
         $url = rtrim($this->baseUrl($shop->shop_domain, $apiVersion), '/') . '/' . ltrim($path, '/') . '.json';
 
-        Log::error('Shopify API request', [
-            'shop_id' => $shopId,
-            'path' => $url,
-            'query' => $query,
-            'payload' => $payload,
-        ]);
-
-
         try {
             $client = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
@@ -120,11 +106,6 @@ class ShopifyService
                 'message' => $response->successful() ? 'ok' : 'Shopify API request failed',
             ];
         } catch (\Throwable $e) {
-            Log::error('Shopify API request error', [
-                'shop_id' => $shopId,
-                'path' => $path,
-                'error' => $e->getMessage(),
-            ]);
 
             return [
                 'success' => false,
@@ -140,6 +121,8 @@ class ShopifyService
      */
     private function graphqlRequest(int $shopId, string $query, array $variables = []): array
     {
+
+
         $auth = $this->getShopAndToken($shopId);
         if (!$auth['success']) {
             return $auth;
@@ -148,6 +131,7 @@ class ShopifyService
         $shop = $auth['shop'];
         $token = $auth['token'];
         $url = rtrim($this->baseUrl($shop->shop_domain), '/') . '/graphql.json';
+       
 
         try {
             $response = Http::withHeaders([
@@ -164,6 +148,7 @@ class ShopifyService
                 ]);
 
             $data = $response->json() ?? [];
+
             $hasErrors = !empty($data['errors']);
 
             return [
@@ -174,10 +159,6 @@ class ShopifyService
                 'message' => $response->successful() && !$hasErrors ? 'ok' : 'Shopify GraphQL request failed',
             ];
         } catch (\Throwable $e) {
-            Log::error('Shopify GraphQL request error', [
-                'shop_id' => $shopId,
-                'error' => $e->getMessage(),
-            ]);
 
             return [
                 'success' => false,
@@ -607,6 +588,27 @@ class ShopifyService
      */
     public function createFulfillment($shopId, $shopifyOrderId, $data): array
     {
+
+
+        $result = $this->graphqlRequest($shopId, <<<'GQL'
+        {
+          shop {
+            name
+            myshopifyDomain
+          }
+        }
+        GQL, []);
+        
+        Log::info('Shopify auth smoke test', [
+            'shop_id' => $shopId,
+            'result' => $result,
+        ]);
+
+
+        Log::info('Shopify create Fullfillment request', [
+            'shop_id' => $shopId,
+        ]);
+
         try {
             $lineItemsByFO = $data['line_items_by_fulfillment_order'] ?? [];
     
@@ -715,6 +717,12 @@ class ShopifyService
     
             $result = $this->graphqlRequest((int) $shopId, $mutation, $variables);
     
+
+            Log::info('Shopify create Fullfillment response', [
+                'shop_id' => $shopId,
+                'result' => $result,
+            ]);
+
             if (!$result['success']) {
                 return $result;
             }
@@ -740,6 +748,11 @@ class ShopifyService
                 'errors' => [],
             ];
         } catch (\Throwable $e) {
+            Log::error('Fulfillment created exception', [
+                'shop_id' => $shopId,
+                'error' => $e->getMessage(),
+            ]);
+
             return [
                 'success' => false,
                 'status' => 500,
@@ -755,28 +768,94 @@ class ShopifyService
      */
     public function updateFulfillmentTracking($shopId, $fulfillmentId, $trackingInfo): array
     {
-        $payload = [
-            'fulfillment' => [
-                'tracking_info' => [
-                    'number' => $trackingInfo['number'] ?? $trackingInfo['tracking_number'] ?? null,
-                    'company' => $trackingInfo['company'] ?? $trackingInfo['tracking_company'] ?? null,
-                    'url' => $trackingInfo['url'] ?? $trackingInfo['tracking_url'] ?? null,
-                ],
-                'notify_customer' => (bool) ($trackingInfo['notify_customer'] ?? true),
-            ]
-        ];
-
-        $result = $this->request((int) $shopId, 'POST', "fulfillments/{$fulfillmentId}/update_tracking", $payload);
-        if (!$result['success']) {
-            return $result;
+        try {
+            $trackingInput = array_filter([
+                'number'  => $trackingInfo['number'] ?? $trackingInfo['tracking_number'] ?? null,
+                'company' => $trackingInfo['company'] ?? $trackingInfo['tracking_company'] ?? null,
+                'url'     => $trackingInfo['url'] ?? $trackingInfo['tracking_url'] ?? null,
+    
+                // Optional support for multi-package tracking
+                'numbers' => !empty($trackingInfo['numbers']) ? array_values($trackingInfo['numbers']) : null,
+                'urls'    => !empty($trackingInfo['urls']) ? array_values($trackingInfo['urls']) : null,
+            ], fn ($v) => $v !== null && $v !== '');
+    
+                    $mutation = <<<'GQL'
+            mutation FulfillmentTrackingInfoUpdate(
+            $fulfillmentId: ID!,
+            $trackingInfoInput: FulfillmentTrackingInput!,
+            $notifyCustomer: Boolean
+            ) {
+            fulfillmentTrackingInfoUpdate(
+                fulfillmentId: $fulfillmentId,
+                trackingInfoInput: $trackingInfoInput,
+                notifyCustomer: $notifyCustomer
+            ) {
+                fulfillment {
+                id
+                status
+                trackingInfo {
+                    company
+                    number
+                    url
+                }
+                }
+                userErrors {
+                field
+                message
+                }
+            }
+            }
+            GQL;
+    
+            $variables = [
+                'fulfillmentId' => str_starts_with((string) $fulfillmentId, 'gid://')
+                    ? (string) $fulfillmentId
+                    : 'gid://shopify/Fulfillment/' . $fulfillmentId,
+                'trackingInfoInput' => $trackingInput,
+                'notifyCustomer' => (bool) ($trackingInfo['notify_customer'] ?? true),
+            ];
+    
+            $result = $this->graphqlRequest((int) $shopId, $mutation, $variables);
+    
+            if (!$result['success']) {
+                return $result;
+            }
+    
+            $payload = data_get($result, 'data.fulfillmentTrackingInfoUpdate');
+            $userErrors = $payload['userErrors'] ?? [];
+    
+            if (!empty($userErrors)) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => $userErrors[0]['message'] ?? 'Failed to update fulfillment tracking',
+                    'data' => $payload,
+                    'errors' => $userErrors,
+                ];
+            }
+    
+            return [
+                'success' => true,
+                'status' => $result['status'],
+                'message' => 'Fulfillment tracking updated successfully',
+                'data' => $payload['fulfillment'] ?? null,
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Fulfillment tracking update exception', [
+                'shop_id' => $shopId,
+                'fulfillment_id' => $fulfillmentId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
         }
-
-        return [
-            'success' => true,
-            'data' => $result['data']['fulfillment'] ?? $result['data'],
-            'status' => $result['status'],
-            'message' => 'Fulfillment tracking updated successfully',
-        ];
     }
 
     /**
@@ -784,17 +863,86 @@ class ShopifyService
      */
     public function cancelFulfillment($shopId, $shopifyOrderId, $fulfillmentId): array
     {
-        $result = $this->request((int) $shopId, 'POST', "fulfillments/{$fulfillmentId}/cancel");
-        if (!$result['success']) {
-            return $result;
+        try {
+                        $mutation = <<<'GQL'
+                mutation FulfillmentCancel($id: ID!) {
+                fulfillmentCancel(id: $id) {
+                    fulfillment {
+                    id
+                    status
+                    trackingInfo {
+                        company
+                        number
+                        url
+                    }
+                    fulfillmentLineItems(first: 50) {
+                        edges {
+                        node {
+                            id
+                            quantity
+                            lineItem {
+                            id
+                            name
+                            }
+                        }
+                        }
+                    }
+                    }
+                    userErrors {
+                    field
+                    message
+                    }
+                }
+                }
+                GQL;
+    
+            $variables = [
+                'id' => str_starts_with((string) $fulfillmentId, 'gid://')
+                    ? (string) $fulfillmentId
+                    : 'gid://shopify/Fulfillment/' . $fulfillmentId,
+            ];
+    
+            $result = $this->graphqlRequest((int) $shopId, $mutation, $variables);
+    
+            if (!$result['success']) {
+                return $result;
+            }
+    
+            $payload = data_get($result, 'data.fulfillmentCancel');
+            $userErrors = $payload['userErrors'] ?? [];
+    
+            if (!empty($userErrors)) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => $userErrors[0]['message'] ?? 'Failed to cancel fulfillment',
+                    'data' => $payload,
+                    'errors' => $userErrors,
+                ];
+            }
+    
+            return [
+                'success' => true,
+                'data' => $payload['fulfillment'] ?? null,
+                'status' => $result['status'],
+                'message' => 'Fulfillment cancelled successfully',
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Fulfillment cancel exception', [
+                'shop_id' => $shopId,
+                'fulfillment_id' => $fulfillmentId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
         }
-
-        return [
-            'success' => true,
-            'data' => $result['data']['fulfillment'] ?? $result['data'],
-            'status' => $result['status'],
-            'message' => 'Fulfillment cancelled successfully',
-        ];
     }
 
     /**
@@ -802,17 +950,74 @@ class ShopifyService
      */
     public function getFulfillmentServices($shopId): array
     {
-        $result = $this->request((int) $shopId, 'GET', 'fulfillment_services');
-        if (!$result['success']) {
-            return $result;
+        try {
+                    $query = <<<'GQL'
+            query GetFulfillmentServices($first: Int!) {
+            locations(first: $first, includeLegacy: true) {
+                edges {
+                node {
+                    id
+                    name
+                    fulfillmentService {
+                    id
+                    serviceName
+                    handle
+                    inventoryManagement
+                    trackingSupport
+                    productBased
+                    permitsSkuSharing
+                    requiresShippingMethod
+                    callbackUrl
+                    location {
+                        id
+                        name
+                    }
+                    }
+                }
+                }
+            }
+            }
+            GQL;
+    
+            $variables = [
+                'first' => 100,
+            ];
+    
+            $result = $this->graphqlRequest((int) $shopId, $query, $variables);
+    
+            if (!$result['success']) {
+                return $result;
+            }
+    
+            $locations = data_get($result, 'data.locations.edges', []);
+    
+            $services = collect($locations)
+                ->map(fn ($edge) => $edge['node']['fulfillmentService'] ?? null)
+                ->filter()
+                ->values()
+                ->all();
+    
+            return [
+                'success' => true,
+                'data' => $services,
+                'status' => $result['status'],
+                'message' => 'Fulfillment services fetched successfully',
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Get fulfillment services exception', [
+                'shop_id' => $shopId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
         }
-
-        return [
-            'success' => true,
-            'data' => $result['data']['fulfillment_services'] ?? [],
-            'status' => $result['status'],
-            'message' => 'Fulfillment services fetched successfully',
-        ];
     }
 
 
@@ -822,18 +1027,84 @@ class ShopifyService
      */
     public function getFulfillment($shopId, $fulfillmentId): array
     {
-        $result = $this->request((int) $shopId, 'GET', "fulfillments/{$fulfillmentId}");
-
-        if (!$result['success']) {
-            return $result;
+        try {
+                    $query = <<<'GQL'
+            query GetFulfillment($id: ID!) {
+            fulfillment(id: $id) {
+                id
+                status
+                createdAt
+                updatedAt
+                trackingInfo(first: 10) {
+                company
+                number
+                url
+                }
+                fulfillmentLineItems(first: 50) {
+                edges {
+                    node {
+                    id
+                    quantity
+                    lineItem {
+                        id
+                        name
+                        sku
+                    }
+                    }
+                }
+                }
+                order {
+                id
+                name
+                }
+            }
+            }
+            GQL;
+    
+            $variables = [
+                'id' => str_starts_with((string) $fulfillmentId, 'gid://')
+                    ? (string) $fulfillmentId
+                    : 'gid://shopify/Fulfillment/' . $fulfillmentId,
+            ];
+    
+            $result = $this->graphqlRequest((int) $shopId, $query, $variables);
+    
+            if (!$result['success']) {
+                return $result;
+            }
+    
+            $fulfillment = data_get($result, 'data.fulfillment');
+    
+            if ($fulfillment) {
+                $fulfillment['line_items'] = collect($fulfillment['fulfillmentLineItems']['edges'] ?? [])
+                    ->map(fn ($edge) => $edge['node'] ?? null)
+                    ->filter()
+                    ->values()
+                    ->all();
+            }
+    
+            return [
+                'success' => true,
+                'data' => $fulfillment,
+                'status' => $result['status'],
+                'message' => 'Fulfillment fetched successfully',
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Get fulfillment exception', [
+                'shop_id' => $shopId,
+                'fulfillment_id' => $fulfillmentId,
+                'error' => $e->getMessage(),
+            ]);
+    
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
         }
-
-        return [
-            'success' => true,
-            'data' => $result['data']['fulfillment'] ?? null,
-            'status' => $result['status'],
-            'message' => 'Fulfillment fetched successfully',
-        ];
     }
 
 
@@ -1059,18 +1330,9 @@ class ShopifyService
                 ],
             ];
         
-                Log::info('Shopify deliveryProfileCreate request', [
-                    'shop_id' => $shopId,
-                    'location_gid' => $locationGid,
-                    'variables' => $variables,
-                ]);
         
                 $result = $this->graphqlRequest($shopId, $query, $variables);
         
-                Log::info('Shopify deliveryProfileCreate response', [
-                    'shop_id' => $shopId,
-                    'result' => $result,
-                ]);
         
                 if (!($result['success'] ?? false)) {
                     return [
@@ -1371,20 +1633,11 @@ class ShopifyService
             }
             GRAPHQL;
     
-            Log::info('Shopify getDeliveryProfileDetails request', [
-                'shop_id' => $shopId,
-                'delivery_profile_id' => $profileGid,
-            ]);
     
             $result = $this->graphqlRequest($shopId, $query, [
                 'id' => $profileGid,
             ]);
     
-            Log::info('Shopify getDeliveryProfileDetails response', [
-                'shop_id' => $shopId,
-                'delivery_profile_id' => $profileGid,
-                'result' => $result,
-            ]);
     
             if (!($result['success'] ?? false)) {
                 return [
@@ -1793,13 +2046,6 @@ class ShopifyService
                 'profile' => $profileInput,
             ];
     
-            Log::info('Shopify deliveryProfileUpdate sync request', [
-                'shop_id' => $shopId,
-                'delivery_profile_id' => $profileGid,
-                'location_id' => $locationGid,
-                'carrier_service_id' => $carrierServiceGid,
-                'variables' => $variables,
-            ]);
     
             $result = $this->graphqlRequest($shopId, $mutation, $variables);
     
@@ -2023,19 +2269,9 @@ class ShopifyService
                 'profile' => $profileInput,
             ];
     
-            Log::info('Shopify deliveryProfileUpdate weight-based fallback sync request', [
-                'shop_id' => $shopId,
-                'delivery_profile_id' => $profileGid,
-                'location_id' => $locationGid,
-                'variables' => $variables,
-            ]);
     
             $result = $this->graphqlRequest($shopId, $mutation, $variables);
     
-            Log::info('Shopify deliveryProfileUpdate weight-based fallback sync response', [
-                'shop_id' => $shopId,
-                'result' => $result,
-            ]);
     
             if (!($result['success'] ?? false)) {
                 return [
@@ -2432,10 +2668,6 @@ class ShopifyService
                 'DTFTA Fulfillment Service'
             );
     
-            Log::info('Fulfillment service response', [
-                'shop_id' => $shopId,
-                'result' => $serviceResult,
-            ]);
     
             if (!($serviceResult['success'] ?? false)) {
                 Log::error('Fulfillment service creation failed', [
@@ -2501,11 +2733,6 @@ class ShopifyService
                 $carrierCallbackUrl,
                 'DTFTA USPS Rates'
             );
-    
-            Log::info('Carrier service response', [
-                'shop_id' => $shopId,
-                'result' => $carrierServiceResult,
-            ]);
     
             $carrierUserErrors = data_get($carrierServiceResult, 'data.carrierServiceCreate.userErrors', []);
             $carrierErrorMessage = $carrierUserErrors[0]['message'] ?? null;
@@ -3132,10 +3359,6 @@ class ShopifyService
             'variants' => $variantInputs,
         ]);
     
-        Log::info('Shopify productVariantsBulkCreate response', [
-            'shop_id' => $shopId,
-            'response' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
     
         if (!$result['success']) {
             return $result;
@@ -3202,9 +3425,6 @@ class ShopifyService
             ];
         }
     
-        Log::info('Normalized artwork batch for Shopify', [
-            'artwork' => json_encode($normalized, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
     
         return [
             'success' => true,
@@ -3321,14 +3541,6 @@ class ShopifyService
             ->post($target['url'], $formFields);
     
         if (!$uploadResponse->successful()) {
-            Log::error('Shopify staged upload failed', [
-                'shop_id' => $shopId,
-                'status' => $uploadResponse->status(),
-                'body' => $uploadResponse->body(),
-                'target_url' => $target['url'],
-                'resource_url' => $target['resourceUrl'],
-                'form_fields' => $formFields,
-            ]);
     
             return [
                 'success' => false,
@@ -3441,12 +3653,6 @@ class ShopifyService
             ];
         }
     
-        Log::info('Shopify product media attach request', [
-            'shop_id' => $shopId,
-            'product_id' => $productId,
-            'media' => json_encode($media, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
-    
             $mutation = <<<'GQL'
         mutation productUpdate($product: ProductUpdateInput!, $media: [CreateMediaInput!]) {
         productUpdate(product: $product, media: $media) {
@@ -3482,10 +3688,6 @@ class ShopifyService
             'media' => $media,
         ]);
     
-        Log::info('Shopify product media attach response', [
-            'shop_id' => $shopId,
-            'response' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
     
         if (!$result['success']) {
             return $result;
@@ -3575,11 +3777,6 @@ class ShopifyService
             ];
         }
     
-        Log::info('Shopify metafieldsSet request', [
-            'shop_id' => $shopId,
-            'product_id' => $productId,
-            'metafields' => json_encode($metafields, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
     
             $mutation = <<<'GQL'
         mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
@@ -3604,10 +3801,6 @@ class ShopifyService
             'metafields' => $metafields,
         ]);
     
-        Log::info('Shopify metafieldsSet response', [
-            'shop_id' => $shopId,
-            'response' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
     
         if (!$result['success']) {
             return $result;
@@ -3725,18 +3918,9 @@ class ShopifyService
                 ],
             ];
 
-            Log::info('Shopify assignVariantsToDeliveryProfile request', [
-                'shop_id' => $shopId,
-                'delivery_profile_id' => $profileGid,
-                'variant_ids' => $variantGids,
-            ]);
 
             $result = $this->graphqlRequest($shopId, $mutation, $variables);
 
-            Log::info('Shopify assignVariantsToDeliveryProfile response', [
-                'shop_id' => $shopId,
-                'result' => $result,
-            ]);
 
             if (!($result['success'] ?? false)) {
                 return [

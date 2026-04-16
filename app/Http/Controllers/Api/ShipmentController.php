@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Job;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ShipmentController extends Controller
 {
@@ -37,16 +38,19 @@ class ShipmentController extends Controller
             'tracking_url' => 'nullable|url'
         ]);
 
-        $jobId = $validated['job_id'] ?? Job::where('order_id', $validated['order_id'])->value('id');
+
+
+        $jobId = Job::where('order_id', $validated['order_id'])->first();
+
         if (!$jobId) {
             return response()->json([
                 'success' => false,
                 'message' => 'No job found for this order. Create a job before creating shipment.'
             ], 422);
         }
-
+        
         $payload = [
-            'job_id' => $jobId,
+            'job_id' => $jobId->id,
             'order_id' => $validated['order_id'],
             'shop_id' => $validated['shop_id'],
             'fulfillment_service_id' => $validated['fulfillment_service_id'] ?? null,
@@ -59,26 +63,44 @@ class ShipmentController extends Controller
             'shipped_at' => now(),
         ];
 
-        $shipment = Shipment::create($payload);
+
+       $shipment = Shipment::create($payload);
 
         try {
             $order = Order::find($validated['order_id']);
+
+            $data = $jobId->payload ; // or json_decode($json, true);
+
             $response = $this->shopifyService->createFulfillment(
                 $order->shop_id,
                 $order->shopify_order_id,
                 [
-                    'line_items' => $validated['line_items'] ?? [],
+                    'line_items_by_fulfillment_order' => [
+                        [
+                            'fulfillment_order_id' => $data['fulfillment_order']['legacy_id'],
+                            'fulfillment_order_line_items' => collect($data['fulfillment_order']['line_items'] ?? [])
+                                ->map(function ($item) {
+                                    return [
+                                        'id' => $item['id'] ?? null,
+                                        'quantity' => $item['remaining_quantity'] ?? $item['total_quantity'] ?? 1,
+                                    ];
+                                })
+                                ->filter(fn ($item) => !empty($item['id']))
+                                ->values()
+                                ->all(),
+                        ]
+                    ],
                     'tracking_info' => [
                         'number' => $validated['tracking_number'] ?? null,
                         'company' => $validated['tracking_company'] ?? null,
-                        'url' => $validated['tracking_url'] ?? null
-                    ]
+                        'url' => $validated['tracking_url'] ?? null,
+                    ],
                 ]
             );
 
             if ($response['success']) {
                 $shipment->update([
-                    'shipment_id' => $response['data']['id'] ?? null,
+                    'shipment_id' => $this->legacyIdFromGid($response['data']['id']) ?? null,
                     'status' => 'created',
                     'created_at_shopify' => now(),
                     'updated_at_shopify' => now(),
@@ -94,6 +116,11 @@ class ShipmentController extends Controller
             'message' => 'Shipment created successfully.',
             'data' => $shipment
         ], 201);
+    }
+
+    private function legacyIdFromGid(string $gid): string
+    {
+        return Str::afterLast($gid, '/');
     }
 
     /**
