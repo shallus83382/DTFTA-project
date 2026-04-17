@@ -3383,10 +3383,45 @@ class ShopifyService
             'message' => 'Variants created successfully',
             'data' => [
                 'product' => $payloadData['product'] ?? null,
-                'variants' => $payloadData['productVariants'] ?? [],
+                'variants' => $this->normalizeGraphqlProductVariantList($payloadData['productVariants'] ?? null),
             ],
             'errors' => [],
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeGraphqlProductVariantList(mixed $raw): array
+    {
+        if ($raw === null) {
+            return [];
+        }
+
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        if (isset($raw['edges']) && is_array($raw['edges'])) {
+            return collect($raw['edges'])
+                ->map(fn ($edge) => is_array($edge) ? ($edge['node'] ?? null) : null)
+                ->filter(fn ($node) => is_array($node) && ! empty($node['id']))
+                ->values()
+                ->all();
+        }
+
+        if (array_is_list($raw)) {
+            return collect($raw)
+                ->filter(fn ($item) => is_array($item) && ! empty($item['id']))
+                ->values()
+                ->all();
+        }
+
+        if (! empty($raw['id'])) {
+            return [$raw];
+        }
+
+        return [];
     }
     
     private function normalizeArtworkBatchForShopify(array $artwork): array
@@ -3399,9 +3434,19 @@ class ShopifyService
             }
     
             $placement = strtolower(trim((string) ($item['placement'] ?? 'artwork_' . ($index + 1))));
-            $url = trim((string) ($item['url'] ?? ''));
-            $sourceCode = trim((string) ($item['source_code'] ?? ''));
             $title = trim((string) ($item['title'] ?? ucfirst(str_replace('_', ' ', $placement)) . ' artwork'));
+    
+            $url = trim((string) (
+                $item['url']
+                ?? $item['artwork_url']
+                ?? ''
+            ));
+    
+            $sourceCode = trim((string) (
+                $item['source_code']
+                ?? data_get($item, 'meta.source_code')
+                ?? ''
+            ));
     
             if ($url === '' && $sourceCode === '') {
                 continue;
@@ -3424,7 +3469,6 @@ class ShopifyService
                 'errors' => [],
             ];
         }
-    
     
         return [
             'success' => true,
@@ -3966,6 +4010,210 @@ class ShopifyService
                 'shop_id' => $shopId,
                 'delivery_profile_id' => $deliveryProfileId,
                 'variant_ids' => $variantIds,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
+    public function attachMediaToProductVariant(
+        int $shopId,
+        string $productId,
+        string $variantId,
+        array $mediaIds
+    ): array {
+        try {
+            $productGid = str_starts_with($productId, 'gid://')
+                ? $productId
+                : "gid://shopify/Product/{$productId}";
+
+            $variantGid = str_starts_with($variantId, 'gid://')
+                ? $variantId
+                : "gid://shopify/ProductVariant/{$variantId}";
+
+            $mediaGids = array_values(array_filter(array_map(function ($mediaId) {
+                $value = trim((string) $mediaId);
+                if ($value === '') {
+                    return null;
+                }
+
+                return str_starts_with($value, 'gid://')
+                    ? $value
+                    : "gid://shopify/MediaImage/{$value}";
+            }, $mediaIds)));
+
+            if (empty($mediaGids)) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => 'At least one valid media ID is required',
+                    'data' => null,
+                    'errors' => [],
+                ];
+            }
+
+            $mutation = <<<'GRAPHQL'
+            mutation ProductVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+                productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+                    product {
+                        id
+                        title
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }
+            GRAPHQL;
+
+            $lastPayload = null;
+            foreach ($mediaGids as $mediaGid) {
+                $result = $this->graphqlRequest($shopId, $mutation, [
+                    'productId' => $productGid,
+                    'variantMedia' => [[
+                        'variantId' => $variantGid,
+                        'mediaIds' => [$mediaGid],
+                    ]],
+                ]);
+
+                if (!($result['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'status' => $result['status'] ?? 500,
+                        'message' => $result['message'] ?? 'GraphQL request failed',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+
+                $payload = data_get($result, 'data.productVariantAppendMedia');
+                $lastPayload = $payload;
+
+                if (!$payload) {
+                    return [
+                        'success' => false,
+                        'status' => 500,
+                        'message' => 'Missing productVariantAppendMedia payload in Shopify response',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+
+                if (!empty($payload['userErrors'])) {
+                    return [
+                        'success' => false,
+                        'status' => 422,
+                        'message' => $payload['userErrors'][0]['message'] ?? 'Failed to attach media to variant',
+                        'data' => $payload,
+                        'errors' => $payload['userErrors'],
+                    ];
+                }
+            }
+
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Media attached to variant successfully',
+                'data' => [
+                    'product' => $lastPayload['product'] ?? null,
+                    'product_variant_id' => $variantGid,
+                    'media_ids' => $mediaGids,
+                ],
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('attachMediaToProductVariant exception', [
+                'shop_id' => $shopId,
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'media_ids' => $mediaIds,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
+    public function getProductVariantsByProductId(int $shopId, string $productId): array
+    {
+        try {
+            $productGid = str_starts_with($productId, 'gid://')
+                ? $productId
+                : "gid://shopify/Product/{$productId}";
+
+            $query = <<<'GRAPHQL'
+            query GetProductVariantsForMapping($id: ID!) {
+                product(id: $id) {
+                    id
+                    variants(first: 100) {
+                        edges {
+                            node {
+                                id
+                                title
+                                sku
+                                inventoryItem {
+                                    id
+                                    sku
+                                }
+                                selectedOptions {
+                                    name
+                                    value
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            GRAPHQL;
+
+            $result = $this->graphqlRequest($shopId, $query, [
+                'id' => $productGid,
+            ]);
+
+            if (!($result['success'] ?? false)) {
+                return [
+                    'success' => false,
+                    'status' => $result['status'] ?? 500,
+                    'message' => $result['message'] ?? 'GraphQL request failed',
+                    'data' => $result['data'] ?? null,
+                    'errors' => $result['errors'] ?? [],
+                ];
+            }
+
+            $edges = data_get($result, 'data.product.variants.edges', []);
+            $nodes = collect(is_array($edges) ? $edges : [])
+                ->map(fn ($edge) => $edge['node'] ?? null)
+                ->filter()
+                ->values()
+                ->all();
+
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Product variants fetched successfully',
+                'data' => [
+                    'variants' => is_array($nodes) ? $nodes : [],
+                ],
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('getProductVariantsByProductId exception', [
+                'shop_id' => $shopId,
+                'product_id' => $productId,
                 'error' => $e->getMessage(),
             ]);
 

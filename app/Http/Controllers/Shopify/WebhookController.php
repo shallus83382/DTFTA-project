@@ -337,7 +337,6 @@ class WebhookController extends Controller
             'status' => $job->status,
             'fulfillment_status' => $this->mapFulfillmentOrderToOrderStatus($fo, $job->status),
             'updated_at_shopify' => now(),
-            'payload' => $payload,
         ]);
 
         if ($topic === 'fulfillment_orders/fulfillment_request_submitted') {
@@ -611,7 +610,7 @@ class WebhookController extends Controller
             foreach ($payload['line_items'] as $item) {
                 $lineItemProperties = $this->normalizeLineItemProperties($item['properties'] ?? []);
                 $isDtftaSku = $this->isDtftaSku($item['sku'] ?? null);
-                $isDtftaType = strtoupper((string) ($lineItemProperties['dtfta_type'] ?? '')) === 'APPAREL_POD';
+                $isDtftaType = strtoupper((string) ($lineItemProperties['_dtfta_type'] ?? '')) === 'APPAREL_POD';
                 $hasDtftaMarkers = $isDtftaSku || $isDtftaType;
 
                 $validation = ['valid' => true, 'missing' => []];
@@ -1388,12 +1387,12 @@ class WebhookController extends Controller
     private function validateDtftaLineItem(array $lineItem, array $properties): array
     {
         $required = [
-            'dtfta_type',
-            'dtfta_garment_brand',
-            'dtfta_garment_style',
-            'dtfta_garment_color',
-            'dtfta_garment_size',
-            'dtfta_print_plan',
+            '_dtfta_type',
+            '_dtfta_garment_brand',
+            '_dtfta_garment_style',
+            '_dtfta_garment_color',
+            '_dtfta_garment_size',
+            '_dtfta_print_plan',
         ];
 
         $missing = [];
@@ -1405,7 +1404,7 @@ class WebhookController extends Controller
 
         $hasArtwork = false;
         foreach ($properties as $key => $value) {
-            if (str_starts_with((string) $key, 'dtfta_artwork_') && trim((string) $value) !== '') {
+            if (str_starts_with((string) $key, '_dtfta_artwork_') && trim((string) $value) !== '') {
                 $hasArtwork = true;
                 break;
             }

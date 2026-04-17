@@ -34,4 +34,8 @@ class CustomProductVariant extends Model
         return $this->belongsTo(ProductVariant::class);
     }
 
+    public function artworks()
+    {
+        return $this->hasMany(CustomProductArtwork::class, 'custom_product_variant_id');
+    }
 }
