@@ -3,6 +3,63 @@
 @section('title', 'DTFTA CRM - Products')
 @section('page-title', 'Products')
 
+@push('styles')
+<style>
+    #productsFiltersForm .btn-secondary {
+        height: 42px;
+        min-height: 42px;
+        min-width: 104px;
+        padding: 0 18px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        line-height: 1;
+        font-size: 14px;
+        font-weight: 700;
+        margin: 0;
+        appearance: none;
+        -webkit-appearance: none;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    .products-index-actions {
+        display: inline-flex;
+        align-items: stretch;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .products-index-actions form {
+        margin: 0;
+        display: inline-flex;
+    }
+
+    .products-index-actions .btn-secondary,
+    .products-index-actions .btn-danger {
+        height: 38px;
+        min-height: 38px;
+        min-width: 82px;
+        padding: 0 16px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        line-height: 1;
+        font-size: 13px;
+        font-weight: 700;
+        margin: 0 !important;
+        appearance: none;
+        -webkit-appearance: none;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+</style>
+@endpush
+
 @section('content')
     @if(session('success'))
         <div class="chart-card" style="margin-bottom: 16px; border: 1px solid #166534;">
@@ -132,19 +189,20 @@
                         <td><span class="status-badge {{ $badgeClass }}">{{ ucfirst($status) }}</span></td>
 
                         <td>
-                            <a href="{{ route('crm.products.view', $product->id) }}" class="btn-secondary" style="margin-right: 8px;">View</a>
-                            <a href="{{ route('crm.products.edit', $product->id) }}" class="btn-secondary" style="margin-right: 8px;">Edit</a>
+                            <div class="products-index-actions">
+                                <a href="{{ route('crm.products.view', $product->id) }}" class="btn-secondary">View</a>
+                                <a href="{{ route('crm.products.edit', $product->id) }}" class="btn-secondary">Edit</a>
 
-                            <form
-                                method="POST"
-                                action="{{ route('crm.products.destroy', $product->id) }}"
-                                style="display: inline-block;"
-                                onsubmit="return confirm('Delete this product?')"
-                            >
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn-danger">Delete</button>
-                            </form>
+                                <form
+                                    method="POST"
+                                    action="{{ route('crm.products.destroy', $product->id) }}"
+                                    onsubmit="return confirm('Delete this product?')"
+                                >
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn-danger">Delete</button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                 @empty
