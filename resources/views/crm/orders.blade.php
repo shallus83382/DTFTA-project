@@ -2,16 +2,416 @@
 
 @section('title', 'Orders / Jobs Management')
 
+@push('styles')
+<style>
+    #boardView.orders-board-view .filters-section {
+        position: relative;
+        padding: 14px;
+        margin-bottom: 14px;
+        gap: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 14px;
+        background: linear-gradient(130deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
+        box-shadow: 0 12px 30px rgba(2, 6, 23, 0.35);
+        backdrop-filter: blur(8px);
+    }
+
+    #boardView.orders-board-view .lead-filters-left {
+        gap: 8px;
+    }
+
+    #boardView.orders-board-view .lead-search-input {
+        border-radius: 10px;
+        border-color: rgba(148, 163, 184, 0.28);
+        background: rgba(15, 23, 42, 0.65);
+        height: 40px;
+        font-size: 13px;
+    }
+
+    #boardView.orders-board-view .lead-search-input:focus {
+        border-color: rgba(96, 165, 250, 0.8);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16);
+    }
+
+    #boardView.orders-board-view #boardFilterBtn {
+        height: 40px;
+        padding: 0 16px;
+        border-radius: 10px;
+        border-color: rgba(96, 165, 250, 0.35);
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.24), rgba(37, 99, 235, 0.24));
+        font-weight: 600;
+    }
+
+    #boardView.orders-board-view .lead-filters-right {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    #boardView.orders-board-view .lead-filters-right .filter-select {
+        height: 40px;
+        border-radius: 10px;
+        min-width: 165px;
+    }
+
+    #boardView.orders-board-view .view-toggle-section {
+        margin-left: auto;
+    }
+
+    #boardView.orders-board-view .view-toggle-btn {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        justify-content: center;
+        border-radius: 9px;
+    }
+
+    #boardView.orders-board-view .leads-board {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        min-height: 340px;
+        height: auto;
+        margin-top: 0;
+        padding: 10px;
+        align-items: stretch;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+        box-sizing: border-box;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 16px;
+        background: radial-gradient(circle at top left, rgba(59, 130, 246, 0.08), transparent 45%),
+                    linear-gradient(180deg, rgba(15, 23, 42, 0.65), rgba(15, 23, 42, 0.35));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 16px 30px rgba(2, 6, 23, 0.3);
+    }
+
+    #boardView.orders-board-view .lead-column {
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: linear-gradient(180deg, rgba(30, 41, 59, 0.86), rgba(15, 23, 42, 0.9));
+        box-shadow: inset 0 1px 0 rgba(226, 232, 240, 0.04), 0 12px 24px rgba(2, 6, 23, 0.28);
+    }
+
+    #boardView.orders-board-view .lead-column::before {
+        content: "";
+        display: block;
+        height: 3px;
+        border-radius: 999px;
+        margin-bottom: 8px;
+        background: linear-gradient(90deg, rgba(148, 163, 184, 0.5), rgba(148, 163, 184, 0.12));
+    }
+
+    #boardView.orders-board-view .lead-column:nth-child(1)::before {
+        background: linear-gradient(90deg, #3b82f6, rgba(59, 130, 246, 0.2));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(2)::before {
+        background: linear-gradient(90deg, #f59e0b, rgba(245, 158, 11, 0.2));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(3)::before {
+        background: linear-gradient(90deg, #8b5cf6, rgba(139, 92, 246, 0.2));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(4)::before {
+        background: linear-gradient(90deg, #10b981, rgba(16, 185, 129, 0.2));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(5)::before {
+        background: linear-gradient(90deg, #ef4444, rgba(239, 68, 68, 0.2));
+    }
+
+    #boardView.orders-board-view .lead-column-header h3 {
+        font-size: 12px;
+        letter-spacing: 0.35px;
+        color: #dbe5f6;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+
+    #boardView.orders-board-view .lead-column-header .btn-secondary {
+        width: 26px;
+        height: 26px;
+        min-width: 26px;
+        border-radius: 8px;
+        border-color: rgba(148, 163, 184, 0.34);
+        background: rgba(15, 23, 42, 0.75);
+        color: #dbe5f6;
+        font-size: 14px;
+        padding: 0;
+    }
+
+    #boardView.orders-board-view .lead-column-body {
+        gap: 8px;
+        min-height: 150px;
+        max-height: 460px;
+        padding-right: 2px;
+    }
+
+    #boardView.orders-board-view .lead-card {
+        position: relative;
+        padding: 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: linear-gradient(145deg, rgba(30, 41, 59, 0.97), rgba(15, 23, 42, 0.97));
+        gap: 7px;
+        box-shadow: 0 8px 20px rgba(2, 6, 23, 0.24);
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    #boardView.orders-board-view .lead-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.03);
+        pointer-events: none;
+    }
+
+    #boardView.orders-board-view .lead-card:hover {
+        transform: translateY(-2px) scale(1.01);
+        border-color: rgba(96, 165, 250, 0.55);
+        box-shadow: 0 14px 32px rgba(30, 64, 175, 0.22);
+    }
+
+    #boardView.orders-board-view .lead-avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+        box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.75);
+    }
+
+    #boardView.orders-board-view .lead-name {
+        font-size: 12px;
+        color: #f8fafc;
+        font-weight: 700;
+    }
+
+    #boardView.orders-board-view .lead-company,
+    #boardView.orders-board-view .lead-time {
+        font-size: 10px;
+        color: #8ea0bd;
+    }
+
+    #boardView.orders-board-view .lead-description {
+        font-size: 11px;
+        margin: 0;
+        -webkit-line-clamp: 2;
+        color: #cbd5e1;
+        line-height: 1.4;
+    }
+
+    #boardView.orders-board-view .lead-card .status-badge {
+        padding: 2px 9px;
+        font-size: 9px;
+        font-weight: 700;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.45px;
+        backdrop-filter: blur(4px);
+    }
+
+    #boardView.orders-board-view .lead-empty-state {
+        margin: 0;
+        min-height: 100px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        color: #95a9c8;
+        font-size: 12px;
+        border: 1px dashed rgba(148, 163, 184, 0.3);
+        border-radius: 10px;
+        background: linear-gradient(165deg, rgba(30, 41, 59, 0.38), rgba(15, 23, 42, 0.26));
+        padding: 12px;
+    }
+
+    /* Final premium refinement layer */
+    #boardView.orders-board-view .filters-section {
+        border-color: rgba(96, 165, 250, 0.28);
+        box-shadow: 0 14px 30px rgba(2, 6, 23, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    #boardView.orders-board-view .lead-column {
+        border-color: rgba(96, 165, 250, 0.22);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 14px 28px rgba(2, 6, 23, 0.3);
+    }
+
+    #boardView.orders-board-view .lead-column:hover {
+        border-color: rgba(96, 165, 250, 0.36);
+    }
+
+    #boardView.orders-board-view .lead-column:nth-child(1) {
+        background: linear-gradient(180deg, rgba(30, 58, 138, 0.22), rgba(15, 23, 42, 0.92));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(2) {
+        background: linear-gradient(180deg, rgba(217, 119, 6, 0.18), rgba(15, 23, 42, 0.92));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(3) {
+        background: linear-gradient(180deg, rgba(124, 58, 237, 0.18), rgba(15, 23, 42, 0.92));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(4) {
+        background: linear-gradient(180deg, rgba(5, 150, 105, 0.18), rgba(15, 23, 42, 0.92));
+    }
+    #boardView.orders-board-view .lead-column:nth-child(5) {
+        background: linear-gradient(180deg, rgba(220, 38, 38, 0.16), rgba(15, 23, 42, 0.92));
+    }
+
+    /* Orders modal dropdown readability fix */
+    #addLeadModal .form-group select {
+        background: linear-gradient(145deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.86)) !important;
+        color: #e2e8f0 !important;
+        border-color: rgba(148, 163, 184, 0.35) !important;
+        font-weight: 600;
+    }
+
+    #addLeadModal .form-group select option {
+        background: #f8fafc !important;
+        color: #0f172a !important;
+    }
+
+    #addLeadModal .form-group select option:disabled {
+        color: #64748b !important;
+    }
+
+    #boardView.orders-board-view .lead-column-header {
+        padding-bottom: 6px;
+        border-bottom: 1px dashed rgba(148, 163, 184, 0.2);
+        margin-bottom: 10px;
+    }
+
+    #boardView.orders-board-view .lead-column-header h3 {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    #boardView.orders-board-view .lead-column-header h3::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: rgba(191, 219, 254, 0.9);
+        box-shadow: 0 0 8px rgba(96, 165, 250, 0.8);
+        flex-shrink: 0;
+    }
+
+    #boardView.orders-board-view .lead-column:nth-child(2) .lead-column-header h3::before {
+        background: rgba(253, 230, 138, 0.95);
+        box-shadow: 0 0 8px rgba(245, 158, 11, 0.85);
+    }
+    #boardView.orders-board-view .lead-column:nth-child(3) .lead-column-header h3::before {
+        background: rgba(216, 180, 254, 0.95);
+        box-shadow: 0 0 8px rgba(168, 85, 247, 0.85);
+    }
+    #boardView.orders-board-view .lead-column:nth-child(4) .lead-column-header h3::before {
+        background: rgba(167, 243, 208, 0.95);
+        box-shadow: 0 0 8px rgba(16, 185, 129, 0.85);
+    }
+    #boardView.orders-board-view .lead-column:nth-child(5) .lead-column-header h3::before {
+        background: rgba(254, 202, 202, 0.95);
+        box-shadow: 0 0 8px rgba(239, 68, 68, 0.85);
+    }
+
+    #boardView.orders-board-view .lead-card {
+        box-shadow: 0 10px 20px rgba(2, 6, 23, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    }
+
+    #boardView.orders-board-view .lead-card:hover {
+        box-shadow: 0 16px 30px rgba(30, 64, 175, 0.24);
+    }
+
+    #boardView.orders-board-view .lead-empty-state {
+        border-style: solid;
+        border-color: rgba(148, 163, 184, 0.22);
+        background: linear-gradient(145deg, rgba(30, 41, 59, 0.42), rgba(15, 23, 42, 0.3));
+        color: #a9bddb;
+        font-weight: 600;
+    }
+
+    #boardView.orders-board-view .lead-column-body::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    #boardView.orders-board-view .lead-column-body::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.3);
+        border-radius: 999px;
+    }
+
+    @media (max-width: 1200px) {
+        #boardView.orders-board-view .leads-board {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 640px) {
+        #boardView.orders-board-view .filters-section {
+            padding: 12px;
+        }
+
+        #boardView.orders-board-view .leads-board {
+            grid-template-columns: minmax(0, 1fr);
+            min-height: 280px;
+        }
+    }
+
+    /* Board + table toolbars: stack on narrow screens (no horizontal page scroll) */
+    @media (max-width: 900px) {
+        #boardView.orders-board-view .filters-section {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 12px;
+        }
+
+        #boardView.orders-board-view .lead-filters-left {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        #boardView.orders-board-view .lead-filters-right {
+            width: 100%;
+            min-width: 0;
+        }
+
+        #boardView.orders-board-view .lead-filters-right .filter-select {
+            width: 100%;
+            min-width: 0;
+        }
+
+        #boardView.orders-board-view .lead-search-input {
+            width: 100%;
+            min-width: 0;
+        }
+
+        #boardView.orders-board-view .view-toggle-section {
+            margin-left: 0;
+            align-self: flex-end;
+        }
+
+        #tableView .filters-section .view-toggle-section {
+            margin-left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: flex-end;
+        }
+    }
+</style>
+@endpush
+
 @section('content')
     <!-- Board View Content (Leads) -->
-    <div id="boardView" class="view-content">
+    <div id="boardView" class="view-content orders-board-view">
         <!-- Search / Controls -->
         <div class="filters-section">
             <div class="lead-filters-left">
                 <input type="text" id="boardSearchInput" class="lead-search-input" placeholder="Search by job ID or order number">
                 <button class="btn-secondary" id="boardFilterBtn" type="button">Filter</button>
             </div>
-            <div class="lead-filters-right" style="display:flex; gap:12px; align-items:center;">
+            <div class="lead-filters-right">
                 <select class="filter-select" id="boardStatusFilter">
                     <option value="">All Statuses</option>
                     <option value="pending">Pending</option>
@@ -68,7 +468,7 @@
                             </div>
                         </div>
                     @empty
-                        <p style="padding: 20px; text-align: center; color: #999;">No new jobs</p>
+                        <p class="lead-empty-state">No new jobs</p>
                     @endforelse
                 </div>
             </div>
@@ -108,7 +508,7 @@
                             </div>
                         </div>
                     @empty
-                        <p style="padding: 20px; text-align: center; color: #999;">No artwork needed</p>
+                        <p class="lead-empty-state">No artwork needed</p>
                     @endforelse
                 </div>
             </div>
@@ -148,7 +548,7 @@
                             </div>
                         </div>
                     @empty
-                        <p style="padding: 20px; text-align: center; color: #999;">No jobs in production</p>
+                        <p class="lead-empty-state">No jobs in production</p>
                     @endforelse
                 </div>
             </div>
@@ -188,7 +588,7 @@
                             </div>
                         </div>
                     @empty
-                        <p style="padding: 20px; text-align: center; color: #999;">No shipped jobs</p>
+                        <p class="lead-empty-state">No shipped jobs</p>
                     @endforelse
                 </div>
             </div>
@@ -228,7 +628,7 @@
                             </div>
                         </div>
                     @empty
-                        <p style="padding: 20px; text-align: center; color: #999;">No cancelled/exception jobs</p>
+                        <p class="lead-empty-state">No cancelled/exception jobs</p>
                     @endforelse
                 </div>
             </div>
@@ -607,9 +1007,7 @@
 
                 if (cards.length === 0 && !emptyMessage) {
                     const message = document.createElement('p');
-                    message.style.padding = '20px';
-                    message.style.textAlign = 'center';
-                    message.style.color = '#999';
+                    message.className = 'lead-empty-state';
                     message.textContent = getEmptyColumnMessage(column.dataset.status);
                     column.appendChild(message);
                 }

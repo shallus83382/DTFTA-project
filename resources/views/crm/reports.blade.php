@@ -13,6 +13,20 @@
     @endphp
 
     <div class="reports-page">
+    <div class="reports-hero">
+        <div>
+            <p class="reports-eyebrow">Performance Intelligence</p>
+            <h2>Reports & Analytics Workspace</h2>
+            <p class="reports-subtitle">
+                Track sales, fulfillment, and product movement with one unified reporting view.
+            </p>
+        </div>
+        <div class="reports-hero-pill">
+            {{ ucfirst($reportType) }} report
+            <span>{{ $filters['from_input'] }} to {{ $filters['to_input'] }}</span>
+        </div>
+    </div>
+
     <form id="reportsFilterForm" method="GET" action="{{ route('crm.reports') }}" class="reports-filters">
         <div class="filter-group">
             <label for="report_type">Report Type</label>
@@ -65,12 +79,14 @@
                 @endforeach
             </select>
         </div>
-        <button class="btn-secondary" type="submit">Apply</button>
-        <a href="{{ route('crm.reports') }}" class="btn-secondary">Clear</a>
-        <a href="{{ route('crm.reports.export-csv', request()->query()) }}" class="btn-primary">Export CSV</a>
+        <div class="reports-filter-actions">
+            <button class="btn-secondary" type="submit">Apply</button>
+            <a href="{{ route('crm.reports') }}" class="btn-secondary">Clear</a>
+            <a href="{{ route('crm.reports.export-csv', request()->query()) }}" class="btn-primary">Export CSV</a>
+        </div>
     </form>
 
-    <div class="cards-grid reports-kpi-grid" style="margin-top: 20px;">
+    <div class="cards-grid reports-kpi-grid">
         <div class="card report-kpi-card card-blue">
             <div class="card-content">
                 <h3>Total Orders</h3>
@@ -101,7 +117,7 @@
         </div>
     </div>
 
-    <div class="cards-grid reports-kpi-grid" style="margin-top: 14px;">
+    <div class="cards-grid reports-kpi-grid reports-kpi-grid-secondary">
         <div class="card report-kpi-card card-green">
             <div class="card-content">
                 <h3>Fulfilled Orders</h3>
@@ -139,19 +155,19 @@
     </div>
 
     @if($showSales)
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Order Trend</h3>
         <canvas id="ordersTrendChart" height="100"></canvas>
     </div>
 
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Revenue Trend</h3>
         <canvas id="revenueTrendChart" height="100"></canvas>
     </div>
     @endif
 
     @if($showSales || $showPerformance)
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Orders by Store</h3>
         <div class="table-container">
             <table class="jobs-table">
@@ -204,7 +220,7 @@
     @endif
 
     @if($showFulfillment)
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Status Distribution</h3>
         <div class="table-container">
             <table class="jobs-table">
@@ -232,7 +248,7 @@
     @endif
 
     @if($showPerformance)
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Job Type Distribution</h3>
         <div class="table-container">
             <table class="jobs-table">
@@ -260,7 +276,7 @@
     @endif
 
     @if($showSales)
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Top Stores by Revenue</h3>
         <div class="table-container">
             <table class="jobs-table">
@@ -290,7 +306,7 @@
     @endif
 
     @if($showInventory)
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Top Products (By Quantity)</h3>
         <div class="table-container">
             <table class="jobs-table">
@@ -318,7 +334,7 @@
         </div>
     </div>
 
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Product Type Performance</h3>
         <div class="table-container">
             <table class="jobs-table">
@@ -346,7 +362,7 @@
     @endif
 
     @if($showFulfillment)
-    <div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-card report-panel">
         <h3>Recent Exceptions</h3>
         <div class="table-container">
             <table class="jobs-table">
@@ -396,6 +412,191 @@
 
 @push('styles')
     <style>
+        .reports-page {
+            display: grid;
+            gap: 14px;
+        }
+
+        .reports-page .reports-hero {
+            border-radius: 16px;
+            border: 1px solid rgba(96, 165, 250, 0.28);
+            background:
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.2), transparent 45%),
+                linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.96));
+            box-shadow: 0 18px 34px rgba(2, 6, 23, 0.34);
+            padding: 18px 20px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .reports-page .reports-eyebrow {
+            margin: 0 0 6px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #93c5fd;
+            font-weight: 700;
+        }
+
+        .reports-page .reports-hero h2 {
+            margin: 0;
+            color: #f8fafc;
+            font-size: 27px;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+        }
+
+        .reports-page .reports-subtitle {
+            margin: 9px 0 0;
+            color: #a8bcda;
+            font-size: 14px;
+        }
+
+        .reports-page .reports-hero-pill {
+            border-radius: 999px;
+            border: 1px solid rgba(125, 211, 252, 0.38);
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.3), rgba(14, 116, 144, 0.24));
+            color: #e0f2fe;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            padding: 10px 14px;
+            display: inline-grid;
+            gap: 2px;
+            justify-items: end;
+            text-transform: uppercase;
+        }
+
+        .reports-page .reports-hero-pill span {
+            font-size: 11px;
+            color: #c7ddff;
+            letter-spacing: 0.01em;
+            text-transform: none;
+            font-weight: 600;
+        }
+
+        .reports-page .reports-filters {
+            margin: 0;
+            padding: 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            background:
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 48%),
+                linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.92));
+            box-shadow: 0 14px 28px rgba(2, 6, 23, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            display: grid;
+            grid-template-columns: repeat(6, minmax(130px, 1fr)) auto;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .reports-page .reports-filters .filter-group {
+            min-width: 0;
+            margin: 0;
+        }
+
+        .reports-page .reports-filters .filter-group label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: #b5c9e8;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .reports-page .reports-filters .filter-select {
+            height: 42px;
+            border-radius: 10px;
+            border-color: rgba(148, 163, 184, 0.33);
+            background-color: rgba(15, 23, 42, 0.8);
+            color: #f8fafc;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .reports-page .reports-filter-actions {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(104px, 1fr));
+            gap: 10px;
+            min-width: 340px;
+            align-items: stretch;
+        }
+
+        .reports-page .reports-filter-actions .btn-secondary,
+        .reports-page .reports-filter-actions .btn-primary {
+            height: 42px;
+            min-height: 42px;
+            border-radius: 10px;
+            margin: 0;
+            padding: 0 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+            box-sizing: border-box;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .reports-page .reports-filter-actions .btn-primary {
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.28);
+        }
+
+        .reports-page .reports-kpi-grid {
+            margin-top: 2px;
+            gap: 14px;
+            perspective: 1000px;
+        }
+
+        .reports-page .reports-kpi-grid-secondary {
+            margin-top: 0;
+        }
+
+        .reports-page .report-panel {
+            margin-top: 0 !important;
+            border-radius: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            background:
+                radial-gradient(circle at top right, rgba(56, 189, 248, 0.08), transparent 44%),
+                linear-gradient(165deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.94));
+            box-shadow: 0 14px 30px rgba(2, 6, 23, 0.28);
+            padding: 18px 18px;
+        }
+
+        .reports-page .report-panel h3 {
+            margin: 0 0 14px;
+            color: #f8fafc;
+            font-size: 18px;
+            letter-spacing: -0.01em;
+        }
+
+        .reports-page .report-panel .jobs-table th {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #a9bddf;
+            background: rgba(15, 23, 42, 0.52);
+            border-bottom-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .reports-page .report-panel .jobs-table td {
+            border-bottom-color: rgba(148, 163, 184, 0.15);
+        }
+
+        .reports-page .report-panel .jobs-table tbody tr:hover {
+            background: linear-gradient(120deg, rgba(59, 130, 246, 0.1), rgba(15, 23, 42, 0.16));
+        }
+
+        .reports-page .report-panel .pagination {
+            margin-top: 14px !important;
+        }
+
         .reports-page .report-chart-shell {
             transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
             border: 1px solid rgba(148, 163, 184, 0.14);
@@ -520,6 +721,46 @@
             to {
                 opacity: 1;
                 transform: translateY(0) scale(1);
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .reports-page .reports-filters {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .reports-page .reports-filter-actions {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                min-width: 0;
+            }
+        }
+
+        @media (max-width: 992px) {
+            .reports-page .reports-filters {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .reports-page .reports-filter-actions {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 860px) {
+            .reports-page .reports-hero {
+                grid-template-columns: 1fr;
+            }
+
+            .reports-page .reports-hero-pill {
+                justify-items: start;
+                width: fit-content;
+            }
+
+            .reports-page .reports-filters {
+                grid-template-columns: 1fr;
+            }
+
+            .reports-page .reports-filter-actions {
+                grid-template-columns: 1fr;
             }
         }
     </style>

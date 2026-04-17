@@ -5,54 +5,113 @@
 
 @section('content')
     <style>
-        .ship-wrap { display: grid; gap: 16px; }
+        .ship-wrap {
+            display: grid;
+            gap: 16px;
+            position: relative;
+        }
+        .ship-wrap::before {
+            content: "";
+            position: absolute;
+            inset: -60px -30px auto auto;
+            width: 260px;
+            height: 260px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0));
+            pointer-events: none;
+            z-index: 0;
+        }
+        .ship-wrap > * {
+            position: relative;
+            z-index: 1;
+        }
         .ship-top {
             display: grid;
             grid-template-columns: 1.25fr 1fr;
             gap: 16px;
         }
         .ship-card {
-            background: linear-gradient(160deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.93));
-            border: 1px solid rgba(148, 163, 184, 0.24);
-            border-radius: 14px;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(160deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.94));
+            border: 1px solid rgba(148, 163, 184, 0.26);
+            border-radius: 16px;
             padding: 18px;
-            box-shadow: 0 8px 20px rgba(2, 6, 23, 0.14);
+            box-shadow: 0 12px 28px rgba(2, 6, 23, 0.22);
+        }
+        .ship-card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 1px;
+            background: linear-gradient(90deg, rgba(56, 189, 248, 0.28), rgba(45, 212, 191, 0.18), rgba(56, 189, 248, 0.28));
+            pointer-events: none;
         }
         .ship-card h3 {
             margin: 0 0 12px;
             color: #f8fafc;
-            font-size: 17px;
+            font-size: 26px;
+            line-height: 1.15;
+            letter-spacing: -0.01em;
+            font-weight: 700;
         }
         .ship-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .ship-grid .full { grid-column: 1 / -1; }
         .ship-card label {
             display: block;
             font-size: 12px;
-            color: #bfdbfe;
+            color: #b9c9e4;
             margin-bottom: 6px;
-            font-weight: 600;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
         }
         .ship-card input, .ship-card select, .ship-card textarea {
             width: 100%;
-            border: 1px solid rgba(148, 163, 184, 0.32);
-            border-radius: 9px;
-            padding: 10px 12px;
-            background: rgba(15, 23, 42, 0.65);
-            color: #e2e8f0;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            border-radius: 10px;
+            padding: 12px 13px;
+            background: linear-gradient(145deg, rgba(15, 23, 42, 0.86), rgba(15, 23, 42, 0.76));
+            color: #f8fafc;
+            font-size: 14px;
+            font-weight: 500;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .ship-card select,
+        .ship-toolbar select {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23cbd5e1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            padding-right: 40px;
+        }
+        .ship-card select option,
+        .ship-toolbar select option {
+            color: #0f172a;
+            background: #f8fafc;
+        }
+        .ship-card input::placeholder,
+        .ship-card textarea::placeholder {
+            color: #7f93b2;
             font-size: 13px;
+            font-weight: 500;
         }
         .ship-card textarea { min-height: 90px; resize: vertical; }
         .ship-card input:focus, .ship-card select:focus, .ship-card textarea:focus {
             outline: none;
-            border-color: #38bdf8;
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+            border-color: rgba(56, 189, 248, 0.75);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
         }
         .ship-note {
             margin: 10px 0 0;
-            padding: 9px 10px;
-            border-radius: 9px;
-            background: rgba(30, 64, 175, 0.22);
-            border: 1px solid rgba(59, 130, 246, 0.35);
+            padding: 10px 11px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(30, 64, 175, 0.25), rgba(30, 64, 175, 0.12));
+            border: 1px solid rgba(96, 165, 250, 0.36);
             color: #dbeafe;
             font-size: 12px;
         }
@@ -60,24 +119,93 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
-            margin-top: 10px;
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: linear-gradient(140deg, rgba(15, 23, 42, 0.5), rgba(15, 23, 42, 0.3));
         }
         .ship-btn {
-            border: none;
+            border: 1px solid transparent;
             border-radius: 10px;
-            padding: 10px 14px;
+            min-height: 40px;
+            padding: 10px 16px;
             color: #fff;
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: 0.01em;
             cursor: pointer;
-            transition: transform .2s ease, filter .2s ease;
+            transition: transform .2s ease, filter .2s ease, box-shadow .2s ease, border-color .2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            position: relative;
+            overflow: hidden;
         }
-        .ship-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
-        .ship-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
-        .ship-btn.primary { background: linear-gradient(135deg, #0284c7, #2563eb); }
-        .ship-btn.secondary { background: linear-gradient(135deg, #0f766e, #059669); }
-        .ship-btn.warn { background: linear-gradient(135deg, #b45309, #d97706); }
-        .ship-btn.danger { background: linear-gradient(135deg, #b91c1c, #dc2626); }
+        .ship-btn::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            pointer-events: none;
+        }
+        .ship-btn:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.08);
+            box-shadow: 0 10px 20px rgba(2, 6, 23, 0.28);
+        }
+        .ship-btn:disabled,
+        .ship-btn[disabled] {
+            opacity: 1;
+            color: #cfddf4;
+            border-color: rgba(148, 163, 184, 0.2);
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+            filter: saturate(0.8) brightness(0.9);
+        }
+        .ship-btn.primary {
+            background: linear-gradient(135deg, #0ea5e9, #2563eb 55%, #1d4ed8);
+            border-color: rgba(125, 211, 252, 0.45);
+            box-shadow: 0 10px 22px rgba(37, 99, 235, 0.32);
+        }
+        .ship-btn.secondary {
+            background: linear-gradient(135deg, #10b981, #059669 55%, #047857);
+            border-color: rgba(110, 231, 183, 0.45);
+            box-shadow: 0 10px 22px rgba(5, 150, 105, 0.28);
+        }
+        .ship-btn.warn {
+            background: linear-gradient(135deg, #f59e0b, #d97706 55%, #b45309);
+            border-color: rgba(253, 186, 116, 0.45);
+            box-shadow: 0 10px 22px rgba(217, 119, 6, 0.28);
+        }
+        .ship-btn.danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626 55%, #b91c1c);
+            border-color: rgba(252, 165, 165, 0.45);
+            box-shadow: 0 10px 22px rgba(220, 38, 38, 0.28);
+        }
+
+        .ship-btn.primary:disabled { background: linear-gradient(135deg, rgba(14, 165, 233, 0.55), rgba(37, 99, 235, 0.55), rgba(29, 78, 216, 0.55)); }
+        .ship-btn.secondary:disabled { background: linear-gradient(135deg, rgba(16, 185, 129, 0.55), rgba(5, 150, 105, 0.55), rgba(4, 120, 87, 0.55)); }
+        .ship-btn.warn:disabled { background: linear-gradient(135deg, rgba(245, 158, 11, 0.55), rgba(217, 119, 6, 0.55), rgba(180, 83, 9, 0.55)); }
+        .ship-btn.danger:disabled { background: linear-gradient(135deg, rgba(239, 68, 68, 0.55), rgba(220, 38, 38, 0.55), rgba(185, 28, 28, 0.55)); }
+
+        .ship-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.25), 0 10px 22px rgba(2, 6, 23, 0.32);
+        }
+        @media (max-width: 860px) {
+            .ship-actions {
+                gap: 8px;
+                padding: 8px;
+            }
+            .ship-btn {
+                flex: 1 1 calc(50% - 8px);
+                min-width: 180px;
+            }
+        }
         .ship-toolbar {
             display: grid;
             grid-template-columns: 1fr 180px 180px auto;
@@ -85,10 +213,14 @@
             align-items: end;
         }
         .ship-table-wrap {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
+            background: linear-gradient(170deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
+            border: 1px solid rgba(148, 163, 184, 0.22);
             border-radius: 12px;
             overflow: hidden;
+        }
+        .ship-toolbar select,
+        .ship-toolbar input {
+            color: #f8fafc;
         }
         .ship-table {
             width: 100%;
@@ -101,21 +233,35 @@
             color: var(--text-primary);
             text-align: left;
         }
-        .ship-table th { background: rgba(15, 23, 42, 0.06); font-size: 12px; color: var(--text-secondary); }
+        .ship-table th {
+            background: rgba(15, 23, 42, 0.35);
+            font-size: 11px;
+            color: #9fb1cf;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .ship-table tbody tr {
+            transition: background 0.2s ease;
+        }
+        .ship-table tbody tr:hover {
+            background: rgba(59, 130, 246, 0.1);
+        }
         .ship-row.selected { background: rgba(56, 189, 248, 0.08); }
         .ship-status {
             border-radius: 999px;
-            padding: 4px 8px;
-            font-size: 11px;
+            padding: 4px 10px;
+            font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.06em;
             display: inline-block;
+            border: 1px solid transparent;
         }
-        .ship-status.processing { background: #ffedd5; color: #9a3412; }
-        .ship-status.created { background: #dbeafe; color: #1e3a8a; }
-        .ship-status.in_transit { background: #ede9fe; color: #5b21b6; }
-        .ship-status.delivered { background: #dcfce7; color: #166534; }
-        .ship-status.cancelled { background: #fee2e2; color: #991b1b; }
+        .ship-status.processing { background: rgba(245, 158, 11, 0.18); color: #fcd34d; border-color: rgba(245, 158, 11, 0.45); }
+        .ship-status.created { background: rgba(59, 130, 246, 0.18); color: #93c5fd; border-color: rgba(59, 130, 246, 0.45); }
+        .ship-status.in_transit { background: rgba(139, 92, 246, 0.18); color: #c4b5fd; border-color: rgba(139, 92, 246, 0.45); }
+        .ship-status.delivered { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.45); }
+        .ship-status.cancelled { background: rgba(239, 68, 68, 0.18); color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); }
         .ship-empty { padding: 26px; text-align: center; color: var(--text-muted); }
         .ship-flash {
             display: none;
@@ -132,12 +278,31 @@
             text-decoration: none;
             font-size: 12px;
             font-weight: 600;
+            border: 1px solid rgba(56, 189, 248, 0.28);
+            border-radius: 8px;
+            padding: 5px 8px;
+            background: rgba(15, 23, 42, 0.5);
         }
-        .ship-link:hover { color: #7dd3fc; text-decoration: underline; }
+        .ship-link:hover {
+            color: #e0f2fe;
+            border-color: rgba(125, 211, 252, 0.5);
+            background: rgba(14, 165, 233, 0.12);
+            text-decoration: none;
+        }
         @media (max-width: 1080px) {
             .ship-top { grid-template-columns: 1fr; }
             .ship-grid { grid-template-columns: 1fr; }
             .ship-toolbar { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 991px) {
+            .ship-table-wrap {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                max-width: 100%;
+            }
+            .ship-table {
+                min-width: 720px;
+            }
         }
     </style>
 
