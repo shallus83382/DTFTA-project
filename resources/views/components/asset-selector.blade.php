@@ -4,11 +4,11 @@
 
 <div id="{{ $componentId }}" class="asset-selector-wrapper">
     <div style="margin-bottom: 20px;">
-        <label for="{{ $componentId }}-category"><strong>Select Category</strong></label><br>
+        <label for="{{ $componentId }}-category" class="asset-selector-label"><strong>Select Category</strong></label><br>
         <select
             id="{{ $componentId }}-category"
             name="{{ $categoryInputName }}"
-            style="width: 300px; padding: 8px;"
+            class="filter-select asset-selector-category"
         >
             <option value="">Select Category</option>
             @foreach($categories as $key => $label)
@@ -22,10 +22,10 @@
     <input type="hidden" name="{{ $assetInputName }}" id="{{ $componentId }}-asset-key" value="{{ $selectedAssetKey }}">
 
     <div id="{{ $componentId }}-asset-section" style="display: none; margin-top: 20px;">
-        <label><strong>Select Asset</strong></label>
+        <label class="asset-selector-label"><strong>Select Asset</strong></label>
         <div
             id="{{ $componentId }}-asset-list"
-            style="display: flex; gap: 15px; flex-wrap: wrap; margin-top: 15px;"
+            class="asset-selector-list"
         ></div>
     </div>
 </div>
@@ -48,35 +48,26 @@ document.addEventListener('DOMContentLoaded', function () {
             const asset = assets[key];
 
             const card = document.createElement('div');
-            card.style.width = '150px';
-            card.style.border = '1px solid #ddd';
-            card.style.padding = '10px';
-            card.style.cursor = 'pointer';
-            card.style.textAlign = 'center';
-            card.style.borderRadius = '6px';
-            card.style.backgroundColor = '#fff';
+            card.classList.add('asset-card');
             card.dataset.key = key;
 
             if (selectedAssetKey && selectedAssetKey === key && categorySelect.value === selectedCategory) {
-                card.style.border = '2px solid green';
-                card.style.backgroundColor = '#f5f5f5';
+                card.classList.add('active');
                 assetKeyInput.value = key;
             }
 
             card.innerHTML = `
-                <img src="${asset.thumbnail_url}" alt="${asset.name}" style="width: 100px; height: 100px; object-fit: contain;">
-                <div style="margin-top: 10px; font-size: 14px; color: #666;">${asset.name}</div>
-                <div style="margin-top: 5px; font-size: 12px; ">${key}</div>
+                <img src="${asset.thumbnail_url}" alt="${asset.name}" class="asset-card-image">
+                <div class="asset-card-name">${asset.name}</div>
+                <div class="asset-card-key">${key}</div>
             `;
 
             card.addEventListener('click', function () {
                 document.querySelectorAll('#{{ $componentId }}-asset-list > div').forEach(function (el) {
-                    el.style.border = '1px solid #ddd';
-                    el.style.backgroundColor = '#fff';
+                    el.classList.remove('active');
                 });
 
-                card.style.border = '2px solid green';
-                card.style.backgroundColor = '#f5f5f5';
+                card.classList.add('active');
                 assetKeyInput.value = key;
             });
 

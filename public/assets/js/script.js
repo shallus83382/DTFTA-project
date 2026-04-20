@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeCharts();
     initializeFilters();
     initializeJobDetail();
+    initializeDatePickers();
     initializeSidebarToggle();
     initializeStoreCheckboxes();
     initializeCounters();
@@ -16,6 +17,32 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeUserDropdown();
     initializeNotificationDropdown();
 });
+
+// ============================================
+// Native date picker auto-open
+// ============================================
+function initializeDatePickers() {
+    const dateInputs = Array.from(
+        document.querySelectorAll('input[type="date"], input[type="datetime-local"]')
+    );
+    if (dateInputs.length === 0) return;
+
+    dateInputs.forEach((input) => {
+        const openPicker = () => {
+            if (typeof input.showPicker === 'function') {
+                try {
+                    input.showPicker();
+                } catch (_) {
+                    // Ignore browser restrictions (must be user-triggered)
+                }
+            }
+        };
+
+        // Open picker when user clicks or tabs into any date field
+        input.addEventListener('click', openPicker);
+        input.addEventListener('focus', openPicker);
+    });
+}
 
 // ============================================
 // Sidebar Toggle Functionality
