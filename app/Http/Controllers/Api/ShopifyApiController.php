@@ -22,6 +22,58 @@ class ShopifyApiController extends Controller
     }
 
     /**
+     * Normalize order status to dashboard filter buckets.
+     */
+    private function normalizeOrderStatus(?string $status): string
+    {
+        $raw = strtolower(trim((string) $status));
+        if ($raw === '') {
+            return 'new';
+        }
+
+        return match ($raw) {
+            'new',
+            'draft',
+            'open',
+            'pending',
+            'unfulfilled',
+            'awaiting_payment',
+            'awaiting_fulfillment' => 'New',
+
+            'artwork_needed',
+            'artwork needed',
+            'needs_artwork',
+            'need_artwork',
+            'design_needed',
+            'artwork_required' => 'Artwork Needed',
+
+            'in_production',
+            'in production',
+            'production',
+            'accepted',
+            'printing',
+            'in_progress',
+            'processing' => 'In Production',
+
+            'shipped',
+            'fulfilled',
+            'delivered',
+            'completed',
+            'complete' => 'Shipped',
+
+            'cancelled',
+            'canceled',
+            'failed',
+            'exception',
+            'voided',
+            'rejected',
+            'refunded' => 'cancelled',
+
+            default => 'New',
+        };
+    }
+
+    /**
      * POST /api/v1/brand-settings
      * List products with app signature verification (timestamp + empty payload).
      */
@@ -421,6 +473,9 @@ class ShopifyApiController extends Controller
         ->get();
     
         $orderRes = $orders->map(function ($order) {
+            $rawStatus = (string) ($order->fulfillment_status ?? $order->status ?? '');
+            $mappedStatus = $this->normalizeOrderStatus($rawStatus);
+
             return [
                 'order_id' => $order->id,
                 'shopify_order_id' => $order->shopify_order_id,
@@ -430,7 +485,8 @@ class ShopifyApiController extends Controller
                     'name' => $order->customer_name,
                 ],
                 'total_price' => $order->total_price,
-                'status' => $order->fulfillment_status ?? $order->status,
+                'status' => $mappedStatus,
+                'raw_status' => $rawStatus,
                 'items_count' => $order->orderItems->count(),
                 'shipments_count' => $order->shipments->count(),
                 'items' => $order->orderItems->map(fn ($item) => [
