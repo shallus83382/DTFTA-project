@@ -321,10 +321,23 @@
             <p style="margin-bottom: 14px; color: #6b7280;">
                 Select colors and sizes. Variants and SKUs will be generated automatically in the backend.
             </p>
+            @php
+                $predefinedColors = collect(config('dtfta.common_colors', []))
+                    ->pluck('name')
+                    ->filter()
+                    ->values()
+                    ->all();
+            @endphp
 
             <div class="filters-section">
                 <div class="filter-group" style="width: 100%;">
                     <label>Colors</label>
+                    <!-- <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                        <select id="predefined-color-select" class="filter-select" style="max-width: 320px;">
+                            <option value="">Select predefined color</option>
+                        </select>
+                        <button type="button" class="btn-secondary" id="add-predefined-color-btn">Add Selected Color</button>
+                    </div> -->
                     <div id="colors-wrapper">
                         @php
                             $oldColors = old('colors', ['']);
@@ -332,14 +345,14 @@
 
                         @foreach($oldColors as $index => $color)
                             <div class="dynamic-row color-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
-                                <input
-                                    type="text"
-                                    name="colors[]"
-                                    class="filter-select"
-                                    value="{{ $color }}"
-                                    placeholder="e.g. Black"
-                                    required
-                                >
+                                <select name="colors[]" class="filter-select" required>
+                                    <option value="">Select color</option>
+                                    @foreach($predefinedColors as $predefinedColor)
+                                        <option value="{{ $predefinedColor }}" {{ $color === $predefinedColor ? 'selected' : '' }}>
+                                            {{ $predefinedColor }}
+                                        </option>
+                                    @endforeach
+                                </select>
                                 <button type="button" class="btn-danger remove-row-btn">Remove</button>
                             </div>
                         @endforeach
@@ -456,8 +469,11 @@
             const colorsWrapper = document.getElementById('colors-wrapper');
             const sizesWrapper = document.getElementById('sizes-wrapper');
             const addColorBtn = document.getElementById('add-color-btn');
+            const addPredefinedColorBtn = document.getElementById('add-predefined-color-btn');
+            const predefinedColorSelect = document.getElementById('predefined-color-select');
             const addSizeBtn = document.getElementById('add-size-btn');
             const variantPreview = document.getElementById('variant-preview');
+            const predefinedColors = @json($predefinedColors);
 
             function makeRow(name, placeholder, rowClass) {
                 const row = document.createElement('div');
@@ -466,16 +482,27 @@
                 row.style.gap = '10px';
                 row.style.marginBottom = '10px';
 
-                row.innerHTML = `
-                    <input
-                        type="text"
-                        name="${name}[]"
-                        class="filter-select"
-                        placeholder="${placeholder}"
-                        required
-                    >
-                    <button type="button" class="btn-danger remove-row-btn">Remove</button>
-                `;
+                if (name === 'colors') {
+                    const optionsHtml = predefinedColors.map(color => `<option value="${color}">${color}</option>`).join('');
+                    row.innerHTML = `
+                        <select name="colors[]" class="filter-select" required>
+                            <option value="">Select color</option>
+                            ${optionsHtml}
+                        </select>
+                        <button type="button" class="btn-danger remove-row-btn">Remove</button>
+                    `;
+                } else {
+                    row.innerHTML = `
+                        <input
+                            type="text"
+                            name="${name}[]"
+                            class="filter-select"
+                            placeholder="${placeholder}"
+                            required
+                        >
+                        <button type="button" class="btn-danger remove-row-btn">Remove</button>
+                    `;
+                }
 
                 return row;
             }
@@ -489,7 +516,7 @@
                         if (parent.querySelectorAll('.dynamic-row').length > 1) {
                             row.remove();
                         } else {
-                            const input = row.querySelector('input');
+                            const input = row.querySelector('input, select');
                             if (input) input.value = '';
                         }
 
@@ -506,7 +533,7 @@
             }
 
             function updateVariantPreview() {
-                const colors = getUniqueValues('input[name="colors[]"]');
+                const colors = getUniqueValues('select[name="colors[]"]');
                 const sizes = getUniqueValues('input[name="sizes[]"]');
 
                 if (!colors.length || !sizes.length) {
@@ -533,9 +560,66 @@
                 `;
             }
 
+            function refreshPredefinedColorOptions() {
+                if (!predefinedColorSelect) return;
+
+                const selectedColors = new Set(
+                    getUniqueValues('select[name="colors[]"]').map(color => color.toLowerCase())
+                );
+
+                predefinedColorSelect.innerHTML = '<option value="">Select predefined color</option>';
+
+                predefinedColors.forEach(function (color) {
+                    if (!selectedColors.has(String(color).toLowerCase())) {
+                        const option = document.createElement('option');
+                        option.value = color;
+                        option.textContent = color;
+                        predefinedColorSelect.appendChild(option);
+                    }
+                });
+            }
+
+            function refreshColorRowOptions() {
+                const colorSelects = Array.from(colorsWrapper.querySelectorAll('select[name="colors[]"]'));
+                const selectedCounts = {};
+
+                colorSelects.forEach(function (select) {
+                    const value = String(select.value || '').trim().toLowerCase();
+                    if (!value) return;
+                    selectedCounts[value] = (selectedCounts[value] || 0) + 1;
+                });
+
+                colorSelects.forEach(function (select) {
+                    const currentValue = String(select.value || '').trim();
+                    const currentLower = currentValue.toLowerCase();
+
+                    const availableOptions = predefinedColors.filter(function (color) {
+                        const lowerColor = String(color).toLowerCase();
+                        if (lowerColor === currentLower) return true;
+                        return !selectedCounts[lowerColor];
+                    });
+
+                    const optionsHtml = ['<option value="">Select color</option>']
+                        .concat(
+                            availableOptions.map(function (color) {
+                                const selected = color === currentValue ? ' selected' : '';
+                                return `<option value="${color}"${selected}>${color}</option>`;
+                            })
+                        )
+                        .join('');
+
+                    select.innerHTML = optionsHtml;
+                    if (currentValue) {
+                        select.value = currentValue;
+                    }
+                });
+            }
+
             addColorBtn.addEventListener('click', function () {
-                colorsWrapper.appendChild(makeRow('colors', 'e.g. Black', 'color-row'));
+                colorsWrapper.appendChild(makeRow('colors', 'Select color', 'color-row'));
                 bindRemoveButtons();
+                refreshColorRowOptions();
+                refreshPredefinedColorOptions();
             });
 
             addSizeBtn.addEventListener('click', function () {
@@ -543,17 +627,45 @@
                 bindRemoveButtons();
             });
 
+            if (addPredefinedColorBtn && predefinedColorSelect) {
+                addPredefinedColorBtn.addEventListener('click', function () {
+                    const selectedColor = predefinedColorSelect.value.trim();
+                    if (!selectedColor) return;
+
+                    const colorRows = Array.from(colorsWrapper.querySelectorAll('select[name="colors[]"]'));
+                    const emptyInput = colorRows.find(input => !input.value.trim());
+
+                    if (emptyInput) {
+                        emptyInput.value = selectedColor;
+                    } else {
+                        const row = makeRow('colors', 'Select color', 'color-row');
+                        row.querySelector('select[name="colors[]"]').value = selectedColor;
+                        colorsWrapper.appendChild(row);
+                        bindRemoveButtons();
+                    }
+
+                    predefinedColorSelect.value = '';
+                    updateVariantPreview();
+                    refreshColorRowOptions();
+                    refreshPredefinedColorOptions();
+                });
+            }
+
             document.addEventListener('input', function (event) {
                 if (
-                    event.target.matches('input[name="colors[]"]') ||
+                    event.target.matches('select[name="colors[]"]') ||
                     event.target.matches('input[name="sizes[]"]')
                 ) {
                     updateVariantPreview();
+                    refreshColorRowOptions();
+                    refreshPredefinedColorOptions();
                 }
             });
 
             bindRemoveButtons();
             updateVariantPreview();
+            refreshColorRowOptions();
+            refreshPredefinedColorOptions();
         });
     </script>
     @endpush

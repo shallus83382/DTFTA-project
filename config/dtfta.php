@@ -2,12 +2,13 @@
 
 return [
     'common_colors' => [
-        ['code' => 'BLK', 'name' => 'Black'],
-        ['code' => 'WHT', 'name' => 'White'],
-        ['code' => 'NAV', 'name' => 'Navy'],
-        ['code' => 'HGR', 'name' => 'Heather Gray'],
-        ['code' => 'CHAR', 'name' => 'Charcoal'],
-        ['code' => 'RED', 'name' => 'Red'],
+        ['code' => 'black', 'name' => 'Black'],
+        ['code' => 'brown', 'name' => 'Brown'],
+        ['code' => 'green', 'name' => 'Green'],
+        ['code' => 'orange', 'name' => 'Orange'],
+        ['code' => 'white', 'name' => 'White'],
+        ['code' => 'blue', 'name' => 'Blue'],
+        ['code' => 'red', 'name' => 'Red'],
     ],
 
     'sizes' => ['S', 'M', 'L', 'XL', '2XL'],
