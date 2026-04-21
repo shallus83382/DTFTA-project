@@ -45,7 +45,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/brand-settings', [ShopifyApiController::class, 'GetStoreBrandSettings']);
 
     Route::get('/dashboard-stats', [ShopifyApiController::class, 'GetStoreDashboardStats']);
-    Route::get('/orders', [ShopifyApiController::class, 'GetStoreOrders']);
+    Route::get('/orders-signed', [ShopifyApiController::class, 'GetStoreOrders']);
     Route::get('/fulfillment-status', [ShopifyApiController::class, 'GetStoreFulfillmentStatus']);
     
 });

@@ -44,10 +44,81 @@
                             <div><span>Updated
                                     At</span><b>{{ $order->updated_at_shopify?->format('Y-m-d H:i') ?? 'N/A' }}</b>
                             </div>
-                            @if (isset($job) && $job->payload)
-                                <div class="artwork-preview">
-                                    <span>Additional Info</span>
-                                    <p>{{ json_encode($job->payload) }}</p>
+                        </div>
+
+                        @php
+                            $orderItems = collect($order->orderItems ?? []);
+                        @endphp
+                        <div style="margin-top: 14px;">
+                            <h4 style="margin: 0 0 10px; font-size: 14px;">Imprint Line Items</h4>
+
+                            @if ($orderItems->isEmpty())
+                                <p style="margin: 0; color: #94a3b8;">No line item imprint details found.</p>
+                            @else
+                                <div style="display: grid; gap: 10px;">
+                                    @foreach ($orderItems as $item)
+                                        @php
+                                            $props = is_array($item->properties) ? $item->properties : [];
+                                            $payload = is_array($item->payload) ? $item->payload : [];
+
+                                            $dtftaType = $props['_dtfta_type'] ?? $item->dtfta_type ?? 'N/A';
+                                            $color = $props['_dtfta_garment_color']
+                                                ?? data_get($payload, 'variant_title')
+                                                ?? $item->variant_title
+                                                ?? 'N/A';
+                                            $size = $props['_dtfta_garment_size'] ?? 'N/A';
+                                            $printPlan = $props['_dtfta_print_plan'] ?? 'N/A';
+
+                                            $artworkEntries = [];
+                                            foreach ($props as $key => $value) {
+                                                if (str_starts_with((string) $key, '_dtfta_artwork_') && filled($value)) {
+                                                    $cleanLabel = str_replace(['_dtfta_artwork_', '_url', '_'], ['', '', ' '], (string) $key);
+                                                    $artworkEntries[] = ['label' => strtoupper(trim($cleanLabel)), 'url' => (string) $value];
+                                                }
+                                            }
+
+                                            if (empty($artworkEntries)) {
+                                                $payloadImage = data_get($payload, 'image.src');
+                                                if (filled($payloadImage)) {
+                                                    $artworkEntries[] = ['label' => 'IMAGE', 'url' => (string) $payloadImage];
+                                                }
+                                            }
+                                        @endphp
+                                        <details {{ $loop->first ? 'open' : '' }} style="border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 10px; background: linear-gradient(135deg, rgba(30,41,59,0.5), rgba(15,23,42,0.55)); overflow: hidden;">
+                                            <summary style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; cursor: pointer; list-style: none;">
+                                                <strong>{{ $item->title ?? 'Line Item' }}</strong>
+                                                <span style="color: #94a3b8;">Qty: {{ $item->quantity ?? 1 }}</span>
+                                            </summary>
+                                            <div style="display: grid; gap: 6px; font-size: 13px; padding: 0 12px 12px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
+                                                <div><span style="color: #94a3b8;">DTFA Type:</span> <b>{{ $dtftaType }}</b></div>
+                                                <div><span style="color: #94a3b8;">Color:</span> <b>{{ $color }}</b></div>
+                                                <div><span style="color: #94a3b8;">Size:</span> <b>{{ $size }}</b></div>
+                                                <div><span style="color: #94a3b8;">Print Plan:</span> <b style="word-break: break-word;">{{ $printPlan }}</b></div>
+                                                <div>
+                                                    <span style="color: #94a3b8;">Artwork URL:</span>
+                                                    @if (empty($artworkEntries))
+                                                        <b>N/A</b>
+                                                    @else
+                                                        <div style="display: grid; gap: 6px; margin-top: 6px;">
+                                                            @foreach ($artworkEntries as $artwork)
+                                                                <div style="padding: 8px 10px; border: 1px solid rgba(96,165,250,0.28); border-radius: 8px; background: rgba(15,23,42,0.55);">
+                                                                    <div style="font-size: 11px; color: #93c5fd; letter-spacing: 0.04em; margin-bottom: 3px;">{{ $artwork['label'] }}</div>
+                                                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                                                        <a href="{{ $artwork['url'] }}" target="_blank" rel="noopener noreferrer" title="{{ $artwork['url'] }}" style="color: #60a5fa; text-decoration: none; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">
+                                                                            {{ \Illuminate\Support\Str::limit($artwork['url'], 85) }}
+                                                                        </a>
+                                                                        <a href="{{ $artwork['url'] }}" target="_blank" rel="noopener noreferrer" style="color: #93c5fd; font-size: 11px; text-decoration: none; border: 1px solid rgba(147,197,253,0.35); border-radius: 999px; padding: 2px 8px;">
+                                                                            Open
+                                                                        </a>
+                                                                    </div>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </details>
+                                    @endforeach
                                 </div>
                             @endif
                         </div>

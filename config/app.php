@@ -15,6 +15,8 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    'cloudfront_url' => env('AWS_COULD_FRONT_URL', 'https://d315otl6ckb9m2.cloudfront.net'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

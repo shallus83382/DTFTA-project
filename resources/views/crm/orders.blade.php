@@ -437,7 +437,7 @@
             <div class="lead-column" data-type="New">
                 <div class="lead-column-header">
                     <h3>NEW ({{ count($jobsByStatus['pending']) }})</h3>
-                    <button class="btn-secondary" onclick="openModal(this)">+</button>
+                    <!-- <button class="btn-secondary" onclick="openModal(this)">+</button> -->
                 </div>
                 <div class="lead-column-body" data-status="pending">
                     @forelse($jobsByStatus['pending'] as $job)
@@ -477,7 +477,7 @@
             <div class="lead-column" data-type="Artwork Needed">
                 <div class="lead-column-header">
                     <h3>ARTWORK NEEDED ({{ count($jobsByStatus['artwork_needed']) }})</h3>
-                    <button class="btn-secondary" onclick="openModal(this)">+</button>
+                    <!-- <button class="btn-secondary" onclick="openModal(this)">+</button> -->
                 </div>
                 <div class="lead-column-body" data-status="artwork_needed">
                     @forelse($jobsByStatus['artwork_needed'] as $job)
@@ -517,7 +517,7 @@
             <div class="lead-column" data-type="In Production">
                 <div class="lead-column-header">
                     <h3>IN PRODUCTION ({{ count($jobsByStatus['in_production']) }})</h3>
-                    <button class="btn-secondary" onclick="openModal(this)">+</button>
+                    <!-- <button class="btn-secondary" onclick="openModal(this)">+</button> -->
                 </div>
                 <div class="lead-column-body" data-status="in_production">
                     @forelse($jobsByStatus['in_production'] as $job)
@@ -557,7 +557,7 @@
             <div class="lead-column" data-type="Shipped">
                 <div class="lead-column-header">
                     <h3>SHIPPED ({{ count($jobsByStatus['shipped']) }})</h3>
-                    <button class="btn-secondary" onclick="openModal(this)">+</button>
+                    <!-- <button class="btn-secondary" onclick="openModal(this)">+</button> -->
                 </div>
                 <div class="lead-column-body" data-status="shipped">
                     @forelse($jobsByStatus['shipped'] as $job)
@@ -597,7 +597,7 @@
             <div class="lead-column" data-type="Cancelled">
                 <div class="lead-column-header">
                     <h3>CANCELLED/EXCEPTION ({{ count($jobsByStatus['cancelled']) }})</h3>
-                    <button class="btn-secondary" onclick="openModal(this)">+</button>
+                    <!-- <button class="btn-secondary" onclick="openModal(this)">+</button> -->
                 </div>
                 <div class="lead-column-body" data-status="cancelled">
                     @forelse($jobsByStatus['cancelled'] as $job)
@@ -661,16 +661,6 @@
             </div>
 
             <div class="filter-group">
-                <label>Product Type</label>
-                <select id="filterProductType" class="filter-select">
-                    <option value="">All Types</option>
-                    @foreach($productTypes as $type)
-                        <option value="{{ $type }}">{{ $type }}</option>
-                    @endforeach
-                </select>
-            </div>
-
-            <div class="filter-group">
                 <label>Date</label>
                 <input type="date" id="filterDate" class="filter-select">
             </div>
@@ -694,7 +684,6 @@
                         <th>Job ID</th>
                         <th>Store Name</th>
                         <th>Order ID</th>
-                        <th>Product Type</th>
                         <th>Status</th>
                         <th>Created At</th>
                         <th>Actions</th>
@@ -722,21 +711,19 @@
                             data-job-id="{{ $job->id }}"
                             data-order-id="{{ $job->order_id }}"
                             data-store="{{ strtolower($job->shop->shop_domain ?? 'n/a') }}"
-                            data-product-type="{{ strtolower($job->job_type ?? '-') }}"
                             data-status="{{ $jobStatus }}"
                             data-created-date="{{ $job->created_at->format('Y-m-d') }}"
                         >
                             <td>#{{ $job->id }}</td>
                             <td>{{ $job->shop->shop_domain ?? 'N/A' }}</td>
                             <td>#{{ $job->order_id ?? 'N/A' }}</td>
-                            <td>{{ $job->job_type ?? '-' }}</td>
                             <td><span class="status-badge status-{{ $jobStatusClass }}">{{ $jobStatusLabel }}</span></td>
                             <td>{{ $job->created_at->format('Y-m-d H:i') }}</td>
                             <td><a href="{{ route('crm.order-detail', $job->order_id) }}" class="btn-link">View</a></td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" style="text-align: center; padding: 20px; color: #999;">No jobs found</td>
+                            <td colspan="6" style="text-align: center; padding: 20px; color: #999;">No jobs found</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -1051,22 +1038,19 @@
         function applyTableFilters() {
             const statusValue = normalizeFilterStatus(document.getElementById('filterStatus')?.value || '');
             const storeValue = (document.getElementById('filterStore')?.value || '').trim().toLowerCase();
-            const productTypeValue = (document.getElementById('filterProductType')?.value || '').trim().toLowerCase();
             const dateValue = (document.getElementById('filterDate')?.value || '').trim();
 
             const rows = document.querySelectorAll('#jobsTableBody tr[data-order-id]');
             rows.forEach(row => {
                 const rowStatus = normalizeFilterStatus(row.dataset.status || '');
                 const rowStore = (row.dataset.store || '').trim().toLowerCase();
-                const rowProductType = (row.dataset.productType || '').trim().toLowerCase();
                 const rowDate = (row.dataset.createdDate || '').trim();
 
                 const matchesStatus = !statusValue || rowStatus === statusValue;
                 const matchesStore = !storeValue || rowStore === storeValue;
-                const matchesProductType = !productTypeValue || rowProductType === productTypeValue;
                 const matchesDate = !dateValue || rowDate === dateValue;
 
-                row.style.display = (matchesStatus && matchesStore && matchesProductType && matchesDate) ? '' : 'none';
+                row.style.display = (matchesStatus && matchesStore && matchesDate) ? '' : 'none';
             });
         }
 
@@ -1076,7 +1060,6 @@
             const boardStatusFilter = document.getElementById('boardStatusFilter');
             const filterStatus = document.getElementById('filterStatus');
             const filterStore = document.getElementById('filterStore');
-            const filterProductType = document.getElementById('filterProductType');
             const filterDate = document.getElementById('filterDate');
 
             if (boardFilterBtn) boardFilterBtn.addEventListener('click', applyBoardFilters);
@@ -1093,21 +1076,18 @@
 
             if (filterStatus) filterStatus.addEventListener('change', applyTableFilters);
             if (filterStore) filterStore.addEventListener('change', applyTableFilters);
-            if (filterProductType) filterProductType.addEventListener('change', applyTableFilters);
             if (filterDate) filterDate.addEventListener('change', applyTableFilters);
         }
 
         function clearFilters() {
             const filterStatus = document.getElementById('filterStatus');
             const filterStore = document.getElementById('filterStore');
-            const filterProductType = document.getElementById('filterProductType');
             const filterDate = document.getElementById('filterDate');
             const boardSearchInput = document.getElementById('boardSearchInput');
             const boardStatusFilter = document.getElementById('boardStatusFilter');
 
             if (filterStatus) filterStatus.value = '';
             if (filterStore) filterStore.value = '';
-            if (filterProductType) filterProductType.value = '';
             if (filterDate) filterDate.value = '';
             if (boardSearchInput) boardSearchInput.value = '';
             if (boardStatusFilter) boardStatusFilter.value = '';

@@ -96,7 +96,7 @@ class ArtworkController extends Controller
             'data' => $items->map(fn (Artwork $artwork) => [
                 'id' => (string) $artwork->id,
                 'name' => $artwork->name,
-                'url' => $artwork->url,
+                'url' => config('app.cloudfront_url') . '/' . $artwork->path,
                 'mimeType' => $artwork->mime_type,
                 'source' => $artwork->source,
                 'createdAt' => optional($artwork->created_at)?->toISOString(),
@@ -165,7 +165,7 @@ class ArtworkController extends Controller
             'item' => [
                 'id' => (string) $artwork->id,
                 'name' => $artwork->name,
-                'url' => $artwork->url,
+                'url' => config('app.cloudfront_url') . '/' . $artwork->path,
                 'mimeType' => $artwork->mime_type,
                 'source' => $artwork->source,
                 'createdAt' => optional($artwork->created_at)?->toISOString(),

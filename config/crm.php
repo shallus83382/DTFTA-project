@@ -55,6 +55,17 @@ return [
             'enabled' => true,
             'items_per_page' => 10,
             'enable_images' => true,
+            'constraints' => [
+                'unit' => 'px',
+                'width' => [
+                    'min' => 50,
+                    'max' => 200,
+                ],
+                'height' => [
+                    'min' => 50,
+                    'max' => 200,
+                ],
+            ],
         ],
         'products' => [
             'enabled' => true,

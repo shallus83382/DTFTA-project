@@ -92,7 +92,7 @@
                 <tr>
                     <th>ID</th>
                     <th>Title</th>
-                    <th>T-Shirt Size</th>
+                    <!-- <th>T-Shirt Size</th> -->
                     <th>Dimensions</th>
                     <th>Display Order</th>
                     <th>Status</th>
@@ -112,7 +112,7 @@
                     <tr>
                         <td>#{{ $area->id }}</td>
                         <td>{{ $area->title }}</td>
-                        <td>{{ $area->tshirt_size ?? '-' }}</td>
+                        <!-- <td>{{ $area->tshirt_size ?? '-' }}</td> -->
                         <td>
                             {{ $area->area_width }} x
                             {{ $area->area_height }}

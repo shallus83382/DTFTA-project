@@ -21,10 +21,10 @@
                 <div class="filter-select">{{ $area->title ?? '-' }}</div>
             </div>
 
-            <div>
+            <!-- <div>
                 <label>T-Shirt Size</label>
                 <div class="filter-select">{{ $area->tshirt_size ?? '-' }}</div>
-            </div>
+            </div> -->
 
             <div>
                 <label>Area Size</label>

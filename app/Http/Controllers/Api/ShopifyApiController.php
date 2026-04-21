@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Shop;
+use App\Models\Order;
 use App\Services\AppSignatureVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -399,7 +400,7 @@ class ShopifyApiController extends Controller
             'query' => $request->query(),
         ]);
 
-        $existingShop = Shop::where('shop_domain', 'mystore.myshopify.com')
+        $existingShop = Shop::where('shop_domain', $shop)
             ->orderByDesc('id')
             ->first();
 

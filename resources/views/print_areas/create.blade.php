@@ -22,14 +22,19 @@
 
         {{-- ================= PRINT AREAS SECTION ================= --}}
         @php
+            $unit = config('crm.features.print_areas.constraints.unit', 'px');
+            $minWidth = config('crm.features.print_areas.constraints.width.min', 1);
+            $maxWidth = config('crm.features.print_areas.constraints.width.max', 1000);
+            $minHeight = config('crm.features.print_areas.constraints.height.min', 1);
+            $maxHeight = config('crm.features.print_areas.constraints.height.max', 1000);
             $resolvedRows = old('print_areas') ?? [
                 [
                     'title' => '',
-                    'area_width' => null,
-                    'area_height' => null,
-                    'unit' => 'mm',
-                    'position_x' => null,
-                    'position_y' => null,
+                    'area_width' => 50,
+                    'area_height' => 90,
+                    'unit' => $unit,
+                    'position_x' => 225,
+                    'position_y' => 225,
                     'tshirt_size' => null,
                     'display_order' => 0,
                     'is_active' => true,
@@ -52,33 +57,28 @@
                                 <input type="text" class="filter-select" name="print_areas[{{ $index }}][title]"
                                     value="{{ $row['title'] ?? '' }}" placeholder="Front Chest">
                             </div>
-                            <div class="filter-group">
+                            <div class="filter-group" style="display:none;">
                                 <label>T-Shirt Size</label>
-                                <input type="text" class="filter-select"
+                                <input type="hidden" class="filter-select"
                                     name="print_areas[{{ $index }}][tshirt_size]"
                                     value="{{ $row['tshirt_size'] ?? '' }}" placeholder="S, M, L, XL">
                             </div>
                             <div class="filter-group">
                                 <label>Area Width</label>
-                                <input type="number" step="0.01" min="0" class="filter-select"
+                                <input type="number" step="0.01" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select"
                                     name="print_areas[{{ $index }}][area_width]"
                                     value="{{ $row['area_width'] ?? '' }}">
                             </div>
                             <div class="filter-group">
                                 <label>Area Height</label>
-                                <input type="number" step="0.01" min="0" class="filter-select"
+                                <input type="number" step="0.01" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select"
                                     name="print_areas[{{ $index }}][area_height]"
                                     value="{{ $row['area_height'] ?? '' }}">
                             </div>
                             <div class="filter-group">
                                 <label>Unit</label>
-                                <select class="filter-select" name="print_areas[{{ $index }}][unit]">
-                                    @foreach (['mm', 'cm', 'in', 'px'] as $unit)
-                                        <option value="{{ $unit }}"
-                                            {{ ($row['unit'] ?? 'mm') === $unit ? 'selected' : '' }}>
-                                            {{ strtoupper($unit) }}</option>
-                                    @endforeach
-                                </select>
+                                <input type="hidden" name="print_areas[{{ $index }}][unit]" value="{{ $unit }}">
+                                <input type="text" class="filter-select" value="{{ strtoupper($unit) }}" readonly>
                             </div>
                             <div class="filter-group">
                                 <label>Position X</label>

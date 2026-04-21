@@ -764,20 +764,19 @@ document.addEventListener('keydown', e => {
 // ============================================
 
 function initializeViewToggle() {
-    // Set default view to board
     const boardView = document.getElementById('boardView');
     const tableView = document.getElementById('tableView');
-    const boardViewBtn = document.getElementById('boardViewBtn');
-    const tableViewBtn = document.getElementById('tableViewBtn');
+    const boardButtons = document.querySelectorAll('[data-view-toggle="board"]');
+    const tableButtons = document.querySelectorAll('[data-view-toggle="table"]');
     const headerCreateBtn = document.getElementById('headerCreateBtn');
 
-    if (!boardView || !tableView || !boardViewBtn || !tableViewBtn) return;
+    if (!boardView || !tableView || boardButtons.length === 0 || tableButtons.length === 0) return;
 
-    // Initialize: show board view by default
     boardView.style.display = 'block';
     tableView.style.display = 'none';
-    boardViewBtn.classList.add('active');
-    tableViewBtn.classList.remove('active');
+    boardButtons.forEach(btn => btn.classList.add('active'));
+    tableButtons.forEach(btn => btn.classList.remove('active'));
+
     if (headerCreateBtn) {
         headerCreateBtn.textContent = 'Create Lead';
     }
@@ -786,25 +785,25 @@ function initializeViewToggle() {
 function switchView(viewType) {
     const boardView = document.getElementById('boardView');
     const tableView = document.getElementById('tableView');
-    const boardViewBtn = document.getElementById('boardViewBtn');
-    const tableViewBtn = document.getElementById('tableViewBtn');
+    const boardButtons = document.querySelectorAll('[data-view-toggle="board"]');
+    const tableButtons = document.querySelectorAll('[data-view-toggle="table"]');
     const headerCreateBtn = document.getElementById('headerCreateBtn');
 
-    if (!boardView || !tableView || !boardViewBtn || !tableViewBtn) return;
+    if (!boardView || !tableView || boardButtons.length === 0 || tableButtons.length === 0) return;
 
     if (viewType === 'board') {
         boardView.style.display = 'block';
         tableView.style.display = 'none';
-        boardViewBtn.classList.add('active');
-        tableViewBtn.classList.remove('active');
+        boardButtons.forEach(btn => btn.classList.add('active'));
+        tableButtons.forEach(btn => btn.classList.remove('active'));
         if (headerCreateBtn) {
             headerCreateBtn.textContent = 'Create Lead';
         }
     } else if (viewType === 'table') {
         boardView.style.display = 'none';
         tableView.style.display = 'block';
-        boardViewBtn.classList.remove('active');
-        tableViewBtn.classList.add('active');
+        boardButtons.forEach(btn => btn.classList.remove('active'));
+        tableButtons.forEach(btn => btn.classList.add('active'));
         if (headerCreateBtn) {
             headerCreateBtn.textContent = '+ New Job';
         }
