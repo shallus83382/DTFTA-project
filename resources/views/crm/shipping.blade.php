@@ -91,8 +91,8 @@
         }
         .ship-card select option,
         .ship-toolbar select option {
-            color: #0f172a;
-            background: #f8fafc;
+            color: #e2e8f0;
+            background: rgba(15, 23, 42, 0.98);
         }
         .ship-card input::placeholder,
         .ship-card textarea::placeholder {

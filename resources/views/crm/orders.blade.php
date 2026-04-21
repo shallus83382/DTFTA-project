@@ -267,12 +267,12 @@
     }
 
     #addLeadModal .form-group select option {
-        background: #f8fafc !important;
-        color: #0f172a !important;
+        background: rgba(15, 23, 42, 0.98) !important;
+        color: #e2e8f0 !important;
     }
 
     #addLeadModal .form-group select option:disabled {
-        color: #64748b !important;
+        color: #94a3b8 !important;
     }
 
     #boardView.orders-board-view .lead-column-header {

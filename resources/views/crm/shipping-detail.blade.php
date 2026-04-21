@@ -83,8 +83,8 @@
             padding-right: 40px;
         }
         .sd-card select option {
-            background: #f8fafc;
-            color: #0f172a;
+            background: rgba(15, 23, 42, 0.98);
+            color: #e2e8f0;
         }
         .sd-card textarea { min-height: 86px; resize: vertical; }
         .sd-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
