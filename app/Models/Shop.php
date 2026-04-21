@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Job;
 use App\Models\Shipment;
 use App\Models\Product;
+use App\Models\Artwork;
 
 class Shop extends Model
 {
@@ -58,5 +59,10 @@ class Shop extends Model
     public function products()
     {
         return $this->hasMany(Product::class);
+    }
+
+    public function artworks()
+    {
+        return $this->hasMany(Artwork::class);
     }
 }

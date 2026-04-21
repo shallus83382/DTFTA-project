@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\FulfillmentServiceController;
 use App\Http\Controllers\Api\FailedWebhookController;
 use App\Http\Controllers\Api\JobController;
+use App\Http\Controllers\Api\ArtworkController;
 use App\Http\Controllers\Api\ShopifyApiController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\Shopify\WebhookController;
@@ -37,6 +38,8 @@ Route::prefix('v1')->group(function () {
     Route::get('/products/get/{id}', [ProductController::class, 'signedShow']);
     Route::post('/products/create-in-shopify-signed', [ProductController::class, 'createInShopifySigned']);
     Route::get('/custom-products/{customProduct}', [ProductController::class, 'customProduct']);
+    Route::get('/artworks/list', [ArtworkController::class, 'list']);
+    Route::post('/artworks/upload', [ArtworkController::class, 'upload']);
 
     Route::post('/brand-settings', [ShopifyApiController::class, 'CreateStoreBrandSettings']);
     Route::get('/brand-settings', [ShopifyApiController::class, 'GetStoreBrandSettings']);

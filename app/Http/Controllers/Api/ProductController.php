@@ -324,6 +324,7 @@ class ProductController extends Controller
     
             $variantArtworkPayload = collect($validated['variantArtworkPayload'] ?? []);
             $normalizedArtworkUrls = $this->normalizeArtworkUrlsPayload($request->input('artworkUrls', []));
+
             $artworksSource = collect($normalizedArtworkUrls);
 
             Log::info('Create Shopify product artwork payload received', [
@@ -1300,9 +1301,14 @@ class ProductController extends Controller
     
         $path = "artworks/shop_{$shopId}/product_{$productId}/{$fileName}";
     
-        Storage::disk('public')->put($path, $binaryData);
+        if(config('filesystems.default') === 's3') {
+            Storage::disk('s3')->put($path, $binaryData);
+            return Storage::disk('s3')->url($path);
+        }
+
+        Storage::disk('local')->put($path, $binaryData);
     
-        return Storage::disk('public')->url($path);
+        return Storage::disk('local')->url($path);
     }
     
     private function mimeTypeToExtension(string $mimeType): ?string
