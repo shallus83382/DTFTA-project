@@ -3613,6 +3613,10 @@ class ShopifyService
     
     private function resolveArtworkSourcesForShopify(int $shopId, array $artwork): array
     {
+        $isDataUrl = static function (string $value): bool {
+            return (bool) preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,/', $value);
+        };
+
         $resolvedArtwork = [];
         $media = [];
     
@@ -3628,17 +3632,19 @@ class ShopifyService
     
             $finalUrl = '';
     
-            // Prefer source_code upload first, so Shopify-hosted originalSource is used
-            if ($sourceCode !== '') {
+            // source_code can be either data-url or already-hosted URL.
+            if ($sourceCode !== '' && $isDataUrl($sourceCode)) {
                 $filename = $placement . '.png';
-    
+
                 $uploadResult = $this->uploadArtworkToShopify($shopId, $sourceCode, $filename, $title);
-    
+
                 if (!$uploadResult['success']) {
                     return $uploadResult;
                 }
-    
+
                 $finalUrl = (string) ($uploadResult['data']['resourceUrl'] ?? '');
+            } elseif ($sourceCode !== '') {
+                $finalUrl = $sourceCode;
             }
     
             // Fallback to direct URL only if source_code was not available or upload failed to resolve
@@ -3872,6 +3878,26 @@ class ShopifyService
             ],
             'errors' => [],
         ];
+    }
+
+    public function setDtftaTemplateIdMetafield(int $shopId, string $productId, int|string $templateId): array
+    {
+        $template = trim((string) $templateId);
+        if ($template === '') {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Template id is required.',
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+
+        return $this->setCustomProductMetafields($shopId, $productId, [
+            'line_item_meta' => [
+                ['template_id' => $template],
+            ],
+        ]);
     }
 
 
