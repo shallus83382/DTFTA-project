@@ -23,6 +23,7 @@ use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
 use App\Models\PrintArea;
 use App\Models\ProductVariant;
+use App\Models\CustomProduct;
 use Illuminate\Support\Facades\DB;
 
 class CrmController extends Controller
@@ -1558,6 +1559,98 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         $order = Order::with('shop', 'orderItems', 'shipments')->findOrFail($orderId);
         $data['order'] = $order;
+
+        $extractTemplateId = function (OrderItem $item): ?string {
+            $properties = is_array($item->properties) ? $item->properties : [];
+            $payload = is_array($item->payload) ? $item->payload : [];
+
+            $candidates = [
+                $properties['_dtfta_template_id'] ?? null,
+                $properties['dtfta_template_id'] ?? null,
+                $properties['templateId'] ?? null,
+                data_get($payload, 'properties._dtfta_template_id'),
+                data_get($payload, 'properties.dtfta_template_id'),
+                data_get($payload, 'templateId'),
+            ];
+
+            foreach ($candidates as $candidate) {
+                $value = trim((string) $candidate);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+
+            return null;
+        };
+
+        $templateIds = $order->orderItems
+            ->map(fn (OrderItem $item) => $extractTemplateId($item))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $customProducts = CustomProduct::with([
+            'variants.artworks',
+            'artworks',
+        ])
+            ->where(function ($query) use ($templateIds) {
+                $query->whereIn('id', $templateIds->all())
+                    ->orWhereIn('product_key', $templateIds->all());
+            })
+            ->get();
+
+        $customProductsById = $customProducts->keyBy(fn ($cp) => (string) $cp->id);
+        $customProductsByKey = $customProducts->keyBy(fn ($cp) => (string) $cp->product_key);
+
+        $data['orderItemCustomDetails'] = $order->orderItems->mapWithKeys(function (OrderItem $item) use ($extractTemplateId, $customProductsById, $customProductsByKey) {
+            $properties = is_array($item->properties) ? $item->properties : [];
+            $templateId = $extractTemplateId($item);
+            $customProduct = $templateId ? ($customProductsById->get($templateId) ?? $customProductsByKey->get($templateId)) : null;
+
+            $variantIdCandidate = trim((string) ($properties['_dtfta_variant_id'] ?? $properties['dtfta_variant_id'] ?? $properties['custom_product_variant_id'] ?? ''));
+            $customVariant = null;
+
+            if ($customProduct) {
+                $variants = $customProduct->variants ?? collect();
+
+                if ($variantIdCandidate !== '') {
+                    $customVariant = $variants->first(function ($variant) use ($variantIdCandidate) {
+                        return (string) $variant->id === $variantIdCandidate
+                            || (string) $variant->shopify_variant_id === $variantIdCandidate
+                            || (string) $variant->product_variant_id === $variantIdCandidate;
+                    });
+                }
+
+                if (!$customVariant && $item->sku) {
+                    $customVariant = $variants->first(fn ($variant) => strcasecmp((string) $variant->sku, (string) $item->sku) === 0);
+                }
+            }
+
+            $artworks = $customVariant?->artworks
+                ?? $customProduct?->artworks
+                ?? collect();
+
+            return [
+                $item->id => [
+                    'template_id' => $templateId,
+                    'custom_product_id' => $customProduct?->id,
+                    'product_variant_id' => $customVariant?->product_variant_id,
+                    'custom_product_variant_id' => $customVariant?->id,
+                    'artwork_urls' => $artworks
+                        ->map(function ($artwork) {
+                            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+                            return trim((string) (
+                                $meta['custom_artwork_url']
+                                ?? $meta['custom_artwork_source']
+                                ?? ''
+                            ));
+                        })
+                        ->filter()
+                        ->values()
+                        ->all(),
+                ],
+            ];
+        })->all();
 
         $data['jobs'] = Job::where('order_id', $orderId)
             ->with('shop')

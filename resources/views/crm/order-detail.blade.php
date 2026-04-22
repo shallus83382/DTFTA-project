@@ -9,10 +9,36 @@
         <div class="ld-header-panel">
             <div class="ld-right-header">
                 @if (isset($order))
+                    @php
+                        $orderPayload = is_array($order->payload ?? null)
+                            ? $order->payload
+                            : (is_array($order->raw_data ?? null) ? $order->raw_data : []);
+
+                        $shippingAddress = data_get($orderPayload, 'shipping_address', []);
+                        $billingAddress = data_get($orderPayload, 'billing_address', []);
+                        $resolvedAddress = is_array($shippingAddress) && !empty($shippingAddress) ? $shippingAddress : $billingAddress;
+
+                        $addressParts = array_values(array_filter([
+                            data_get($resolvedAddress, 'address1'),
+                            data_get($resolvedAddress, 'address2'),
+                            data_get($resolvedAddress, 'city'),
+                            data_get($resolvedAddress, 'province'),
+                            data_get($resolvedAddress, 'zip'),
+                            data_get($resolvedAddress, 'country'),
+                        ], fn ($value) => filled($value)));
+                    @endphp
                     <div class="job-info-card ld-card ld-right-header-block">
                         <div class="job-info-row">
                             <span>Order ID</span>
                             <b>#{{ $order->id ?? 'N/A' }}</b>
+                        </div>
+                        <div class="job-info-row">
+                            <span>Shopify Order ID</span>
+                            <b>{{ $order->shopify_order_id ?? 'N/A' }}</b>
+                        </div>
+                        <div class="job-info-row">
+                            <span>Order Number</span>
+                            <b>{{ $order->order_number ?? data_get($orderPayload, 'order_number', 'N/A') }}</b>
                         </div>
                         <div class="job-info-row">
                             <span>Store Name</span>
@@ -25,6 +51,12 @@
                         <div class="job-info-row">
                             <span>Customer Email</span>
                             <b>{{ $order->customer_email ?? 'N/A' }}</b>
+                        </div>
+                        <div class="job-info-row">
+                            <span>Customer Address</span>
+                            <b style="text-align: right; max-width: 70%; word-break: break-word;">
+                                {{ !empty($addressParts) ? implode(', ', $addressParts) : 'N/A' }}
+                            </b>
                         </div>
                         <div class="job-info-row status-row">
                             <span>Current Status</span>
@@ -60,6 +92,7 @@
                                         @php
                                             $props = is_array($item->properties) ? $item->properties : [];
                                             $payload = is_array($item->payload) ? $item->payload : [];
+                                            $customDetail = $orderItemCustomDetails[$item->id] ?? null;
 
                                             $dtftaType = $props['_dtfta_type'] ?? $item->dtfta_type ?? 'N/A';
                                             $color = $props['_dtfta_garment_color']
@@ -81,6 +114,15 @@
                                                 $payloadImage = data_get($payload, 'image.src');
                                                 if (filled($payloadImage)) {
                                                     $artworkEntries[] = ['label' => 'IMAGE', 'url' => (string) $payloadImage];
+                                                }
+                                            }
+
+                                            if (!empty($customDetail['artwork_urls'] ?? [])) {
+                                                foreach ($customDetail['artwork_urls'] as $index => $url) {
+                                                    $artworkEntries[] = [
+                                                        'label' => 'CUSTOM ARTWORK ' . ($index + 1),
+                                                        'url' => (string) $url,
+                                                    ];
                                                 }
                                             }
                                         @endphp
