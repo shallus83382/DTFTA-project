@@ -1040,6 +1040,7 @@ class CrmController extends Controller
             'category' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'status' => 'required|in:active,draft,archived,inactive',
+            'price' => 'required|numeric|min:0',
     
             'images' => 'nullable|array',
             'images.*' => 'nullable|image|max:5120',
@@ -1074,6 +1075,7 @@ class CrmController extends Controller
                 'category' => $validated['category'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
+                'price' => $validated['price'],
                 'images' => $validated['images'] ?: null,
             ]);
     
@@ -1095,6 +1097,7 @@ class CrmController extends Controller
                         'sku' => $this->generateProductVariantSku($product, $color, $size),
                         'color' => $color,
                         'size' => $size,
+                        'price' => $validated['price'],
                         'is_active' => true,
                     ]);
                 }
@@ -1129,6 +1132,7 @@ class CrmController extends Controller
             'category' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'status' => 'required|in:active,draft,archived,inactive',
+            'price' => 'required|numeric|min:0',
     
             'images' => 'nullable|array',
             'images.*' => 'nullable|string|max:5120',
@@ -1139,6 +1143,8 @@ class CrmController extends Controller
     
             'sizes' => 'required|array|min:1',
             'sizes.*' => 'required|string|max:100',
+            'variant_prices' => 'nullable|array',
+            'variant_prices.*' => 'nullable|numeric|min:0',
     
             'print_area_ids' => 'nullable|array',
             'print_area_ids.*' => 'integer|exists:print_areas,id',
@@ -1172,6 +1178,7 @@ class CrmController extends Controller
                 'category' => $validated['category'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
+                'price' => $validated['price'],
                 'images' => $validated['images'] ?: null,
             ]);
     
@@ -1209,14 +1216,17 @@ class CrmController extends Controller
     
                 if ($existingVariants->has($key)) {
                     $variant = $existingVariants->get($key);
+                    $variantPrice = data_get($validated, 'variant_prices.' . $variant->id);
                     $variant->update([
                         'is_active' => true,
+                        'price' => $variantPrice !== null ? $variantPrice : ($variant->price ?? $validated['price']),
                     ]);
                 } else {
                     $variant = $product->variants()->create([
                         'sku' => $this->generateProductVariantSku($product, $combo['color'], $combo['size']),
                         'color' => $combo['color'],
                         'size' => $combo['size'],
+                        'price' => $validated['price'],
                         'is_active' => true,
                     ]);
                 }

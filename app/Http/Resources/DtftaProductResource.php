@@ -110,7 +110,7 @@ class DtftaProductResource extends JsonResource
             'image' => $this->images['asset_key'],
             'description' => $this->description,
             'status' => $this->status,
-            'price' => 0,
+            'price' => $this->price,
             'currency' => 'USD',
             'colors' => $colors,
             'sizes' => $sizes,

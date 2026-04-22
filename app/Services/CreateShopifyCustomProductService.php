@@ -216,10 +216,10 @@ class CreateShopifyCustomProductService
             ] : null,
         ]));
 
-        $variants = $productVariants->map(function ($variant) {
+        $variants = $productVariants->map(function ($variant) use ($product) {
             return [
                 'db_variant_id' => $variant->id,
-                'price' => 1,
+                'price' => $variant->price ?? $product->price ?? 1,
                 'compareAtPrice' => $variant->compare_at_price,
                 'sku' => $variant->sku,
                 'barcode' => $variant->barcode,

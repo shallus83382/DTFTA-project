@@ -343,6 +343,20 @@
                     </select>
                 </div>
 
+                <div class="filter-group">
+                    <label for="price">Base Price</label>
+                    <input
+                        id="price"
+                        name="price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        class="filter-select"
+                        value="{{ old('price', $product->price ?? '0.00') }}"
+                        required
+                    >
+                </div>
+
                 <div class="filter-group" style="width: 100%;">
                     <label for="description">Description</label>
                     <textarea
@@ -433,6 +447,35 @@
                 <div id="variant-preview" style="padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; min-height: 60px; background: #fafafa;">
                     <span style="color:#6b7280;">No variants yet.</span>
                 </div>
+            </div>
+
+            <div style="margin-top: 16px;">
+                <h4 style="margin-bottom: 8px;">Variant Prices</h4>
+                <p style="margin-bottom: 12px; color: #6b7280;">
+                    Set price per existing variant. New color/size combinations use Base Price by default.
+                </p>
+                @if($product->variants->count())
+                    <div class="filters-section">
+                        @foreach($product->variants as $variant)
+                            <div class="dynamic-row" style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">
+                                <div class="filter-select" style="display:flex; align-items:center; min-height:38px; opacity:0.9;">
+                                    {{ $variant->color }} / {{ $variant->size }} ({{ $variant->sku }})
+                                </div>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    name="variant_prices[{{ $variant->id }}]"
+                                    class="filter-select"
+                                    value="{{ old('variant_prices.' . $variant->id, $variant->price ?? $product->price ?? '0.00') }}"
+                                    placeholder="Variant price"
+                                >
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div style="color:#6b7280;">No variants found.</div>
+                @endif
             </div>
 
             <div style="margin-top: 16px;">

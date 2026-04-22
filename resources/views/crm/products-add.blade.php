@@ -300,6 +300,20 @@
                     </select>
                 </div>
 
+                <div class="filter-group">
+                    <label for="price">Base Price</label>
+                    <input
+                        id="price"
+                        name="price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        class="filter-select"
+                        value="{{ old('price', '0.00') }}"
+                        required
+                    >
+                </div>
+
                 <div class="filter-group" style="width: 100%;">
                     <label for="description">Description</label>
                     <textarea
