@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\BillingCharge;
 
 class Order extends Model
 {
@@ -54,5 +55,10 @@ class Order extends Model
     public function jobs()
     {
         return $this->hasMany(Job::class);
+    }
+
+    public function billingCharges()
+    {
+        return $this->hasMany(BillingCharge::class);
     }
 }

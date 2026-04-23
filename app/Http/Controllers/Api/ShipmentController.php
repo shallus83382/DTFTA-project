@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use App\Models\Shipment;
 use App\Models\Order;
 use App\Models\Job;
+use App\Models\Shop;
+use App\Services\BillingService;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -14,10 +16,12 @@ use Illuminate\Support\Str;
 class ShipmentController extends Controller
 {
     protected $shopifyService;
+    protected $billingService;
 
-    public function __construct(ShopifyService $shopifyService)
+    public function __construct(ShopifyService $shopifyService, BillingService $billingService)
     {
         $this->shopifyService = $shopifyService;
+        $this->billingService = $billingService;
     }
 
     /**
@@ -58,16 +62,42 @@ class ShipmentController extends Controller
             'tracking_number' => $validated['tracking_number'],
             'tracking_company' => $validated['tracking_company'] ?? $validated['carrier'] ?? null,
             'tracking_url' => $validated['tracking_url'] ?? null,
-            'status' => 'processing',
+            'status' => 'billing_pending',
             'line_items' => $validated['line_items'] ?? [],
             'shipped_at' => now(),
         ];
 
 
-       $shipment = Shipment::create($payload);
+        $shipment = Shipment::create($payload);
 
         try {
             $order = Order::find($validated['order_id']);
+            $shop = Shop::find($validated['shop_id']);
+
+            if (!$order || !$shop) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order or shop not found.',
+                ], 404);
+            }
+
+            $billingResult = $this->billingService->chargePreFulfillment($shop, $order, $shipment);
+            if (!($billingResult['success'] ?? false)) {
+                $shipment->update([
+                    'status' => 'billing_pending',
+                    'payload' => array_merge((array) $shipment->payload, [
+                        'billing' => $billingResult,
+                    ]),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $billingResult['message'] ?? 'Billing approval required before fulfillment.',
+                    'code' => data_get($billingResult, 'data.code', 'BILLING_REQUIRED'),
+                    'billing_confirmation_url' => data_get($billingResult, 'data.billing_confirmation_url'),
+                    'errors' => $billingResult['errors'] ?? [],
+                ], $billingResult['status'] ?? 402);
+            }
 
             $data = $jobId->payload ; // or json_decode($json, true);
 
@@ -106,9 +136,34 @@ class ShipmentController extends Controller
                     'updated_at_shopify' => now(),
                     'payload' => $response['data'] ?? []
                 ]);
+            } else {
+                $shipment->update([
+                    'status' => 'exception',
+                    'payload' => array_merge((array) $shipment->payload, [
+                        'shopify_fulfillment_error' => $response,
+                    ]),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $response['message'] ?? 'Failed to create Shopify fulfillment.',
+                    'errors' => $response['errors'] ?? [],
+                ], $response['status'] ?? 422);
             }
         } catch (\Exception $e) {
             Log::error('Shopify Fulfillment Error: ' . $e->getMessage());
+            $shipment->update([
+                'status' => 'exception',
+                'payload' => array_merge((array) $shipment->payload, [
+                    'exception' => $e->getMessage(),
+                ]),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create fulfillment.',
+                'error' => $e->getMessage(),
+            ], 500);
         }
 
         return response()->json([
