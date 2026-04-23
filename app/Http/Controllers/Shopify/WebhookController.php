@@ -415,14 +415,14 @@ class WebhookController extends Controller
         }
     
         $job->update([
-            'status' => 'in_production',
-            'started_at' => now(),
+            'status' => 'new',
+            'started_at' => null,
             'error_message' => null,
         ]);
     
         $order->update([
-            'status' => 'in_production',
-            'fulfillment_status' => 'accepted',
+            'status' => 'new',
+            'fulfillment_status' => strtolower((string) ($fo['request_status'] ?? 'accepted')),
         ]);
     }
 
@@ -505,11 +505,11 @@ class WebhookController extends Controller
         }
 
         if ($requestStatus === 'ACCEPTED') {
-            return 'in_production';
+            return $order->status === 'artwork_needed' ? 'artwork_needed' : 'new';
         }
 
         if ($requestStatus === 'SUBMITTED') {
-            return $order->status === 'artwork_needed' ? 'artwork_needed' : 'pending';
+            return $order->status === 'artwork_needed' ? 'artwork_needed' : 'new';
         }
 
         return $order->status ?: 'pending';
@@ -524,7 +524,7 @@ class WebhookController extends Controller
         }
 
         return match ($jobStatus) {
-            'accepted' => 'in_production',
+            'accepted' => 'accepted',
             'artwork_needed' => 'artwork_needed',
             'cancelled' => 'cancelled',
             'exception' => 'exception',
@@ -1015,8 +1015,8 @@ class WebhookController extends Controller
 
         if ($mappedStatus === 'created') {
             $order->update([
-                'status' => 'accepted',
-                'fulfillment_status' => 'accepted',
+                'status' => 'new',
+                'fulfillment_status' => $statusInput !== '' ? $statusInput : ($order->fulfillment_status ?? 'pending'),
                 'updated_at_shopify' => $payload['updated_at'] ?? now(),
             ]);
 
@@ -1652,7 +1652,7 @@ class WebhookController extends Controller
     
         // Already handled in Shopify
         if (in_array($requestStatus, ['ACCEPTED', 'REJECTED'], true)) {
-            $status = $requestStatus === 'ACCEPTED' ? 'accepted' : 'exception';
+            $status = $requestStatus === 'ACCEPTED' ? 'new' : 'exception';
     
             $job->update([
                 'status' => $status,
@@ -1663,7 +1663,7 @@ class WebhookController extends Controller
     
             $order->update([
                 'status' => $status,
-                'fulfillment_status' => $status,
+                'fulfillment_status' => strtolower((string) ($fo['request_status'] ?? $status)),
             ]);
     
             return;
@@ -1736,14 +1736,14 @@ class WebhookController extends Controller
         }
     
         $job->update([
-            'status' => 'accepted',
+            'status' => 'new',
             'started_at' => now(),
             'error_message' => null,
         ]);
     
         $order->update([
-            'status' => 'accepted',
-            'fulfillment_status' => 'accepted',
+            'status' => 'new',
+            'fulfillment_status' => strtolower((string) ($fo['request_status'] ?? 'accepted')),
         ]);
     }
 

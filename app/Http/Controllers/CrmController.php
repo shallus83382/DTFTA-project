@@ -746,7 +746,7 @@ class CrmController extends Controller
         $data['orderStatuses'] = $this->getStatuses()['order_statuses'] ?? [];
     
         $statuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled'];
-        $allowedStatuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled', 'failed', 'exception'];
+        $allowedStatuses = ['new', 'accepted', 'pending', 'artwork_needed', 'in_production', 'processing', 'shipped', 'cancelled', 'failed', 'exception'];
     
         $jobsByStatus = [];
         foreach ($statuses as $status) {
@@ -760,9 +760,13 @@ class CrmController extends Controller
             ->get();
     
         foreach ($jobsForBoard as $job) {
-            $bucket = in_array($job->status, ['failed', 'exception', 'cancelled'], true)
-                ? 'cancelled'
-                : $job->status;
+            $rawStatus = strtolower((string) $job->status);
+            $bucket = match ($rawStatus) {
+                'new', 'accepted', 'pending' => 'pending',
+                'processing', 'in_production' => 'in_production',
+                'failed', 'exception', 'cancelled' => 'cancelled',
+                default => $rawStatus,
+            };
     
             if (!isset($jobsByStatus[$bucket])) {
                 continue;
