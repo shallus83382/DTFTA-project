@@ -13,6 +13,7 @@ use App\Models\Shipment;
 use App\Models\FulfillmentService;
 use App\Models\CustomProduct;
 use App\Services\AppSignatureVerifier;
+use App\Services\BillingService;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
 use App\Models\OrderItem;
@@ -25,7 +26,8 @@ class WebhookController extends Controller
     public function __construct(
         private AppSignatureVerifier $appSignatureVerifier,
         private ShopifyWebhookVerifier $shopifyWebhookVerifier,
-        private ShopifyService $shopifyService
+        private ShopifyService $shopifyService,
+        private BillingService $billingService
     ) {
     }
 
@@ -212,6 +214,23 @@ class WebhookController extends Controller
 
             case 'app/uninstalled':
                 $this->handleAppUninstalled($webhook->shop_id);
+                break;
+
+            case 'app_subscriptions/update':
+            case 'app_subscriptions/approaching_capped_amount':
+                $this->handleAppSubscriptionTopic($webhook->shop_id, $topic, $payload);
+                break;
+
+            case 'customers/data_request':
+                $this->handleCustomersDataRequest($webhook->shop_id, $payload);
+                break;
+
+            case 'customers/redact':
+                $this->handleCustomersRedact($webhook->shop_id, $payload);
+                break;
+
+            case 'shop/redact':
+                $this->handleShopRedact($webhook->shop_id, $payload);
                 break;
 
             case 'fulfillments/create':
@@ -557,6 +576,11 @@ class WebhookController extends Controller
             'orders_deleted' => 'orders/deleted',
             'orders_cancelled' => 'orders/cancelled',
             'app_uninstalled' => 'app/uninstalled',
+            'app_subscriptions_update' => 'app_subscriptions/update',
+            'app_subscriptions_approaching_capped_amount' => 'app_subscriptions/approaching_capped_amount',
+            'customers_data_request' => 'customers/data_request',
+            'customers_redact' => 'customers/redact',
+            'shop_redact' => 'shop/redact',
             'app_installed' => 'app/installed',
             'app_install' => 'app/install',
             'fulfillments_create' => 'fulfillments/create',
@@ -799,6 +823,12 @@ class WebhookController extends Controller
 
         $shop->update([
             'status' => 'inactive',
+            'billing_status' => 'inactive',
+            'billing_plan_code' => null,
+            'shopify_billing_subscription_gid' => null,
+            'shopify_billing_line_item_gid' => null,
+            'billing_approved_at' => null,
+            'billing_blocked_reason' => 'App uninstalled',
             'shopify_access_token' => null,
             'shopify_scopes' => null,
             'fulfillment_service_id' => null,
@@ -810,6 +840,45 @@ class WebhookController extends Controller
 
         Webhook::where('shop_id', $shop->id)->delete();
         FailedWebhook::where('shop_id', $shop->id)->delete();
+    }
+
+    private function handleAppSubscriptionTopic(int $shopId, string $topic, array $payload): void
+    {
+        $shop = Shop::find($shopId);
+        if (!$shop) {
+            return;
+        }
+
+        $statusResult = $this->billingService->getBillingStatusForShop($shop);
+        if (!($statusResult['success'] ?? false)) {
+            Log::warning('Billing status sync failed on subscription webhook', [
+                'shop_id' => $shopId,
+                'topic' => $topic,
+                'message' => $statusResult['message'] ?? null,
+                'errors' => $statusResult['errors'] ?? [],
+            ]);
+            return;
+        }
+
+        $resolvedStatus = (string) data_get($statusResult, 'data.billing_status', 'inactive');
+        if ($topic === 'app_subscriptions/approaching_capped_amount') {
+            $shop->update([
+                'billing_status' => 'blocked',
+                'billing_blocked_reason' => 'Approaching capped amount for usage charges.',
+            ]);
+        } elseif ($resolvedStatus !== 'active') {
+            $shop->update([
+                'billing_status' => 'inactive',
+                'billing_blocked_reason' => 'Subscription is not active.',
+            ]);
+        }
+
+        Log::info('Processed app subscription webhook', [
+            'shop_id' => $shopId,
+            'topic' => $topic,
+            'billing_status' => $shop->fresh()->billing_status,
+            'payload_keys' => array_keys($payload),
+        ]);
     }
 
     /**
@@ -1817,6 +1886,120 @@ class WebhookController extends Controller
             'fulfillment_status' => $cancelStatus,
         ]);
     }
+
+    private function handleCustomersDataRequest(int $shopId, array $payload): void
+    {
+        $customerId = (string) data_get($payload, 'customer.id', '');
+        $orders = Order::query()
+            ->where('shop_id', $shopId)
+            ->where(function ($query) use ($customerId) {
+                if ($customerId !== '') {
+                    $query->where('customer_email', data_get($payload, 'customer.email'))
+                        ->orWhere('payload->customer->id', $customerId);
+                } else {
+                    $query->where('customer_email', data_get($payload, 'customer.email'));
+                }
+            })
+            ->count();
+
+        Log::info('customers/data_request processed', [
+            'shop_id' => $shopId,
+            'customer_id' => $customerId !== '' ? $customerId : null,
+            'customer_email' => data_get($payload, 'customer.email'),
+            'orders_found' => $orders,
+        ]);
+    }
+
+    private function handleCustomersRedact(int $shopId, array $payload): void
+    {
+        $customerEmail = (string) data_get($payload, 'customer.email', '');
+        $customerId = (string) data_get($payload, 'customer.id', '');
+        if ($customerEmail === '' && $customerId === '') {
+            Log::warning('customers/redact skipped: missing customer identifier', [
+                'shop_id' => $shopId,
+                'payload_keys' => array_keys($payload),
+            ]);
+            return;
+        }
+
+        $orders = Order::query()
+            ->where('shop_id', $shopId)
+            ->where(function ($query) use ($customerEmail, $customerId) {
+                if ($customerEmail !== '') {
+                    $query->orWhere('customer_email', $customerEmail);
+                }
+                if ($customerId !== '') {
+                    $query->orWhere('payload->customer->id', $customerId);
+                }
+            })
+            ->get();
+
+        foreach ($orders as $order) {
+            $payloadData = is_array($order->payload) ? $order->payload : [];
+            if (isset($payloadData['customer']) && is_array($payloadData['customer'])) {
+                $payloadData['customer']['first_name'] = null;
+                $payloadData['customer']['last_name'] = null;
+                $payloadData['customer']['email'] = null;
+                $payloadData['customer']['phone'] = null;
+            }
+
+            $order->update([
+                'customer_name' => null,
+                'customer_email' => null,
+                'payload' => $payloadData,
+            ]);
+        }
+
+        Log::info('customers/redact processed', [
+            'shop_id' => $shopId,
+            'customer_id' => $customerId !== '' ? $customerId : null,
+            'customer_email' => $customerEmail !== '' ? $customerEmail : null,
+            'orders_redacted' => $orders->count(),
+        ]);
+    }
+
+    private function handleShopRedact(int $shopId, array $payload): void
+    {
+        $shop = Shop::find($shopId);
+        if (!$shop) {
+            return;
+        }
+
+        $orderIds = Order::where('shop_id', $shopId)->pluck('id');
+        if ($orderIds->isNotEmpty()) {
+            OrderItem::whereIn('order_id', $orderIds)->delete();
+        }
+        Shipment::where('shop_id', $shopId)->delete();
+        Job::where('shop_id', $shopId)->delete();
+        Order::where('shop_id', $shopId)->delete();
+        FulfillmentService::where('shop_id', $shopId)->delete();
+        CustomProduct::where('shop_id', $shopId)->delete();
+
+        $shop->update([
+            'status' => 'inactive',
+            'billing_status' => 'inactive',
+            'shopify_access_token' => null,
+            'shopify_scopes' => null,
+            'fulfillment_service_id' => null,
+            'location_id' => null,
+            'shipping_profile_id' => null,
+            'delivery_location_group_id' => null,
+            'billing_plan_code' => null,
+            'shopify_billing_subscription_gid' => null,
+            'shopify_billing_line_item_gid' => null,
+            'billing_approved_at' => null,
+            'billing_blocked_reason' => 'Shop redact request received',
+            'uninstalled_at' => now(),
+        ]);
+
+        $shop->delete();
+
+        Log::info('shop/redact processed', [
+            'shop_id' => $shopId,
+            'shop_domain' => data_get($payload, 'shop_domain', $shop->shop_domain),
+        ]);
+    }
+
     /**
      * GET /webhooks/status
      * Check webhook processing status

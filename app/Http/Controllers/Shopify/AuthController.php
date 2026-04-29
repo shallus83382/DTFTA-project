@@ -174,6 +174,12 @@ class AuthController extends Controller
             'shopify_api_version' => config('services.shopify.api_version', '2025-10'),
             'shopify_webhook_api_version' => config('services.shopify.webhook_api_version', '2026-04'),
             'status' => $status,
+            'billing_status' => 'inactive',
+            'billing_plan_code' => 'usage_per_order',
+            'shopify_billing_subscription_gid' => null,
+            'shopify_billing_line_item_gid' => null,
+            'billing_approved_at' => null,
+            'billing_blocked_reason' => null,
             'installed_at' => $installedAt,
             'uninstalled_at' => null,
         ];

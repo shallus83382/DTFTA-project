@@ -10,6 +10,7 @@ use App\Models\Job;
 use App\Models\Shipment;
 use App\Models\Product;
 use App\Models\Artwork;
+use App\Models\BillingCharge;
 
 class Shop extends Model
 {
@@ -32,8 +33,20 @@ class Shop extends Model
         'shipping_profile_id',
         'delivery_location_group_id',
         'status',
+        'billing_status',
+        'billing_plan_code',
+        'shopify_billing_subscription_gid',
+        'shopify_billing_line_item_gid',
+        'billing_approved_at',
+        'billing_blocked_reason',
         'installed_at',
         'uninstalled_at'
+    ];
+
+    protected $casts = [
+        'installed_at' => 'datetime',
+        'uninstalled_at' => 'datetime',
+        'billing_approved_at' => 'datetime',
     ];
 
     public function partnerProfile()
@@ -64,5 +77,10 @@ class Shop extends Model
     public function artworks()
     {
         return $this->hasMany(Artwork::class);
+    }
+
+    public function billingCharges()
+    {
+        return $this->hasMany(BillingCharge::class);
     }
 }

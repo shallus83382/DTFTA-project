@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\FulfillmentServiceController;
 use App\Http\Controllers\Api\FailedWebhookController;
 use App\Http\Controllers\Api\JobController;
 use App\Http\Controllers\Api\ArtworkController;
+use App\Http\Controllers\Api\BillingController;
 use App\Http\Controllers\Api\ShopifyApiController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\Shopify\WebhookController;
@@ -47,6 +48,8 @@ Route::prefix('v1')->group(function () {
     Route::get('/dashboard-stats', [ShopifyApiController::class, 'GetStoreDashboardStats']);
     Route::get('/orders-signed', [ShopifyApiController::class, 'GetStoreOrders']);
     Route::get('/fulfillment-status', [ShopifyApiController::class, 'GetStoreFulfillmentStatus']);
+    Route::get('/billing/status', [BillingController::class, 'status']);
+    Route::post('/billing/approve', [BillingController::class, 'approve']);
     
 });
 
