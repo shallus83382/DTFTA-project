@@ -44,6 +44,16 @@ return [
         'api_version' => env('SHOPIFY_API_VERSION', '2025-10'),
         'webhook_api_version' => env('SHOPIFY_WEBHOOK_API_VERSION', '2026-04'),
         'scopes' => env('SHOPIFY_SCOPES', 'read_orders,write_fulfillments,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,write_third_party_fulfillment_orders'),
+        'billing' => [
+            'enabled' => env('BILLING_ENFORCEMENT_ENABLED', false),
+            'test_mode' => env('SHOPIFY_BILLING_TEST_MODE', true),
+            'plan_name' => env('SHOPIFY_BILLING_PLAN_NAME', 'DTFTA Merchant Usage'),
+            'return_url' => env('SHOPIFY_BILLING_RETURN_URL', env('APP_URL') . '/billing/return'),
+            'base_price_amount' => (float) env('SHOPIFY_BILLING_BASE_PRICE_AMOUNT', 0),
+            'per_order_amount' => (float) env('SHOPIFY_BILLING_PER_ORDER_AMOUNT', 1),
+            'usage_cap_amount' => (float) env('SHOPIFY_BILLING_USAGE_CAP_AMOUNT', 1000),
+            'currency_code' => env('SHOPIFY_BILLING_CURRENCY_CODE', 'USD'),
+        ],
     ],
 
 ];

@@ -3908,6 +3908,247 @@ class ShopifyService
         ]);
     }
 
+    public function getActiveManagedSubscription(int $shopId): array
+    {
+        $query = <<<'GQL'
+        query CurrentManagedSubscription {
+          currentAppInstallation {
+            activeSubscriptions {
+              id
+              name
+              status
+              test
+              lineItems {
+                id
+                plan {
+                  pricingDetails {
+                    __typename
+                    ... on AppRecurringPricing {
+                      interval
+                      price {
+                        amount
+                        currencyCode
+                      }
+                    }
+                    ... on AppUsagePricing {
+                      terms
+                      cappedAmount {
+                        amount
+                        currencyCode
+                      }
+                      balanceUsed {
+                        amount
+                        currencyCode
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        GQL;
+
+        $result = $this->graphqlRequest($shopId, $query);
+        if (!($result['success'] ?? false)) {
+            return $result;
+        }
+
+        $subscriptions = data_get($result, 'data.currentAppInstallation.activeSubscriptions', []);
+        if (!is_array($subscriptions)) {
+            $subscriptions = [];
+        }
+
+        $active = collect($subscriptions)->first(function ($subscription) {
+            $status = strtoupper((string) data_get($subscription, 'status', ''));
+            return in_array($status, ['ACTIVE', 'ACCEPTED'], true);
+        });
+
+        if (!$active) {
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'No active managed subscription',
+                'data' => [
+                    'subscription' => null,
+                    'line_item_id' => null,
+                ],
+                'errors' => [],
+            ];
+        }
+
+        $usageLineItem = collect((array) data_get($active, 'lineItems', []))
+            ->first(function ($lineItem) {
+                return data_get($lineItem, 'plan.pricingDetails.__typename') === 'AppUsagePricing';
+            });
+
+        return [
+            'success' => true,
+            'status' => 200,
+            'message' => 'Active managed subscription found',
+            'data' => [
+                'subscription' => $active,
+                'line_item_id' => data_get($usageLineItem, 'id'),
+            ],
+            'errors' => [],
+        ];
+    }
+
+    public function createManagedSubscriptionApproval(int $shopId, ?string $returnUrl = null): array
+    {
+        $planName = (string) config('services.shopify.billing.plan_name', 'DTFTA Merchant Usage');
+        $currency = (string) config('services.shopify.billing.currency_code', 'USD');
+        $basePriceAmount = (float) config('services.shopify.billing.base_price_amount', 0);
+        $usageCapAmount = (float) config('services.shopify.billing.usage_cap_amount', 1000);
+        $testMode = (bool) config('services.shopify.billing.test_mode', true);
+        $effectiveReturnUrl = $returnUrl ?: (string) config('services.shopify.billing.return_url');
+
+        $mutation = <<<'GQL'
+        mutation AppSubscriptionCreate($name: String!, $returnUrl: URL!, $lineItems: [AppSubscriptionLineItemInput!]!, $test: Boolean!) {
+          appSubscriptionCreate(name: $name, returnUrl: $returnUrl, lineItems: $lineItems, test: $test) {
+            confirmationUrl
+            appSubscription {
+              id
+              status
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        GQL;
+
+        $variables = [
+            'name' => $planName,
+            'returnUrl' => $effectiveReturnUrl,
+            'lineItems' => [
+                [
+                    'plan' => [
+                        'appRecurringPricingDetails' => [
+                            'price' => [
+                                'amount' => $basePriceAmount,
+                                'currencyCode' => $currency,
+                            ],
+                            'interval' => 'EVERY_30_DAYS',
+                        ],
+                    ],
+                ],
+                [
+                    'plan' => [
+                        'appUsagePricingDetails' => [
+                            'terms' => 'Per-order charge before fulfillment starts',
+                            'cappedAmount' => [
+                                'amount' => $usageCapAmount,
+                                'currencyCode' => $currency,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'test' => $testMode,
+        ];
+
+        $result = $this->graphqlRequest($shopId, $mutation, $variables);
+        if (!($result['success'] ?? false)) {
+            return $result;
+        }
+
+        $payload = data_get($result, 'data.appSubscriptionCreate', []);
+        $userErrors = data_get($payload, 'userErrors', []);
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify appSubscriptionCreate returned user errors',
+                'data' => $payload,
+                'errors' => $userErrors,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'status' => 200,
+            'message' => 'Managed subscription approval URL generated',
+            'data' => [
+                'confirmation_url' => data_get($payload, 'confirmationUrl'),
+                'subscription' => data_get($payload, 'appSubscription'),
+            ],
+            'errors' => [],
+        ];
+    }
+
+    public function createUsageRecord(
+        int $shopId,
+        string $lineItemId,
+        float $amount,
+        string $description,
+        string $idempotencyKey,
+        ?string $currencyCode = null
+    ): array {
+        $currency = (string) ($currencyCode ?: config('services.shopify.billing.currency_code', 'USD'));
+
+        $mutation = <<<'GQL'
+        mutation AppUsageRecordCreate(
+          $subscriptionLineItemId: ID!,
+          $description: String!,
+          $price: MoneyInput!,
+          $idempotencyKey: String!
+        ) {
+          appUsageRecordCreate(
+            subscriptionLineItemId: $subscriptionLineItemId,
+            description: $description,
+            price: $price,
+            idempotencyKey: $idempotencyKey
+          ) {
+            appUsageRecord {
+              id
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }
+        GQL;
+
+        $result = $this->graphqlRequest($shopId, $mutation, [
+            'subscriptionLineItemId' => $lineItemId,
+            'description' => $description,
+            'price' => [
+                'amount' => $amount,
+                'currencyCode' => $currency,
+            ],
+            'idempotencyKey' => $idempotencyKey,
+        ]);
+
+        if (!($result['success'] ?? false)) {
+            return $result;
+        }
+
+        $payload = data_get($result, 'data.appUsageRecordCreate', []);
+        $userErrors = data_get($payload, 'userErrors', []);
+        if (!empty($userErrors)) {
+            return [
+                'success' => false,
+                'status' => 422,
+                'message' => 'Shopify appUsageRecordCreate returned user errors',
+                'data' => $payload,
+                'errors' => $userErrors,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'status' => 200,
+            'message' => 'Usage record created successfully',
+            'data' => [
+                'usage_record' => data_get($payload, 'appUsageRecord'),
+            ],
+            'errors' => [],
+        ];
+    }
+
 
     /**
      * Assign one or more product variants to an existing Shopify delivery profile.
