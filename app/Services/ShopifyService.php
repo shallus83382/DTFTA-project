@@ -2655,6 +2655,9 @@ class ShopifyService
         $deliveryProfileResult = null;
         $useFallbackRate = false;
         $fallbackReason = null;
+        // Default shipping profile should use weight-based slabs (fallback),
+        // even when carrier calculated shipping (app-calculated) is available.
+        $deliveryProfileUsedWeightBasedDefault = false;
     
         // =============================
         // Fulfillment Service
@@ -2790,7 +2793,7 @@ class ShopifyService
                 }
             }
         } else {
-            Log::info('Carrier service already exists, using app-calculated shipping path', [
+            Log::info('Carrier service already exists; using weight-based delivery profile default', [
                 'shop_id' => $shopId,
                 'carrier_service_id' => $shop->carrier_service_id,
             ]);
@@ -2802,7 +2805,7 @@ class ShopifyService
         if (!empty($shop->location_id)) {
             if (empty($shop->shipping_profile_id)) {
                 if ($useFallbackRate || empty($shop->carrier_service_id)) {
-                    Log::info('Creating flat-rate delivery profile', [
+                    Log::info('Creating weight-based delivery profile (fallback slabs)', [
                         'shop_id' => $shopId,
                         'location_id' => $shop->location_id,
                         'fallback_reason' => $fallbackReason,
@@ -2813,20 +2816,22 @@ class ShopifyService
                         (string) $shop->location_id,
                         'DTFTA Shipping'
                     );
+                    $deliveryProfileUsedWeightBasedDefault = true;
                 } else {
-                    Log::info('Creating carrier-based delivery profile', [
+                    Log::info('Creating weight-based delivery profile (replacing app-calculated default)', [
                         'shop_id' => $shopId,
                         'location_id' => $shop->location_id,
                         'carrier_service_id' => $shop->carrier_service_id,
                     ]);
     
-                    $deliveryProfileResult = $this->createDeliveryProfileWithCarrierRate(
+                    // Use weight-based slabs as the default delivery method
+                    // even when app-calculated/carrier calculated shipping is available.
+                    $deliveryProfileResult = $this->createDeliveryProfile(
                         (int) $shop->id,
                         (string) $shop->location_id,
-                        (string) $shop->carrier_service_id,
-                        'DTFTA Shipping',
-                        'Standard'
+                        'DTFTA Shipping'
                     );
+                    $deliveryProfileUsedWeightBasedDefault = true;
                 }
     
                 Log::info('Delivery profile create response', [
@@ -2866,11 +2871,11 @@ class ShopifyService
                     'shop_id' => $shopId,
                     'shipping_profile_id' => $shop->shipping_profile_id,
                     'delivery_location_group_id' => $shop->delivery_location_group_id,
-                    'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+                    'used_fallback_rate' => $deliveryProfileUsedWeightBasedDefault,
                 ]);
             } else {
                 if ($useFallbackRate || empty($shop->carrier_service_id)) {
-                    Log::info('Syncing flat-rate delivery profile', [
+                    Log::info('Syncing weight-based delivery profile (fallback slabs)', [
                         'shop_id' => $shopId,
                         'profile_id' => $shop->shipping_profile_id,
                         'location_id' => $shop->location_id,
@@ -2884,21 +2889,24 @@ class ShopifyService
                         'DTFTA Shipping',
                         'USD'
                     );
+                    $deliveryProfileUsedWeightBasedDefault = true;
                 } else {
-                    Log::info('Syncing carrier-based delivery profile', [
+                    Log::info('Syncing weight-based delivery profile (replacing app-calculated default)', [
                         'shop_id' => $shopId,
                         'profile_id' => $shop->shipping_profile_id,
                         'carrier_service_id' => $shop->carrier_service_id,
                     ]);
     
-                    $deliveryProfileResult = $this->syncDeliveryProfileConfiguration(
+                    // Replace any app-calculated carrier service methods with
+                    // weight-based fallback slabs.
+                    $deliveryProfileResult = $this->syncDeliveryProfileConfigurationFlat(
                         (int) $shop->id,
                         (string) $shop->shipping_profile_id,
                         (string) $shop->location_id,
-                        (string) $shop->carrier_service_id,
                         'DTFTA Shipping',
-                        'Standard'
+                        'USD'
                     );
+                    $deliveryProfileUsedWeightBasedDefault = true;
                 }
     
                 Log::info('Delivery profile sync response', [
@@ -2932,7 +2940,7 @@ class ShopifyService
                 Log::info('Delivery profile sync saved', [
                     'shop_id' => $shopId,
                     'delivery_location_group_id' => $shop->delivery_location_group_id,
-                    'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+                    'used_fallback_rate' => $deliveryProfileUsedWeightBasedDefault,
                 ]);
             }
         } else {
@@ -2955,7 +2963,7 @@ class ShopifyService
     
         Log::info('Provision completed', [
             'shop_id' => $shopId,
-            'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+            'used_fallback_rate' => $deliveryProfileUsedWeightBasedDefault,
             'fallback_reason' => $fallbackReason,
         ]);
     
@@ -2969,11 +2977,11 @@ class ShopifyService
                 'carrier_service' => data_get($carrierServiceResult, 'data.carrierServiceCreate.carrierService'),
                 'delivery_profile' => $deliveryProfileResult['data'] ?? null,
                 'webhooks' => $webhooks['data'] ?? [],
-                'used_fallback_rate' => $useFallbackRate || empty($shop->carrier_service_id),
+                'used_fallback_rate' => $deliveryProfileUsedWeightBasedDefault,
                 'fallback_reason' => $fallbackReason,
             ],
-            'message' => ($useFallbackRate || empty($shop->carrier_service_id))
-                ? 'Provisioning completed with fallback Standard shipping rate'
+            'message' => $deliveryProfileUsedWeightBasedDefault
+                ? 'Provisioning completed with weight-based delivery profile default'
                 : 'Provisioning completed',
         ];
     }
