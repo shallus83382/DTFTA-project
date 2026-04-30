@@ -692,9 +692,12 @@
                 <tbody id="jobsTableBody">
                     @forelse($allJobs as $job)
                         @php
-                            $jobStatus = in_array($job->status, ['failed', 'exception', 'cancelled'], true)
+                            $rawJobStatus = strtolower((string) ($job->status ?? 'pending'));
+                            $jobStatus = in_array($rawJobStatus, ['failed', 'exception', 'cancelled'], true)
                                 ? 'cancelled'
-                                : strtolower($job->status ?? 'pending');
+                                : ((str_contains($rawJobStatus, 'billing') || str_contains($rawJobStatus, 'issue') || in_array($rawJobStatus, ['payment_pending', 'payment_required'], true))
+                                    ? 'pending'
+                                    : $rawJobStatus);
 
                             $jobStatusClass = str_replace('_', '-', $jobStatus);
 
@@ -791,6 +794,8 @@
         function normalizeFilterStatus(status) {
             if (!status) return '';
             if (status === 'new') return 'pending';
+            if (status.includes('billing') || status.includes('issue')) return 'pending';
+            if (status === 'payment_pending' || status === 'payment_required') return 'pending';
             if (status === 'failed' || status === 'exception') return 'cancelled';
             return status;
         }

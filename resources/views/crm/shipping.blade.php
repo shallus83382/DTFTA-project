@@ -338,7 +338,7 @@
                         <select id="shipServiceId">
                             <option value="">Manual / None</option>
                             @foreach($servicesForShipping as $service)
-                                <option value="{{ $service->id }}">{{ $service->name }}</option>
+                                <option value="{{ $service->id }}" data-shop-id="{{ $service->shop_id }}">{{ $service->name }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -440,8 +440,73 @@
             profilesByShop: @json($profilesForShipping),
             orders: @json($ordersForShipping),
             shops: @json($shopsForShipping),
+            services: @json($servicesForShipping),
             autoRefreshTimer: null,
         };
+
+        function renderOrderOptionsByShop(shopId, preserveOrderId = '') {
+            const orderSelect = document.getElementById('shipOrderId');
+            const selectedShopId = String(shopId || '');
+            const currentValue = String(preserveOrderId || orderSelect.value || '');
+
+            const filteredOrders = shippingState.orders.filter((order) => {
+                if (!selectedShopId) return true;
+                return String(order.shop_id || '') === selectedShopId;
+            });
+
+            orderSelect.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select order';
+            orderSelect.appendChild(placeholder);
+
+            filteredOrders.forEach((order) => {
+                const option = document.createElement('option');
+                option.value = String(order.id);
+                option.dataset.shopId = String(order.shop_id || '');
+                const orderNumber = order.order_number || 'No Order Number';
+                const shopDomain = order.shop?.shop_domain || 'Unknown Shop';
+                option.textContent = `#${order.id} | ${orderNumber} | ${shopDomain}`;
+                orderSelect.appendChild(option);
+            });
+
+            if (currentValue && filteredOrders.some((order) => String(order.id) === currentValue)) {
+                orderSelect.value = currentValue;
+            } else {
+                orderSelect.value = '';
+            }
+        }
+
+        function renderServiceOptionsByShop(shopId, preserveServiceId = '') {
+            const serviceSelect = document.getElementById('shipServiceId');
+            const selectedShopId = String(shopId || '');
+            const currentValue = String(preserveServiceId || serviceSelect.value || '');
+
+            const filteredServices = shippingState.services.filter((service) => {
+                if (!selectedShopId) return true;
+                return String(service.shop_id || '') === selectedShopId;
+            });
+
+            serviceSelect.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Manual / None';
+            serviceSelect.appendChild(placeholder);
+
+            filteredServices.forEach((service) => {
+                const option = document.createElement('option');
+                option.value = String(service.id);
+                option.dataset.shopId = String(service.shop_id || '');
+                option.textContent = service.name || `Service #${service.id}`;
+                serviceSelect.appendChild(option);
+            });
+
+            if (currentValue && filteredServices.some((service) => String(service.id) === currentValue)) {
+                serviceSelect.value = currentValue;
+            } else {
+                serviceSelect.value = '';
+            }
+        }
 
         function getAuthToken() {
             return localStorage.getItem('auth_token');
@@ -530,6 +595,35 @@
             });
 
             empty.style.display = rows.length ? 'none' : 'block';
+            refreshGenerateLabelState();
+        }
+
+        function getGeneratedShipmentForOrder(orderId) {
+            const targetOrderId = String(orderId || '');
+            if (!targetOrderId) return null;
+
+            return shippingState.shipments.find((item) => {
+                const itemOrderId = String(item.order_id || '');
+                const hasGeneratedLabel = !!item.shipment_id;
+                const status = String(item.status || '').toLowerCase();
+                const canRegenerate = status === 'exception';
+                return itemOrderId === targetOrderId && hasGeneratedLabel && !canRegenerate;
+            }) || null;
+        }
+
+        function refreshGenerateLabelState() {
+            const orderId = document.getElementById('shipOrderId').value || '';
+            const button = document.getElementById('btnCreateShipment');
+            if (!button) return;
+
+            const generatedShipment = getGeneratedShipmentForOrder(orderId);
+            if (generatedShipment) {
+                button.disabled = true;
+                button.title = `Label already generated for shipment #${generatedShipment.id}`;
+            } else {
+                button.disabled = false;
+                button.title = '';
+            }
         }
 
         function selectShipment(id) {
@@ -540,6 +634,8 @@
             document.getElementById('btnCancelShipment').disabled = !shipment;
 
             if (shipment) {
+                renderOrderOptionsByShop(shipment.shop_id || '', shipment.order_id || '');
+                renderServiceOptionsByShop(shipment.shop_id || '', shipment.fulfillment_service_id || '');
                 document.getElementById('shipOrderId').value = shipment.order_id || '';
                 document.getElementById('shipShopId').value = shipment.shop_id || '';
                 document.getElementById('shipServiceId').value = shipment.fulfillment_service_id || '';
@@ -548,6 +644,7 @@
                 document.getElementById('shipTrackingUrl').value = shipment.tracking_url || '';
                 hydrateProfileFromShop(shipment.shop_id || '');
             }
+            refreshGenerateLabelState();
             renderShipmentsTable();
         }
 
@@ -610,7 +707,12 @@
                 body: JSON.stringify(payload)
             });
             if (result?.data) {
-                shippingState.shipments.unshift(result.data);
+                const idx = shippingState.shipments.findIndex(s => String(s.id) === String(result.data.id));
+                if (idx >= 0) {
+                    shippingState.shipments[idx] = result.data;
+                } else {
+                    shippingState.shipments.unshift(result.data);
+                }
                 shippingState.selectedShipmentId = result.data.id;
                 renderShipmentsTable();
             }
@@ -732,12 +834,20 @@
             document.getElementById('shipOrderId').addEventListener('change', (e) => {
                 const selected = e.target.options[e.target.selectedIndex];
                 if (selected && selected.dataset.shopId) {
-                    document.getElementById('shipShopId').value = selected.dataset.shopId;
-                    hydrateProfileFromShop(selected.dataset.shopId);
+                    const selectedShopId = String(selected.dataset.shopId);
+                    document.getElementById('shipShopId').value = selectedShopId;
+                    renderOrderOptionsByShop(selectedShopId, e.target.value);
+                    renderServiceOptionsByShop(selectedShopId);
+                    hydrateProfileFromShop(selectedShopId);
                 }
+                refreshGenerateLabelState();
             });
             document.getElementById('shipShopId').addEventListener('change', (e) => {
-                hydrateProfileFromShop(e.target.value);
+                const selectedShopId = String(e.target.value || '');
+                renderOrderOptionsByShop(selectedShopId);
+                renderServiceOptionsByShop(selectedShopId);
+                hydrateProfileFromShop(selectedShopId);
+                refreshGenerateLabelState();
             });
 
             ['shipSearch', 'shipFilterStatus', 'shipFilterCarrier'].forEach((id) => {
@@ -759,6 +869,8 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
+            renderOrderOptionsByShop('');
+            renderServiceOptionsByShop('');
             bindShippingEvents();
             renderShipmentsTable();
             loadShipments().catch((e) => showFlash(e.message, 'error'));

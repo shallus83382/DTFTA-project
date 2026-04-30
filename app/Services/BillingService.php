@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AdminActivityLog;
 use App\Models\BillingCharge;
 use App\Models\Order;
 use App\Models\ProductVariant;
@@ -17,7 +18,7 @@ class BillingService
 
     public function isEnforced(): bool
     {
-        return (bool) config('services.shopify.billing.enabled', false);
+        return (bool) config('services.shopify.billing.enabled', true);
     }
 
     public function getBillingStatusForShop(Shop $shop): array
@@ -129,6 +130,32 @@ class BillingService
 
     public function chargePreFulfillment(Shop $shop, Order $order, ?Shipment $shipment = null): array
     {
+        $acceptedExisting = BillingCharge::query()
+            ->where('shop_id', $shop->id)
+            ->where('order_id', $order->id)
+            ->where('charge_type', 'pre_fulfillment')
+            ->where('status', 'accepted')
+            ->latest('id')
+            ->first();
+
+        if ($acceptedExisting) {
+            AdminActivityLog::logSystemActivity(
+                'Billing paid for order (existing accepted pre-fulfillment charge found)',
+                'Order',
+                $order->id
+            );
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Pre-fulfillment charge already accepted for order.',
+                'data' => [
+                    'billing_charge' => $acceptedExisting,
+                    'already_charged' => true,
+                ],
+                'errors' => [],
+            ];
+        }
+
         $amountBreakdown = $this->calculateFulfillmentChargeBreakdown($order);
         $amount = $amountBreakdown['total'];
         $currency = trim((string) ($order->currency ?: config('services.shopify.billing.currency_code', 'USD')));
@@ -160,6 +187,11 @@ class BillingService
             ->first();
 
         if ($existing && $existing->status === 'accepted') {
+            AdminActivityLog::logSystemActivity(
+                'Billing paid for order (existing accepted usage charge found)',
+                'Order',
+                $order->id
+            );
             return [
                 'success' => true,
                 'status' => 200,
@@ -185,6 +217,12 @@ class BillingService
                 'idempotency_key' => $idempotencyKey,
                 'error_message' => $billingReady['message'] ?? 'Billing required',
             ]);
+
+            AdminActivityLog::logSystemActivity(
+                'Billing pending for order (approval required before fulfillment)',
+                'Order',
+                $order->id
+            );
 
             return [
                 'success' => false,
@@ -254,6 +292,12 @@ class BillingService
                 'errors' => $usage['errors'] ?? [],
             ]);
 
+            AdminActivityLog::logSystemActivity(
+                'Billing failed for order (usage charge creation failed)',
+                'Order',
+                $order->id
+            );
+
             return [
                 'success' => false,
                 'status' => 422,
@@ -273,6 +317,12 @@ class BillingService
             'error_message' => null,
         ]);
 
+        AdminActivityLog::logSystemActivity(
+            'Billing paid for order (pre-fulfillment charge accepted)',
+            'Order',
+            $order->id
+        );
+
         return [
             'success' => true,
             'status' => 200,
@@ -282,6 +332,45 @@ class BillingService
                 'usage_record_id' => $usageRecordId,
             ],
             'errors' => [],
+        ];
+    }
+
+    public function ensurePreFulfillmentPaid(Shop $shop, Order $order): array
+    {
+        $acceptedCharge = BillingCharge::query()
+            ->where('shop_id', $shop->id)
+            ->where('order_id', $order->id)
+            ->where('charge_type', 'pre_fulfillment')
+            ->where('status', 'accepted')
+            ->latest('id')
+            ->first();
+
+        if ($acceptedCharge) {
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Pre-fulfillment billing already paid for this order.',
+                'data' => [
+                    'billing_charge' => $acceptedCharge,
+                    'is_paid' => true,
+                ],
+                'errors' => [],
+            ];
+        }
+
+        $billingReady = $this->assertMerchantBillingReady($shop);
+        $billingConfirmationUrl = data_get($billingReady, 'data.billing_confirmation_url');
+
+        return [
+            'success' => false,
+            'status' => 402,
+            'message' => 'Pre-fulfillment billing is not paid for this order.',
+            'data' => [
+                'code' => 'BILLING_NOT_PAID',
+                'is_paid' => false,
+                'billing_confirmation_url' => $billingConfirmationUrl,
+            ],
+            'errors' => $billingReady['errors'] ?? [],
         ];
     }
 

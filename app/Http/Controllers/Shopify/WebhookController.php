@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Shopify;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\AdminActivityLog;
 use App\Models\Webhook;
 use App\Models\FailedWebhook;
 use App\Models\Shop;
@@ -331,6 +332,12 @@ class WebhookController extends Controller
                     'payload' => $orderPayload,
                 ]
             );
+
+            AdminActivityLog::logSystemActivity(
+                'Order synchronized from Shopify fulfillment webhook',
+                'Order',
+                $order->id
+            );
         }
 
         $job = Job::updateOrCreate(
@@ -375,6 +382,12 @@ class WebhookController extends Controller
         array $fo
     ): void {
         $requestStatus = strtoupper((string) ($fo['request_status'] ?? ''));
+
+        AdminActivityLog::logSystemActivity(
+            'Fulfillment request submitted',
+            'Order',
+            $order->id
+        );
     
         // Ignore if already accepted/rejected
         if (in_array($requestStatus, ['ACCEPTED', 'REJECTED', 'CANCELLATION_REJECTED'], true)) {
@@ -443,6 +456,12 @@ class WebhookController extends Controller
             'status' => 'new',
             'fulfillment_status' => strtolower((string) ($fo['request_status'] ?? 'accepted')),
         ]);
+
+        AdminActivityLog::logSystemActivity(
+            'Fulfillment request accepted',
+            'Order',
+            $order->id
+        );
     }
 
 
@@ -627,6 +646,12 @@ class WebhookController extends Controller
             ]
         );
 
+        AdminActivityLog::logSystemActivity(
+            'Order created/updated from Shopify orders webhook',
+            'Order',
+            $order->id
+        );
+
         if (isset($payload['line_items'])) {
             $hasValidDtftaLineItem = false;
             $hasInvalidDtftaLineItem = false;
@@ -705,6 +730,38 @@ class WebhookController extends Controller
                         'fulfillment_status' => 'pending',
                         'status' => 'pending'
                     ]);
+                }
+
+                $shop = Shop::find($shopId);
+                if ($shop) {
+                    $billingResult = $this->billingService->chargePreFulfillment($shop, $order, null);
+                    if (!($billingResult['success'] ?? false)) {
+                        Job::where('shop_id', $shopId)
+                            ->where('order_id', $order->id)
+                            ->where('job_type', 'dtfta_apparel_pod')
+                            ->update([
+                                'status' => 'billing_pending',
+                                'error_message' => $billingResult['message'] ?? 'Billing approval required',
+                            ]);
+
+                        $order->update([
+                            'status' => 'billing_pending',
+                            'fulfillment_status' => 'billing_pending',
+                        ]);
+
+                        AdminActivityLog::logSystemActivity(
+                            'Billing pending for order',
+                            'Order',
+                            $order->id
+                        );
+
+                        Log::info('Order billing pending after create', [
+                            'shop_id' => $shopId,
+                            'order_id' => $order->id,
+                            'billing_message' => $billingResult['message'] ?? null,
+                            'billing_code' => data_get($billingResult, 'data.code'),
+                        ]);
+                    }
                 }
             }
         }
@@ -1718,6 +1775,12 @@ class WebhookController extends Controller
     ): void {
         $requestStatus = strtoupper((string) ($fo['request_status'] ?? ''));
         $supportedActions = array_map('strtoupper', $fo['supported_actions'] ?? []);
+
+        AdminActivityLog::logSystemActivity(
+            'Fulfillment request callback received',
+            'Order',
+            $order->id
+        );
     
         // Already handled in Shopify
         if (in_array($requestStatus, ['ACCEPTED', 'REJECTED'], true)) {
@@ -1734,6 +1797,14 @@ class WebhookController extends Controller
                 'status' => $status,
                 'fulfillment_status' => strtolower((string) ($fo['request_status'] ?? $status)),
             ]);
+
+            AdminActivityLog::logSystemActivity(
+                $requestStatus === 'ACCEPTED'
+                    ? 'Fulfillment request accepted'
+                    : 'Fulfillment request rejected',
+                'Order',
+                $order->id
+            );
     
             return;
         }
@@ -1781,6 +1852,44 @@ class WebhookController extends Controller
     
             return;
         }
+
+        $shop = Shop::find($shopId);
+        if (!$shop) {
+            throw new \RuntimeException('Shop not found while validating billing for fulfillment request');
+        }
+
+        $billingResult = $this->billingService->chargePreFulfillment($shop, $order, null);
+        if (!($billingResult['success'] ?? false)) {
+            $rejectResult = $this->shopifyService->rejectFulfillmentRequest(
+                $shopId,
+                $fulfillmentOrderId,
+                'Billing approval or charge is required before accepting fulfillment request'
+            );
+
+            if (!$rejectResult['success']) {
+                throw new \RuntimeException(
+                    'Reject fulfillment request failed after billing block: ' . ($rejectResult['message'] ?? 'Unknown error')
+                );
+            }
+
+            $job->update([
+                'status' => 'billing_pending',
+                'error_message' => $billingResult['message'] ?? 'Billing approval required',
+            ]);
+
+            $order->update([
+                'status' => 'billing_pending',
+                'fulfillment_status' => 'billing_pending',
+            ]);
+
+            AdminActivityLog::logSystemActivity(
+                'Billing pending for order during fulfillment callback',
+                'Order',
+                $order->id
+            );
+
+            return;
+        }
     
         // Optional guard if supported actions are available
         if (!empty($supportedActions) && !in_array('ACCEPT_FULFILLMENT_REQUEST', $supportedActions, true)) {
@@ -1814,6 +1923,12 @@ class WebhookController extends Controller
             'status' => 'new',
             'fulfillment_status' => strtolower((string) ($fo['request_status'] ?? 'accepted')),
         ]);
+
+        AdminActivityLog::logSystemActivity(
+            'Fulfillment request accepted',
+            'Order',
+            $order->id
+        );
     }
 
 

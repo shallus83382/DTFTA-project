@@ -746,7 +746,24 @@ class CrmController extends Controller
         $data['orderStatuses'] = $this->getStatuses()['order_statuses'] ?? [];
     
         $statuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled'];
-        $allowedStatuses = ['new', 'accepted', 'pending', 'artwork_needed', 'in_production', 'processing', 'shipped', 'cancelled', 'failed', 'exception'];
+        $allowedStatuses = [
+            'new',
+            'accepted',
+            'pending',
+            'artwork_needed',
+            'in_production',
+            'processing',
+            'shipped',
+            'cancelled',
+            'failed',
+            'exception',
+            'billing_pending',
+            'billing_required',
+            'billing_issue',
+            'payment_pending',
+            'payment_required',
+            'issue',
+        ];
     
         $jobsByStatus = [];
         foreach ($statuses as $status) {
@@ -761,10 +778,11 @@ class CrmController extends Controller
     
         foreach ($jobsForBoard as $job) {
             $rawStatus = strtolower((string) $job->status);
-            $bucket = match ($rawStatus) {
-                'new', 'accepted', 'pending' => 'pending',
-                'processing', 'in_production' => 'in_production',
-                'failed', 'exception', 'cancelled' => 'cancelled',
+            $bucket = match (true) {
+                in_array($rawStatus, ['new', 'accepted', 'pending', 'billing_pending', 'billing_required', 'billing_issue', 'payment_pending', 'payment_required', 'issue'], true) => 'pending',
+                str_contains($rawStatus, 'billing') || str_contains($rawStatus, 'issue') => 'pending',
+                in_array($rawStatus, ['processing', 'in_production'], true) => 'in_production',
+                in_array($rawStatus, ['failed', 'exception', 'cancelled'], true) => 'cancelled',
                 default => $rawStatus,
             };
     
@@ -1660,8 +1678,30 @@ class CrmController extends Controller
             ->with('shop')
             ->get();
 
-        $data['activityLog'] = AdminActivityLog::where('model_type', 'Order')
-            ->where('model_id', $orderId)
+        $jobIdsForOrder = $data['jobs']->pluck('id')->filter()->values()->all();
+        $shipmentIdsForOrder = Shipment::where('order_id', $orderId)->pluck('id')->all();
+
+        $data['activityLog'] = AdminActivityLog::query()
+            ->where(function ($query) use ($orderId, $jobIdsForOrder, $shipmentIdsForOrder) {
+                $query->where(function ($orderQuery) use ($orderId) {
+                    $orderQuery->where('model_type', 'Order')
+                        ->where('model_id', $orderId);
+                });
+
+                if (!empty($jobIdsForOrder)) {
+                    $query->orWhere(function ($jobQuery) use ($jobIdsForOrder) {
+                        $jobQuery->where('model_type', 'Job')
+                            ->whereIn('model_id', $jobIdsForOrder);
+                    });
+                }
+
+                if (!empty($shipmentIdsForOrder)) {
+                    $query->orWhere(function ($shipmentQuery) use ($shipmentIdsForOrder) {
+                        $shipmentQuery->where('model_type', 'Shipment')
+                            ->whereIn('model_id', $shipmentIdsForOrder);
+                    });
+                }
+            })
             ->with('user')
             ->orderBy('created_at', 'desc')
             ->paginate(10, ['*'], 'activity_page')
@@ -1762,12 +1802,34 @@ class CrmController extends Controller
         $page = max(1, (int) $request->input('page', 1));
 
         try {
-            $activities = AdminActivityLog::where('model_id', $id);
-
             if ($type === 'job') {
-                $activities = $activities->where('model_type', 'Job');
+                $activities = AdminActivityLog::query()
+                    ->where('model_type', 'Job')
+                    ->where('model_id', $id);
             } else {
-                $activities = $activities->where('model_type', 'Order');
+                $jobIds = Job::where('order_id', $id)->pluck('id')->all();
+                $shipmentIds = Shipment::where('order_id', $id)->pluck('id')->all();
+                $activities = AdminActivityLog::query()
+                    ->where(function ($query) use ($id, $jobIds, $shipmentIds) {
+                        $query->where(function ($orderQuery) use ($id) {
+                            $orderQuery->where('model_type', 'Order')
+                                ->where('model_id', $id);
+                        });
+
+                    if (!empty($jobIds)) {
+                            $query->orWhere(function ($jobQuery) use ($jobIds) {
+                                $jobQuery->where('model_type', 'Job')
+                                    ->whereIn('model_id', $jobIds);
+                            });
+                        }
+
+                        if (!empty($shipmentIds)) {
+                            $query->orWhere(function ($shipmentQuery) use ($shipmentIds) {
+                                $shipmentQuery->where('model_type', 'Shipment')
+                                    ->whereIn('model_id', $shipmentIds);
+                            });
+                        }
+                    });
             }
 
             $paginated = $activities

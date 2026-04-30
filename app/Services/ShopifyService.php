@@ -134,6 +134,12 @@ class ShopifyService
        
 
         try {
+            $payload = [
+                'query' => $query,
+                // Shopify expects variables to be a JSON object, not an array.
+                'variables' => !empty($variables) ? $variables : (object) [],
+            ];
+
             $response = Http::withHeaders([
                 'X-Shopify-Access-Token' => $token,
             ])
@@ -142,10 +148,7 @@ class ShopifyService
                 ->asJson()
                 ->timeout(20)
                 ->retry(2, 250)
-                ->post($url, [
-                    'query' => $query,
-                    'variables' => $variables,
-                ]);
+                ->post($url, $payload);
 
             $data = $response->json() ?? [];
 
