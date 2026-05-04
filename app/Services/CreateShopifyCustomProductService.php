@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Artwork;
 use App\Models\CustomProduct;
 use App\Models\Product;
 use App\Models\Shop;
@@ -154,6 +155,7 @@ class CreateShopifyCustomProductService
             'artworkUrls.*.placement' => ['nullable', 'string'],
             'artworkUrls.*.designableRegion' => ['nullable', 'array'],
             'artworkUrls.*.printSize' => ['nullable', 'array'],
+            'artworkUrls.*.libraryArtworkId' => ['nullable', 'string', 'max:64'],
         ]);
     }
 
@@ -307,6 +309,10 @@ class CreateShopifyCustomProductService
             ->map(function ($item, $index) use ($printAreas, $shopId, $product) {
                 $resolvedPlacement = data_get($item, 'placement') ?: ($printAreas[$index]['placement'] ?? null);
                 $sourceValue = (string) data_get($item, 'source', '');
+                $verifiedLibraryArtworkId = $this->verifyShopArtworkBelongsToShop(
+                    $shopId,
+                    data_get($item, 'library_artwork_id')
+                );
 
                 $storedUrl = $this->storeArtworkFile(
                     $sourceValue,
@@ -345,6 +351,7 @@ class CreateShopifyCustomProductService
                         'designable_region' => data_get($item, 'designable_region'),
                         'print_size' => data_get($item, 'print_size'),
                         'custom_artwork_url' => $storedCustomUrl,
+                        'library_artwork_id' => $verifiedLibraryArtworkId,
                     ],
                 ];
             })
@@ -1222,6 +1229,7 @@ class CreateShopifyCustomProductService
                         'keys' => $path,
                         'designable_region' => data_get($value, 'designableRegion'),
                         'print_size' => data_get($value, 'printSize'),
+                        'library_artwork_id' => trim((string) data_get($value, 'libraryArtworkId', '')),
                     ];
                     return;
                 }
@@ -1257,12 +1265,53 @@ class CreateShopifyCustomProductService
                 'keys' => $path,
                 'designable_region' => null,
                 'print_size' => null,
+                'library_artwork_id' => '',
             ];
         };
 
         $walker($artworkUrls, []);
 
         return $normalized;
+    }
+
+    /**
+     * Confirms the Remix app-reported library asset id exists on this shop's artworks table.
+     */
+    private function verifyShopArtworkBelongsToShop(int $shopId, mixed $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+
+        $id = trim((string) $raw);
+        if ($id === '') {
+            return null;
+        }
+
+        if (! ctype_digit($id)) {
+            Log::warning('Create Shopify product: libraryArtworkId is not a numeric id', [
+                'shop_id' => $shopId,
+                'library_artwork_id' => $id,
+            ]);
+
+            return null;
+        }
+
+        $exists = Artwork::query()
+            ->where('shop_id', $shopId)
+            ->where('id', (int) $id)
+            ->exists();
+
+        if (! $exists) {
+            Log::warning('Create Shopify product: library artwork id not found for shop', [
+                'shop_id' => $shopId,
+                'library_artwork_id' => $id,
+            ]);
+
+            return null;
+        }
+
+        return $id;
     }
 
     private function isArtworkSourceValue(string $value): bool
