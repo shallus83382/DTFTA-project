@@ -13,10 +13,12 @@ use App\Models\Job;
 use App\Models\Shipment;
 use App\Models\FulfillmentService;
 use App\Models\CustomProduct;
+use App\Models\SystemSetting;
 use App\Services\AppSignatureVerifier;
 use App\Services\BillingService;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use App\Models\OrderItem;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
@@ -645,6 +647,7 @@ class WebhookController extends Controller
                 'payload' => $payload
             ]
         );
+        $isNewOrder = $order->wasRecentlyCreated;
 
         AdminActivityLog::logSystemActivity(
             'Order created/updated from Shopify orders webhook',
@@ -761,6 +764,18 @@ class WebhookController extends Controller
                             'billing_message' => $billingResult['message'] ?? null,
                             'billing_code' => data_get($billingResult, 'data.code'),
                         ]);
+                    } elseif ($isNewOrder) {
+                        $this->sendConfiguredNotificationEmail(
+                            'New order received and billing successful',
+                            'A new order was received via Shopify webhook and pre-fulfillment billing was accepted.',
+                            [
+                                'Shop' => $shop->shop_domain ?? ('Shop #' . $shopId),
+                                'Order ID' => (string) $order->id,
+                                'Order Number' => (string) ($order->order_number ?: 'N/A'),
+                                'Shopify Order ID' => (string) ($order->shopify_order_id ?: 'N/A'),
+                                'Billing Status' => 'Accepted',
+                            ]
+                        );
                     }
                 }
             }
@@ -1781,6 +1796,20 @@ class WebhookController extends Controller
             'Order',
             $order->id
         );
+
+        if (!in_array($requestStatus, ['ACCEPTED', 'REJECTED'], true)) {
+            $this->sendConfiguredNotificationEmail(
+                'Fulfillment request received',
+                'A fulfillment request was received for an order.',
+                [
+                    'Shop ID' => (string) $shopId,
+                    'Order ID' => (string) $order->id,
+                    'Order Number' => (string) ($order->order_number ?: 'N/A'),
+                    'Fulfillment Order ID' => $fulfillmentOrderId,
+                    'Request Status' => $requestStatus !== '' ? $requestStatus : 'N/A',
+                ]
+            );
+        }
     
         // Already handled in Shopify
         if (in_array($requestStatus, ['ACCEPTED', 'REJECTED'], true)) {
@@ -2132,5 +2161,36 @@ class WebhookController extends Controller
                 'timestamp' => now()
             ]
         ]);
+    }
+
+    private function sendConfiguredNotificationEmail(string $subject, string $message, array $context = []): void
+    {
+        $isEnabled = SystemSetting::getBoolean('email_notifications_enabled', false);
+        if (!$isEnabled) {
+            return;
+        }
+
+        $recipient = trim((string) SystemSetting::getValue('notification_email', ''));
+        if ($recipient === '') {
+            return;
+        }
+
+        $lines = [$message, ''];
+        foreach ($context as $label => $value) {
+            $lines[] = $label . ': ' . $value;
+        }
+        $body = implode("\n", $lines);
+
+        try {
+            Mail::raw($body, function ($mail) use ($recipient, $subject) {
+                $mail->to($recipient)->subject($subject);
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send configured notification email', [
+                'recipient' => $recipient,
+                'subject' => $subject,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

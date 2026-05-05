@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\FailedWebhookController;
 use App\Http\Controllers\Api\JobController;
 use App\Http\Controllers\Api\ArtworkController;
 use App\Http\Controllers\Api\BillingController;
+use App\Http\Controllers\Api\SystemSettingController;
 use App\Http\Controllers\Api\ShopifyApiController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\Shopify\WebhookController;
@@ -135,4 +136,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Notifications
     Route::get('/notifications', [CrmController::class, 'getNotifications']);
     Route::post('/notifications/mark-read', [CrmController::class, 'markNotificationsRead']);
+    Route::get('/settings', [SystemSettingController::class, 'show']);
+    Route::put('/settings', [SystemSettingController::class, 'update']);
+    Route::post('/settings/test-email', [SystemSettingController::class, 'sendTestEmail']);
 });

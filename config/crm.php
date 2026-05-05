@@ -149,6 +149,13 @@ return [
             'roles' => ['admin', 'manager', 'user'],
         ],
         [
+            'label' => 'Settings',
+            'route' => 'crm.settings',
+            'icon' => 'nav-icon-settings',
+            'visible' => true,
+            'roles' => ['admin', 'manager', 'user'],
+        ],
+        [
             'label' => 'Users',
             'route' => 'crm.users',
             'icon' => 'nav-icon-users',
