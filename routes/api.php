@@ -32,6 +32,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/update-status', [CrmController::class, 'updateStatus']);
     Route::post('/get-activity-log', [CrmController::class, 'getActivityLog']);
     Route::get('/get-order-status/{orderId}', [CrmController::class, 'getOrderStatus']);
+    Route::post('/retry-billing', [CrmController::class, 'retryBilling']);
     Route::get('/notifications/recent', [CrmController::class, 'getRealtimeNotifications']);
 
     // Frontend signed endpoint (timestamp + signature HMAC)

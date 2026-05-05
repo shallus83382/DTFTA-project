@@ -169,6 +169,23 @@
 
             </div>
             <h3>Update Order Status</h3>
+            @php
+                $billingStatusLabel = strtoupper(str_replace('_', ' ', (string) ($billingChargeStatus ?? '')));
+            @endphp
+            <div id="billingRetrySection" style="display:flex; align-items:center; gap:10px; margin: 8px 0 12px;">
+                @if (!empty($billingChargeStatus))
+                    <span class="status-badge" style="font-size:11px;">
+                        BILLING: {{ $billingStatusLabel }}
+                    </span>
+                @endif
+                <button
+                    id="retryBillingBtn"
+                    type="button"
+                    onclick="retryBilling()"
+                    style="display: {{ !empty($showRetryBilling) ? 'inline-flex' : 'none' }}; align-items:center; justify-content:center; padding:8px 12px; border:none; border-radius:8px; background: linear-gradient(135deg, #0284c7, #2563eb); color:#fff; font-weight:600; cursor:pointer;">
+                    Retry Billing
+                </button>
+            </div>
 
             <div class="ld-stepper" id="ldStepper">
                 @php
@@ -426,6 +443,71 @@
             }
 
             document.addEventListener('DOMContentLoaded', loadCurrentOrderStatus);
+
+            function retryBilling() {
+                const orderId = {{ $order->id ?? 'null' }};
+                const retryBtn = document.getElementById('retryBillingBtn');
+                if (!orderId || !retryBtn) return;
+
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ||
+                    document.querySelector('input[name="_token"]')?.value || '';
+
+                retryBtn.disabled = true;
+                retryBtn.textContent = 'Retrying...';
+
+                fetch('/api/v1/retry-billing', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            order_id: orderId
+                        })
+                    })
+                    .then(async response => {
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            throw new Error(data.message || 'Billing retry failed');
+                        }
+                        return data;
+                    })
+                    .then(data => {
+                        const billingStatus = (data?.data?.billing_status || '').toString().trim();
+                        const showRetry = Boolean(data?.data?.show_retry_button);
+
+                        if (billingStatus) {
+                            const section = document.getElementById('billingRetrySection');
+                            let badge = section ? section.querySelector('.status-badge') : null;
+                            if (!badge && section) {
+                                badge = document.createElement('span');
+                                badge.className = 'status-badge';
+                                badge.style.fontSize = '11px';
+                                section.prepend(badge);
+                            }
+                            if (badge) {
+                                badge.textContent = `BILLING: ${billingStatus.replace(/_/g, ' ').toUpperCase()}`;
+                            }
+                        }
+
+                        retryBtn.style.display = showRetry ? 'inline-flex' : 'none';
+                        retryBtn.textContent = 'Retry Billing';
+                        retryBtn.disabled = false;
+
+                        refreshActivityLog(orderId, 'order');
+
+                        if (typeof showNotification === 'function') {
+                            showNotification(data.message || 'Billing updated successfully.', 'success');
+                        } else {
+                            window.crmAlert(data.message || 'Billing updated successfully.', 'success');
+                        }
+                    })
+                    .catch(error => {
+                        retryBtn.disabled = false;
+                        retryBtn.textContent = 'Retry Billing';
+                        window.crmAlert(error.message || 'Billing retry failed', 'error');
+                    });
+            }
 
             function updateJobStatus(newStatus, element) {
                 const orderId = {{ $order->id ?? 'null' }};

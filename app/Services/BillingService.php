@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AdminActivityLog;
 use App\Models\BillingCharge;
 use App\Models\Order;
+use App\Models\Job;
 use App\Models\ProductVariant;
 use App\Models\Shipment;
 use App\Models\Shop;
@@ -139,11 +140,8 @@ class BillingService
             ->first();
 
         if ($acceptedExisting) {
-            AdminActivityLog::logSystemActivity(
-                'Billing paid for order (existing accepted pre-fulfillment charge found)',
-                'Order',
-                $order->id
-            );
+            $this->syncStatusesAfterBillingPaid($order);
+            $this->logPrepaymentAcceptedActivity($order, (string) ($acceptedExisting->shopify_usage_record_gid ?? ''));
             return [
                 'success' => true,
                 'status' => 200,
@@ -187,11 +185,8 @@ class BillingService
             ->first();
 
         if ($existing && $existing->status === 'accepted') {
-            AdminActivityLog::logSystemActivity(
-                'Billing paid for order (existing accepted usage charge found)',
-                'Order',
-                $order->id
-            );
+            $this->syncStatusesAfterBillingPaid($order);
+            $this->logPrepaymentAcceptedActivity($order, (string) ($existing->shopify_usage_record_gid ?? ''));
             return [
                 'success' => true,
                 'status' => 200,
@@ -316,12 +311,8 @@ class BillingService
             'shopify_usage_record_gid' => $usageRecordId ?: null,
             'error_message' => null,
         ]);
-
-        AdminActivityLog::logSystemActivity(
-            'Billing paid for order (pre-fulfillment charge accepted)',
-            'Order',
-            $order->id
-        );
+        $this->syncStatusesAfterBillingPaid($order);
+        $this->logPrepaymentAcceptedActivity($order, $usageRecordId);
 
         return [
             'success' => true,
@@ -443,6 +434,65 @@ class BillingService
         }
 
         return 0.0;
+    }
+
+    private function syncStatusesAfterBillingPaid(Order $order): void
+    {
+        $orderStatus = strtolower((string) ($order->status ?? ''));
+        $fulfillmentStatus = strtolower((string) ($order->fulfillment_status ?? ''));
+        $blockedOrderStatuses = [
+            'billing_pending',
+            'billing_required',
+            'billing_issue',
+            'payment_pending',
+            'payment_required',
+            'failed',
+            'exception',
+        ];
+
+        if (in_array($orderStatus, $blockedOrderStatuses, true) || in_array($fulfillmentStatus, $blockedOrderStatuses, true)) {
+            $order->update([
+                'status' => 'pending',
+                'fulfillment_status' => 'pending',
+            ]);
+
+            AdminActivityLog::logSystemActivity(
+                'Updated Order Status to pending after billing success',
+                'Order',
+                $order->id
+            );
+        }
+
+        $jobIdsToReset = Job::query()
+            ->where('order_id', $order->id)
+            ->whereIn('status', $blockedOrderStatuses)
+            ->pluck('id');
+
+        Job::query()
+            ->whereIn('id', $jobIdsToReset)
+            ->update([
+                'status' => 'pending',
+                'error_message' => null,
+                'failed_at' => null,
+            ]);
+
+        foreach ($jobIdsToReset as $jobId) {
+            AdminActivityLog::logSystemActivity(
+                'Updated Job Status to pending after billing success',
+                'Job',
+                (int) $jobId
+            );
+        }
+    }
+
+    private function logPrepaymentAcceptedActivity(Order $order, string $usageRecordId = ''): void
+    {
+        AdminActivityLog::logSystemActivity(
+            'Billing prepayment charge accepted for order ' . ($order->order_number ?: $order->id)
+                . ' (Usage Billing ID: ' . ($usageRecordId !== '' ? $usageRecordId : 'N/A') . ')',
+            'Order',
+            $order->id
+        );
     }
 }
 

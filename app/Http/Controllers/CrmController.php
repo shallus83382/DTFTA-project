@@ -16,6 +16,7 @@ use App\Models\FulfillmentService;
 use App\Models\PartnerProfile;
 use App\Models\Product;
 use App\Models\AdminActivityLog;
+use App\Models\BillingCharge;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -24,6 +25,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PrintArea;
 use App\Models\ProductVariant;
 use App\Models\CustomProduct;
+use App\Services\BillingService;
 use Illuminate\Support\Facades\DB;
 
 class CrmController extends Controller
@@ -821,6 +823,16 @@ class CrmController extends Controller
 
         $order = $job->order;
         $data['order'] = $order;
+        $latestBillingCharge = $order
+            ? BillingCharge::query()
+                ->where('order_id', $order->id)
+                ->where('charge_type', 'pre_fulfillment')
+                ->latest('id')
+                ->first()
+            : null;
+        $billingChargeStatus = strtolower((string) ($latestBillingCharge->status ?? ''));
+        $data['billingChargeStatus'] = $billingChargeStatus !== '' ? $billingChargeStatus : null;
+        $data['showRetryBilling'] = in_array($billingChargeStatus, ['pending', 'failed'], true);
 
         $data['orderItems'] = $order->orderItems;
 
@@ -1581,6 +1593,14 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         $order = Order::with('shop', 'orderItems', 'shipments')->findOrFail($orderId);
         $data['order'] = $order;
+        $latestBillingCharge = BillingCharge::query()
+            ->where('order_id', $order->id)
+            ->where('charge_type', 'pre_fulfillment')
+            ->latest('id')
+            ->first();
+        $billingChargeStatus = strtolower((string) ($latestBillingCharge->status ?? ''));
+        $data['billingChargeStatus'] = $billingChargeStatus !== '' ? $billingChargeStatus : null;
+        $data['showRetryBilling'] = in_array($billingChargeStatus, ['pending', 'failed'], true);
 
         $extractTemplateId = function (OrderItem $item): ?string {
             $properties = is_array($item->properties) ? $item->properties : [];
@@ -1708,6 +1728,57 @@ class CrmController extends Controller
             ->appends(request()->query());
 
         return view('crm.order-detail', $data);
+    }
+
+    /**
+     * API: Retry billing for an order
+     */
+    public function retryBilling(Request $request, BillingService $billingService): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_id' => ['required', 'integer', Rule::exists('orders', 'id')],
+        ]);
+
+        $order = Order::with('shop')->findOrFail((int) $validated['order_id']);
+        $shop = $order->shop;
+
+        if (!$shop) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shop not found for this order.',
+            ], 422);
+        }
+
+        $latestCharge = BillingCharge::query()
+            ->where('order_id', $order->id)
+            ->where('charge_type', 'pre_fulfillment')
+            ->latest('id')
+            ->first();
+
+        if ($latestCharge && $latestCharge->status === 'accepted') {
+            return response()->json([
+                'success' => true,
+                'message' => 'Billing is already paid for this order.',
+                'data' => [
+                    'billing_status' => 'accepted',
+                    'show_retry_button' => false,
+                ],
+            ]);
+        }
+
+        $result = $billingService->chargePreFulfillment($shop, $order);
+        $latestStatus = strtolower((string) data_get($result, 'data.billing_charge.status', ''));
+        $isAccepted = ($result['success'] ?? false) === true || $latestStatus === 'accepted';
+
+        return response()->json([
+            'success' => $isAccepted,
+            'message' => $result['message'] ?? ($isAccepted ? 'Billing retry succeeded.' : 'Billing retry failed.'),
+            'data' => [
+                'billing_status' => $latestStatus !== '' ? $latestStatus : ($isAccepted ? 'accepted' : 'failed'),
+                'show_retry_button' => !$isAccepted,
+            ],
+            'errors' => $result['errors'] ?? [],
+        ], $isAccepted ? 200 : (($result['status'] ?? 422)));
     }
 
     /**
