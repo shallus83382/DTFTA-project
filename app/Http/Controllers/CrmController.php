@@ -1078,7 +1078,7 @@ class CrmController extends Controller
             'price' => 'required|numeric|min:0',
     
             'images' => 'nullable|array',
-            'images.*' => 'nullable|image|max:5120',
+            'images.*' => 'nullable|string|max:5120',
     
             'colors' => 'required|array|min:1',
             'colors.*' => 'required|string|max:100',
