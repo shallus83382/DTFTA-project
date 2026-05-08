@@ -25,6 +25,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PrintArea;
 use App\Models\ProductVariant;
 use App\Models\CustomProduct;
+use App\Models\Artwork;
 use App\Services\BillingService;
 use Illuminate\Support\Facades\DB;
 
@@ -1643,8 +1644,32 @@ class CrmController extends Controller
 
         $customProductsById = $customProducts->keyBy(fn ($cp) => (string) $cp->id);
         $customProductsByKey = $customProducts->keyBy(fn ($cp) => (string) $cp->product_key);
+        $libraryArtworkIds = $customProducts
+            ->flatMap(function ($customProduct) {
+                $customArtworks = collect($customProduct->artworks ?? [])
+                    ->merge(collect($customProduct->variants ?? [])->flatMap(fn ($variant) => $variant->artworks ?? []));
 
-        $data['orderItemCustomDetails'] = $order->orderItems->mapWithKeys(function (OrderItem $item) use ($extractTemplateId, $customProductsById, $customProductsByKey) {
+                return $customArtworks->map(function ($artwork) {
+                    $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+                    return trim((string) (
+                        $meta['legacy_artwork_id']
+                        ?? $meta['library_artwork_id']
+                        ?? ''
+                    ));
+                });
+            })
+            ->filter(fn ($id) => $id !== '' && ctype_digit($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $libraryArtworkUrlById = Artwork::query()
+            ->when($order->shop_id, fn ($query) => $query->where('shop_id', $order->shop_id))
+            ->whereIn('id', $libraryArtworkIds->all())
+            ->get(['id', 'url'])
+            ->mapWithKeys(fn ($artwork) => [(string) $artwork->id => (string) $artwork->url])
+            ->all();
+
+        $data['orderItemCustomDetails'] = $order->orderItems->mapWithKeys(function (OrderItem $item) use ($extractTemplateId, $customProductsById, $customProductsByKey, $libraryArtworkUrlById) {
             $properties = is_array($item->properties) ? $item->properties : [];
             $templateId = $extractTemplateId($item);
             $customProduct = $templateId ? ($customProductsById->get($templateId) ?? $customProductsByKey->get($templateId)) : null;
@@ -1678,16 +1703,61 @@ class CrmController extends Controller
                     'custom_product_id' => $customProduct?->id,
                     'product_variant_id' => $customVariant?->product_variant_id,
                     'custom_product_variant_id' => $customVariant?->id,
-                    'artwork_urls' => $artworks
+                    'library_artworks' => $artworks
+                        ->map(function ($artwork) use ($libraryArtworkUrlById) {
+                            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+                            $libraryArtworkId = trim((string) (
+                                $meta['legacy_artwork_id']
+                                ?? $meta['library_artwork_id']
+                                ?? ''
+                            ));
+                            if ($libraryArtworkId === '') {
+                                return null;
+                            }
+
+                            $libraryArtworkUrl = trim((string) ($libraryArtworkUrlById[$libraryArtworkId] ?? ''));
+                            if ($libraryArtworkUrl === '') {
+                                return null;
+                            }
+
+                            return [
+                                'placement' => strtolower(trim((string) ($artwork->placement ?? ''))),
+                                'id' => $libraryArtworkId,
+                                'url' => $libraryArtworkUrl,
+                            ];
+                        })
+                        ->filter()
+                        ->unique(fn ($item) => ($item['placement'] ?? '') . '|' . ($item['id'] ?? '') . '|' . ($item['url'] ?? ''))
+                        ->values()
+                        ->all(),
+                    'custom_artworks' => $artworks
                         ->map(function ($artwork) {
                             $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
-                            return trim((string) (
+                            $libraryArtworkId = trim((string) (
+                                $meta['legacy_artwork_id']
+                                ?? $meta['library_artwork_id']
+                                ?? ''
+                            ));
+                            if ($libraryArtworkId !== '') {
+                                return null;
+                            }
+
+                            $customArtworkUrl = trim((string) (
                                 $meta['custom_artwork_url']
                                 ?? $meta['custom_artwork_source']
                                 ?? ''
                             ));
+                            if ($customArtworkUrl === '') {
+                                return null;
+                            }
+
+                            return [
+                                'placement' => strtolower(trim((string) ($artwork->placement ?? ''))),
+                                'url' => $customArtworkUrl,
+                            ];
                         })
                         ->filter()
+                        ->unique(fn ($item) => ($item['placement'] ?? '') . '|' . ($item['url'] ?? ''))
                         ->values()
                         ->all(),
                 ],

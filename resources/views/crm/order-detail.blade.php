@@ -117,11 +117,22 @@
                                                 }
                                             }
 
-                                            if (!empty($customDetail['artwork_urls'] ?? [])) {
-                                                foreach ($customDetail['artwork_urls'] as $index => $url) {
+                                            if (!empty($customDetail['library_artworks'] ?? [])) {
+                                                foreach ($customDetail['library_artworks'] as $libraryArtwork) {
+                                                    $placement = strtoupper(str_replace('_', ' ', trim((string) ($libraryArtwork['placement'] ?? ''))));
                                                     $artworkEntries[] = [
-                                                        'label' => 'CUSTOM ARTWORK ' . ($index + 1),
-                                                        'url' => (string) $url,
+                                                        'label' => $placement !== '' ? ('ARTWORK ' . $placement) : ' ARTWORK',
+                                                        'url' => (string) ($libraryArtwork['url'] ?? ''),
+                                                    ];
+                                                }
+                                            }
+
+                                            if (!empty($customDetail['custom_artworks'] ?? [])) {
+                                                foreach ($customDetail['custom_artworks'] as $index => $customArtwork) {
+                                                    $placement = strtoupper(str_replace('_', ' ', trim((string) ($customArtwork['placement'] ?? ''))));
+                                                    $artworkEntries[] = [
+                                                        'label' => $placement !== '' ? ('CUSTOM ARTWORK ' . $placement) : ('CUSTOM ARTWORK ' . ($index + 1)),
+                                                        'url' => (string) ($customArtwork['url'] ?? ''),
                                                     ];
                                                 }
                                             }
