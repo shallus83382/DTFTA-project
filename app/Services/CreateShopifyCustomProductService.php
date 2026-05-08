@@ -52,14 +52,14 @@ class CreateShopifyCustomProductService
             $shopifyCreateResult = $this->shopifyService->createCustomProductWithPrintAreas($shopId, $payload);
 
             if (!($shopifyCreateResult['success'] ?? false)) {
-                Log::warning('Create Shopify product failed', [
-                    'shop_id' => $shopId,
-                    'product_id' => $product->id,
-                    'message' => $shopifyCreateResult['message'] ?? 'Unknown error',
-                    'errors' => $shopifyCreateResult['errors'] ?? [],
-                    'variant_count' => count($payload['variants'] ?? []),
-                    'artwork_count' => count($payload['artwork'] ?? []),
-                ]);
+                // Log::warning('Create Shopify product failed', [
+                //     'shop_id' => $shopId,
+                //     'product_id' => $product->id,
+                //     'message' => $shopifyCreateResult['message'] ?? 'Unknown error',
+                //     'errors' => $shopifyCreateResult['errors'] ?? [],
+                //     'variant_count' => count($payload['variants'] ?? []),
+                //     'artwork_count' => count($payload['artwork'] ?? []),
+                // ]);
 
                 return response()->json([
                     'success' => false,
@@ -299,11 +299,11 @@ class CreateShopifyCustomProductService
         $normalizedArtworkUrls = $this->normalizeArtworkUrlsPayload($request->input('artworkUrls', []));
         $legacyArtworkSource = collect($normalizedArtworkUrls);
 
-        Log::info('Create Shopify product artwork payload received', [
-            'shop_id' => $shopId,
-            'product_id' => $product->id,
-            'artwork_urls_count' => $legacyArtworkSource->count(),
-        ]);
+        // Log::info('Create Shopify product artwork payload received', [
+        //     'shop_id' => $shopId,
+        //     'product_id' => $product->id,
+        //     'artwork_urls_count' => $legacyArtworkSource->count(),
+        // ]);
 
         $fallbackArtworks = $legacyArtworkSource
             ->map(function ($item, $index) use ($printAreas, $shopId, $product) {
@@ -591,17 +591,17 @@ class CreateShopifyCustomProductService
                 $meta['linked_custom_product_variant_id'] = $linkedCustomVariant->id;
             }
 
-            Log::info('Custom artwork linked to local variant', [
-                'shop_id' => $customProduct->shop_id,
-                'custom_product_id' => $customProduct->id,
-                'product_variant_id' => $artwork['product_variant_id'] ?? null,
-                'variant_sku' => $artwork['variant_sku'] ?? null,
-                'variant_color' => $artwork['variant_color_name'] ?? $artwork['variant_color_code'] ?? null,
-                'variant_size' => $artwork['variant_size'] ?? data_get($meta, 'size'),
-                'artwork_url' => $artwork['artwork_url'] ?? $artwork['url'] ?? null,
-                'resolved_custom_product_variant_id' => $linkedCustomVariant?->id,
-                'resolved_custom_product_variant_sku' => $linkedCustomVariant?->sku,
-            ]);
+            // Log::info('Custom artwork linked to local variant', [
+            //     'shop_id' => $customProduct->shop_id,
+            //     'custom_product_id' => $customProduct->id,
+            //     'product_variant_id' => $artwork['product_variant_id'] ?? null,
+            //     'variant_sku' => $artwork['variant_sku'] ?? null,
+            //     'variant_color' => $artwork['variant_color_name'] ?? $artwork['variant_color_code'] ?? null,
+            //     'variant_size' => $artwork['variant_size'] ?? data_get($meta, 'size'),
+            //     'artwork_url' => $artwork['artwork_url'] ?? $artwork['url'] ?? null,
+            //     'resolved_custom_product_variant_id' => $linkedCustomVariant?->id,
+            //     'resolved_custom_product_variant_sku' => $linkedCustomVariant?->sku,
+            // ]);
 
             $rows[] = [
                 'custom_product_id' => $customProduct->id,
@@ -818,23 +818,23 @@ class CreateShopifyCustomProductService
                 $shopifyVariants = array_values($byVariantId);
 
                 if ($expectedVariantCount > 0 && count($shopifyVariants) < $expectedVariantCount) {
-                    Log::warning('Shopify variant list shorter than local variants after bulk/query merge', [
-                        'shop_id' => $shopId,
-                        'shopify_product_id' => $shopifyProductId,
-                        'expected_variant_count' => $expectedVariantCount,
-                        'from_bulk_create_count' => count($fromBulkCreate),
-                        'from_product_query_count' => count($fetched),
-                        'merged_count' => count($shopifyVariants),
-                    ]);
+                    // Log::warning('Shopify variant list shorter than local variants after bulk/query merge', [
+                    //     'shop_id' => $shopId,
+                    //     'shopify_product_id' => $shopifyProductId,
+                    //     'expected_variant_count' => $expectedVariantCount,
+                    //     'from_bulk_create_count' => count($fromBulkCreate),
+                    //     'from_product_query_count' => count($fetched),
+                    //     'merged_count' => count($shopifyVariants),
+                    // ]);
                 }
             } else {
-                Log::warning('Fallback Shopify variant fetch failed', [
-                    'shop_id' => $shopId,
-                    'shopify_product_id' => $shopifyProductId,
-                    'expected_variant_count' => $expectedVariantCount,
-                    'initial_variant_count' => count($fromBulkCreate),
-                    'result' => $variantsFetchResult,
-                ]);
+                // Log::warning('Fallback Shopify variant fetch failed', [
+                //     'shop_id' => $shopId,
+                //     'shopify_product_id' => $shopifyProductId,
+                //     'expected_variant_count' => $expectedVariantCount,
+                //     'initial_variant_count' => count($fromBulkCreate),
+                //     'result' => $variantsFetchResult,
+                // ]);
             }
         }
 
@@ -947,13 +947,13 @@ class CreateShopifyCustomProductService
                 $variantMediaMap[$variantId][] = $shopifyMediaId;
             });
 
-        Log::info('Prepared Shopify variant-media map', [
-            'shop_id' => $shopId,
-            'custom_product_id' => $customProduct->id,
-            'shopify_product_id' => $shopifyProductId,
-            'shopify_media_count' => $shopifyMediaNodes->count(),
-            'variant_media_map' => $variantMediaMap,
-        ]);
+        // Log::info('Prepared Shopify variant-media map', [
+        //     'shop_id' => $shopId,
+        //     'custom_product_id' => $customProduct->id,
+        //     'shopify_product_id' => $shopifyProductId,
+        //     'shopify_media_count' => $shopifyMediaNodes->count(),
+        //     'variant_media_map' => $variantMediaMap,
+        // ]);
 
         $variantMediaAssignments = [];
 
@@ -995,27 +995,27 @@ class CreateShopifyCustomProductService
                 'data' => $attachToVariant['data'] ?? null,
             ];
 
-            Log::info('Shopify variant media attach result', [
-                'shop_id' => $shopId,
-                'custom_product_id' => $customProduct->id,
-                'shopify_product_id' => $shopifyProductId,
-                'shopify_variant_id' => $shopifyVariantId,
-                'media_ids' => $singleMediaIdForVariant,
-                'success' => $attachToVariant['success'] ?? false,
-                'message' => $attachToVariant['message'] ?? null,
-                'errors' => $attachToVariant['errors'] ?? [],
-            ]);
+            // Log::info('Shopify variant media attach result', [
+            //     'shop_id' => $shopId,
+            //     'custom_product_id' => $customProduct->id,
+            //     'shopify_product_id' => $shopifyProductId,
+            //     'shopify_variant_id' => $shopifyVariantId,
+            //     'media_ids' => $singleMediaIdForVariant,
+            //     'success' => $attachToVariant['success'] ?? false,
+            //     'message' => $attachToVariant['message'] ?? null,
+            //     'errors' => $attachToVariant['errors'] ?? [],
+            // ]);
 
             if (!($attachToVariant['success'] ?? false)) {
                 $errorText = strtolower((string) ($attachToVariant['message'] ?? ''));
                 if (str_contains($errorText, 'non-ready media')) {
-                    Log::warning('Skipping variant-media attach due to non-ready media after retries', [
-                        'shop_id' => $shopId,
-                        'custom_product_id' => $customProduct->id,
-                        'shopify_product_id' => $shopifyProductId,
-                        'shopify_variant_id' => $shopifyVariantId,
-                        'media_ids' => $singleMediaIdForVariant,
-                    ]);
+                    // Log::warning('Skipping variant-media attach due to non-ready media after retries', [
+                    //     'shop_id' => $shopId,
+                    //     'custom_product_id' => $customProduct->id,
+                    //     'shopify_product_id' => $shopifyProductId,
+                    //     'shopify_variant_id' => $shopifyVariantId,
+                    //     'media_ids' => $singleMediaIdForVariant,
+                    // ]);
                     continue;
                 }
 

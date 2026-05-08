@@ -168,17 +168,17 @@ class BillingService
             $shipmentToken
         );
 
-        Log::info('Pre-fulfillment billing amount calculated', [
-            'shop_id' => (int) $shop->id,
-            'order_id' => (int) $order->id,
-            'shipment_id' => $shipment?->id,
-            'currency' => $currency,
-            'subtotal' => $amountBreakdown['subtotal'],
-            'shipping' => $amountBreakdown['shipping'],
-            'tax' => $amountBreakdown['tax'],
-            'total' => $amountBreakdown['total'],
-            'idempotency_key' => $idempotencyKey,
-        ]);
+        // Log::info('Pre-fulfillment billing amount calculated', [
+        //     'shop_id' => (int) $shop->id,
+        //     'order_id' => (int) $order->id,
+        //     'shipment_id' => $shipment?->id,
+        //     'currency' => $currency,
+        //     'subtotal' => $amountBreakdown['subtotal'],
+        //     'shipping' => $amountBreakdown['shipping'],
+        //     'tax' => $amountBreakdown['tax'],
+        //     'total' => $amountBreakdown['total'],
+        //     'idempotency_key' => $idempotencyKey,
+        // ]);
 
         $existing = BillingCharge::query()
             ->where('idempotency_key', $idempotencyKey)
@@ -277,14 +277,14 @@ class BillingService
                 ]),
             ]);
 
-            Log::warning('Pre-fulfillment billing charge failed', [
-                'shop_id' => $shop->id,
-                'order_id' => $order->id,
-                'shipment_id' => $shipment?->id,
-                'idempotency_key' => $idempotencyKey,
-                'message' => $usage['message'] ?? null,
-                'errors' => $usage['errors'] ?? [],
-            ]);
+            // Log::warning('Pre-fulfillment billing charge failed', [
+            //     'shop_id' => $shop->id,
+            //     'order_id' => $order->id,
+            //     'shipment_id' => $shipment?->id,
+            //     'idempotency_key' => $idempotencyKey,
+            //     'message' => $usage['message'] ?? null,
+            //     'errors' => $usage['errors'] ?? [],
+            // ]);
 
             AdminActivityLog::logSystemActivity(
                 'Billing failed for order (usage charge creation failed)',
