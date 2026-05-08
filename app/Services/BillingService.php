@@ -186,7 +186,6 @@ class BillingService
 
         if ($existing && $existing->status === 'accepted') {
             $this->syncStatusesAfterBillingPaid($order);
-            $this->logPrepaymentAcceptedActivity($order, (string) ($existing->shopify_usage_record_gid ?? ''));
             return [
                 'success' => true,
                 'status' => 200,
