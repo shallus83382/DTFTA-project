@@ -602,15 +602,15 @@ class ShopifyService
         }
         GQL, []);
         
-        Log::info('Shopify auth smoke test', [
-            'shop_id' => $shopId,
-            'result' => $result,
-        ]);
+        // Log::info('Shopify auth smoke test', [
+        //     'shop_id' => $shopId,
+        //     'result' => $result,
+        // ]);
 
 
-        Log::info('Shopify create Fullfillment request', [
-            'shop_id' => $shopId,
-        ]);
+        // Log::info('Shopify create Fullfillment request', [
+        //     'shop_id' => $shopId,
+        // ]);
 
         try {
             $lineItemsByFO = $data['line_items_by_fulfillment_order'] ?? [];
@@ -721,10 +721,10 @@ class ShopifyService
             $result = $this->graphqlRequest((int) $shopId, $mutation, $variables);
     
 
-            Log::info('Shopify create Fullfillment response', [
-                'shop_id' => $shopId,
-                'result' => $result,
-            ]);
+            // Log::info('Shopify create Fullfillment response', [
+            //     'shop_id' => $shopId,
+            //     'result' => $result,
+            // ]);
 
             if (!$result['success']) {
                 return $result;
@@ -3229,10 +3229,10 @@ class ShopifyService
             'product' => $productInput,
         ]);
     
-        Log::info('Shopify productCreate response', [
-            'shop_id' => $shopId,
-            'response' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
+        // Log::info('Shopify productCreate response', [
+        //     'shop_id' => $shopId,
+        //     'response' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        // ]);
     
         if (!$result['success']) {
             return $result;
@@ -3323,11 +3323,11 @@ class ShopifyService
             ], fn ($value) => $value !== null);
         })->values()->all();
     
-        Log::info('Shopify productVariantsBulkCreate request', [
-            'shop_id' => $shopId,
-            'product_id' => $productId,
-            'variants' => json_encode($variantInputs, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ]);
+        // Log::info('Shopify productVariantsBulkCreate request', [
+        //     'shop_id' => $shopId,
+        //     'product_id' => $productId,
+        //     'variants' => json_encode($variantInputs, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        // ]);
     
             $mutation = <<<'GQL'
         mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
