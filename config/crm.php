@@ -57,13 +57,15 @@ return [
             'enable_images' => true,
             'constraints' => [
                 'unit' => 'px',
+                'allowed_units' => ['mm', 'cm', 'in', 'px'],
+                // Unit-agnostic bounds: allows fractional inches/mm/cm and large px canvases.
                 'width' => [
-                    'min' => 50,
-                    'max' => 200,
+                    'min' => 0.001,
+                    'max' => 100000,
                 ],
                 'height' => [
-                    'min' => 50,
-                    'max' => 200,
+                    'min' => 0.001,
+                    'max' => 100000,
                 ],
             ],
         ],

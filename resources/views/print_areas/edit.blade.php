@@ -63,22 +63,28 @@
 
                             <div class="filter-group">
                                 <label>Area Width</label>
-                                <input type="number" step="0.01" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select"
+                                <input type="number" step="any" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select"
                                     name="print_areas[0][area_width]"
                                     value="{{ old('print_areas.0.area_width', $row['area_width']) }}">
                             </div>
 
                             <div class="filter-group">
                                 <label>Area Height</label>
-                                <input type="number" step="0.01" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select"
+                                <input type="number" step="any" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select"
                                     name="print_areas[0][area_height]"
                                     value="{{ old('print_areas.0.area_height', $row['area_height']) }}">
                             </div>
 
                             <div class="filter-group">
                                 <label>Unit</label>
-                                <input type="hidden" name="print_areas[0][unit]" value="{{ $unit }}">
-                                <input type="text" class="filter-select" value="{{ strtoupper($unit) }}" readonly>
+                                <select class="filter-select" name="print_areas[0][unit]">
+                                    @foreach (['mm', 'cm', 'in', 'px'] as $unit)
+                                        <option value="{{ $unit }}"
+                                            {{ old('print_areas.0.unit', $row['unit']) == $unit ? 'selected' : '' }}>
+                                            {{ strtoupper($unit) }}
+                                        </option>
+                                    @endforeach
+                                </select>
                             </div>
 
                             <div class="filter-group">

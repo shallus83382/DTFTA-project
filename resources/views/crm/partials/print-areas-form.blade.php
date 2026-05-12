@@ -63,11 +63,11 @@
                     </div>
                     <div class="filter-group">
                         <label>Area Width</label>
-                        <input type="number" step="0.01" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select" name="print_areas[{{ $index }}][area_width]" value="{{ $row['area_width'] ?? '' }}">
+                        <input type="number" step="any" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select" name="print_areas[{{ $index }}][area_width]" value="{{ $row['area_width'] ?? '' }}">
                     </div>
                     <div class="filter-group">
                         <label>Area Height</label>
-                        <input type="number" step="0.01" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select" name="print_areas[{{ $index }}][area_height]" value="{{ $row['area_height'] ?? '' }}">
+                        <input type="number" step="any" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select" name="print_areas[{{ $index }}][area_height]" value="{{ $row['area_height'] ?? '' }}">
                     </div>
                     <div class="filter-group">
                         <label>Unit</label>

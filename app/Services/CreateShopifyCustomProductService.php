@@ -156,6 +156,25 @@ class CreateShopifyCustomProductService
             'artworkUrls.*.designableRegion' => ['nullable', 'array'],
             'artworkUrls.*.printSize' => ['nullable', 'array'],
             'artworkUrls.*.libraryArtworkId' => ['nullable', 'string', 'max:64'],
+            'artworkUrls.*.layersMeta' => ['nullable', 'array', 'max:48'],
+            'artworkUrls.*.layersMeta.*.layerId' => ['required', 'string', 'max:80'],
+            'artworkUrls.*.layersMeta.*.kind' => ['required', 'string', 'in:image,text,vector,other'],
+            'artworkUrls.*.layersMeta.*.label' => ['required', 'string', 'max:256'],
+            'artworkUrls.*.layersMeta.*.unit' => ['nullable', 'string', 'max:16'],
+            'artworkUrls.*.layersMeta.*.left' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.top' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.width' => ['required', 'numeric', 'min:0'],
+            'artworkUrls.*.layersMeta.*.height' => ['required', 'numeric', 'min:0'],
+            'artworkUrls.*.layersMeta.*.centerX' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.centerY' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.rotation' => ['required', 'numeric', 'between:-360,360'],
+            'artworkUrls.*.layersMeta.*.centerXMin' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.centerXMax' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.centerYMin' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.centerYMax' => ['required', 'numeric'],
+            'artworkUrls.*.layersMeta.*.libraryArtworkId' => ['nullable', 'string', 'max:64'],
+            'artworkUrls.*.layersMeta.*.artworkId' => ['nullable', 'string', 'max:64'],
+            'artworkUrls.*.layersMeta.*.previewUrl' => ['nullable', 'string', 'max:4096'],
         ]);
     }
 
@@ -314,6 +333,11 @@ class CreateShopifyCustomProductService
                     data_get($item, 'library_artwork_id')
                 );
 
+                $preparedLayersMeta = $this->prepareLayersMetaForStorage(
+                    $shopId,
+                    data_get($item, 'layers_meta')
+                );
+
                 $storedUrl = $this->storeArtworkFile(
                     $sourceValue,
                     $shopId,
@@ -332,6 +356,20 @@ class CreateShopifyCustomProductService
                     )
                     : null;
 
+                $meta = [
+                    'source_code' => $storedUrl,
+                    'source' => 'legacy_artworkUrls',
+                    'payload_keys' => data_get($item, 'keys', []),
+                    'payload_color_token' => data_get($item, 'color_token'),
+                    'designable_region' => data_get($item, 'designable_region'),
+                    'print_size' => data_get($item, 'print_size'),
+                    'custom_artwork_url' => $storedCustomUrl,
+                    'library_artwork_id' => $verifiedLibraryArtworkId,
+                ];
+                if ($preparedLayersMeta !== null) {
+                    $meta['layers_meta'] = $preparedLayersMeta;
+                }
+
                 return [
                     'custom_product_variant_id' => null,
                     'product_variant_id' => null,
@@ -343,16 +381,7 @@ class CreateShopifyCustomProductService
                     'placement' => $resolvedPlacement,
                     'title' => 'Artwork ' . ($index + 1),
                     'artwork_url' => $storedUrl,
-                    'meta' => [
-                        'source_code' => $storedUrl,
-                        'source' => 'legacy_artworkUrls',
-                        'payload_keys' => data_get($item, 'keys', []),
-                        'payload_color_token' => data_get($item, 'color_token'),
-                        'designable_region' => data_get($item, 'designable_region'),
-                        'print_size' => data_get($item, 'print_size'),
-                        'custom_artwork_url' => $storedCustomUrl,
-                        'library_artwork_id' => $verifiedLibraryArtworkId,
-                    ],
+                    'meta' => $meta,
                 ];
             })
             ->values()
@@ -1230,6 +1259,7 @@ class CreateShopifyCustomProductService
                         'designable_region' => data_get($value, 'designableRegion'),
                         'print_size' => data_get($value, 'printSize'),
                         'library_artwork_id' => trim((string) data_get($value, 'libraryArtworkId', '')),
+                        'layers_meta' => $this->normalizeLayersMetaPayload(data_get($value, 'layersMeta')),
                     ];
                     return;
                 }
@@ -1266,6 +1296,7 @@ class CreateShopifyCustomProductService
                 'designable_region' => null,
                 'print_size' => null,
                 'library_artwork_id' => '',
+                'layers_meta' => null,
             ];
         };
 
@@ -1312,6 +1343,111 @@ class CreateShopifyCustomProductService
         }
 
         return $id;
+    }
+
+    /**
+     * @param  mixed  $raw  Request `layersMeta` array (camelCase from Remix).
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function normalizeLayersMetaPayload(mixed $raw): ?array
+    {
+        if (! is_array($raw) || $raw === []) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($raw as $row) {
+            if (is_array($row)) {
+                $out[] = $row;
+            }
+        }
+
+        return $out === [] ? null : $out;
+    }
+
+    /**
+     * Sanitize and verify per-layer library artwork ids; strip unsafe preview URLs.
+     *
+     * @param  array<int, array<string, mixed>>|null  $layersMeta
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function prepareLayersMetaForStorage(int $shopId, mixed $layersMeta): ?array
+    {
+        if (! is_array($layersMeta) || $layersMeta === []) {
+            return null;
+        }
+
+        $kinds = ['image', 'text', 'vector', 'other'];
+        $out = [];
+        $seenLayerIds = [];
+
+        foreach (array_slice($layersMeta, 0, 48) as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $layerId = trim((string) data_get($row, 'layerId', ''));
+            if ($layerId === '' || isset($seenLayerIds[$layerId])) {
+                continue;
+            }
+            $seenLayerIds[$layerId] = true;
+
+            $kind = strtolower(trim((string) data_get($row, 'kind', 'other')));
+            if (! in_array($kind, $kinds, true)) {
+                $kind = 'other';
+            }
+
+            $label = mb_substr(trim((string) data_get($row, 'label', 'Layer')), 0, 256) ?: 'Layer';
+            $unit = data_get($row, 'unit');
+            $unitStr = is_string($unit) ? mb_substr(trim($unit), 0, 16) : null;
+            $unitStr = ($unitStr !== null && $unitStr !== '') ? $unitStr : null;
+
+            $previewRaw = data_get($row, 'previewUrl');
+            $previewUrl = null;
+            if (is_string($previewRaw)) {
+                $p = trim($previewRaw);
+                if ($p !== '' && strlen($p) <= 4096 && ! str_starts_with(strtolower($p), 'data:')) {
+                    $previewUrl = $p;
+                }
+            }
+
+            $layerLibId = $this->verifyShopArtworkBelongsToShop(
+                $shopId,
+                data_get($row, 'libraryArtworkId') ?: data_get($row, 'artworkId')
+            );
+
+            $entry = [
+                'layer_id' => mb_substr($layerId, 0, 80),
+                'kind' => $kind,
+                'label' => $label,
+                'left' => (float) data_get($row, 'left', 0),
+                'top' => (float) data_get($row, 'top', 0),
+                'width' => max(0, (float) data_get($row, 'width', 0)),
+                'height' => max(0, (float) data_get($row, 'height', 0)),
+                'center_x' => (float) data_get($row, 'centerX', 0),
+                'center_y' => (float) data_get($row, 'centerY', 0),
+                'rotation' => min(360, max(-360, (float) data_get($row, 'rotation', 0))),
+                'center_x_min' => (float) data_get($row, 'centerXMin', 0),
+                'center_x_max' => (float) data_get($row, 'centerXMax', 0),
+                'center_y_min' => (float) data_get($row, 'centerYMin', 0),
+                'center_y_max' => (float) data_get($row, 'centerYMax', 0),
+            ];
+
+            if ($unitStr !== null) {
+                $entry['unit'] = $unitStr;
+            }
+            if ($layerLibId !== null) {
+                $entry['library_artwork_id'] = $layerLibId;
+                $entry['artwork_id'] = $layerLibId;
+            }
+            if ($previewUrl !== null) {
+                $entry['preview_url'] = $previewUrl;
+            }
+
+            $out[] = $entry;
+        }
+
+        return $out === [] ? null : $out;
     }
 
     private function isArtworkSourceValue(string $value): bool
