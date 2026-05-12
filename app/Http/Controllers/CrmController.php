@@ -1669,7 +1669,7 @@ class CrmController extends Controller
             ->mapWithKeys(fn ($artwork) => [(string) $artwork->id => (string) $artwork->url])
             ->all();
 
-        $data['orderItemCustomDetails'] = $order->orderItems->mapWithKeys(function (OrderItem $item) use ($extractTemplateId, $customProductsById, $customProductsByKey, $libraryArtworkUrlById) {
+        $data['orderItemCustomDetails'] = $order->orderItems->mapWithKeys(function (OrderItem $item) use ($extractTemplateId, $customProductsById, $customProductsByKey, $libraryArtworkUrlById, $order) {
             $properties = is_array($item->properties) ? $item->properties : [];
             $templateId = $extractTemplateId($item);
             $customProduct = $templateId ? ($customProductsById->get($templateId) ?? $customProductsByKey->get($templateId)) : null;
@@ -1703,6 +1703,11 @@ class CrmController extends Controller
                     'custom_product_id' => $customProduct?->id,
                     'product_variant_id' => $customVariant?->product_variant_id,
                     'custom_product_variant_id' => $customVariant?->id,
+                    'layer_artworks' => $this->buildCrmOrderItemLayerArtworkRows(
+                        $artworks,
+                        (int) ($order->shop_id ?? 0),
+                        $libraryArtworkUrlById
+                    ),
                     'library_artworks' => $artworks
                         ->map(function ($artwork) use ($libraryArtworkUrlById) {
                             $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
@@ -1720,10 +1725,14 @@ class CrmController extends Controller
                                 return null;
                             }
 
+                            $layersMeta = $meta['layers_meta'] ?? null;
+                            $layersMeta = is_array($layersMeta) && $layersMeta !== [] ? array_values($layersMeta) : null;
+
                             return [
                                 'placement' => strtolower(trim((string) ($artwork->placement ?? ''))),
                                 'id' => $libraryArtworkId,
                                 'url' => $libraryArtworkUrl,
+                                'layers_meta' => $layersMeta,
                             ];
                         })
                         ->filter()
@@ -1751,9 +1760,13 @@ class CrmController extends Controller
                                 return null;
                             }
 
+                            $layersMeta = $meta['layers_meta'] ?? null;
+                            $layersMeta = is_array($layersMeta) && $layersMeta !== [] ? array_values($layersMeta) : null;
+
                             return [
                                 'placement' => strtolower(trim((string) ($artwork->placement ?? ''))),
                                 'url' => $customArtworkUrl,
+                                'layers_meta' => $layersMeta,
                             ];
                         })
                         ->filter()
@@ -2138,5 +2151,86 @@ class CrmController extends Controller
             'success' => true,
             'unread_count' => $this->computeUnreadCount($user->notification_last_read_at),
         ]);
+    }
+
+    /**
+     * CRM order detail: one row per layer meta entry that references a shop Artwork id, with URL resolved from artworks.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\CustomProductArtwork>  $artworks
+     * @return array<int, array{placement: string, artwork_id: string, artwork_url: ?string, layer: array<string, mixed>}>
+     */
+    private function buildCrmOrderItemLayerArtworkRows(iterable $artworks, int $shopId, array $prefetchedUrlById): array
+    {
+        $artworks = collect($artworks);
+        $urlById = [];
+        foreach ($prefetchedUrlById as $key => $value) {
+            $urlById[(string) $key] = trim((string) $value);
+        }
+
+        $neededIds = [];
+        foreach ($artworks as $artwork) {
+            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+            foreach ((array) ($meta['layers_meta'] ?? []) as $layer) {
+                if (! is_array($layer)) {
+                    continue;
+                }
+                $aid = trim((string) (
+                    $layer['library_artwork_id'] ?? $layer['artwork_id']
+                    ?? $layer['libraryArtworkId'] ?? $layer['artworkId'] ?? ''
+                ));
+                if ($aid !== '' && ctype_digit($aid)) {
+                    $neededIds[$aid] = true;
+                }
+            }
+        }
+
+        $missingIds = [];
+        foreach (array_keys($neededIds) as $id) {
+            if (($urlById[$id] ?? '') === '') {
+                $missingIds[] = (int) $id;
+            }
+        }
+
+        if ($missingIds !== [] && $shopId > 0) {
+            $fetched = Artwork::query()
+                ->where('shop_id', $shopId)
+                ->whereIn('id', $missingIds)
+                ->get(['id', 'url']);
+            foreach ($fetched as $row) {
+                $urlById[(string) $row->id] = trim((string) ($row->url ?? ''));
+            }
+        }
+
+        $out = [];
+        foreach ($artworks as $artwork) {
+            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+            $layers = $meta['layers_meta'] ?? null;
+            if (! is_array($layers) || $layers === []) {
+                continue;
+            }
+            $placement = strtolower(trim((string) ($artwork->placement ?? '')));
+            foreach ($layers as $layer) {
+                if (! is_array($layer)) {
+                    continue;
+                }
+                $aid = trim((string) (
+                    $layer['library_artwork_id'] ?? $layer['artwork_id']
+                    ?? $layer['libraryArtworkId'] ?? $layer['artworkId'] ?? ''
+                ));
+                if ($aid === '' || ! ctype_digit($aid)) {
+                    continue;
+                }
+                $url = $urlById[$aid] ?? null;
+                $url = ($url !== null && $url !== '') ? $url : null;
+                $out[] = [
+                    'placement' => $placement,
+                    'artwork_id' => $aid,
+                    'artwork_url' => $url,
+                    'layer' => $layer,
+                ];
+            }
+        }
+
+        return $out;
     }
 }

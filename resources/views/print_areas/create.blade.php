@@ -65,20 +65,25 @@
                             </div>
                             <div class="filter-group">
                                 <label>Area Width</label>
-                                <input type="number" step="0.01" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select"
+                                <input type="number" step="any" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select"
                                     name="print_areas[{{ $index }}][area_width]"
                                     value="{{ $row['area_width'] ?? '' }}">
                             </div>
                             <div class="filter-group">
                                 <label>Area Height</label>
-                                <input type="number" step="0.01" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select"
+                                <input type="number" step="any" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select"
                                     name="print_areas[{{ $index }}][area_height]"
                                     value="{{ $row['area_height'] ?? '' }}">
                             </div>
                             <div class="filter-group">
                                 <label>Unit</label>
-                                <input type="hidden" name="print_areas[{{ $index }}][unit]" value="{{ $unit }}">
-                                <input type="text" class="filter-select" value="{{ strtoupper($unit) }}" readonly>
+                                <select class="filter-select" name="print_areas[{{ $index }}][unit]">
+                                    @foreach (['mm', 'cm', 'in', 'px'] as $unit)
+                                        <option value="{{ $unit }}"
+                                            {{ ($row['unit'] ?? 'px') === $unit ? 'selected' : '' }}>
+                                            {{ strtoupper($unit) }}</option>
+                                    @endforeach
+                                </select>
                             </div>
                             <div class="filter-group">
                                 <label>Position X</label>

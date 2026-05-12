@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\PrintArea;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\CrmController;
+use Illuminate\Validation\Rule;
 
 class PrintAreaController extends CrmController
 {
@@ -74,14 +75,14 @@ class PrintAreaController extends CrmController
         $maxWidth = (float) config('crm.features.print_areas.constraints.width.max', 1000);
         $minHeight = (float) config('crm.features.print_areas.constraints.height.min', 1);
         $maxHeight = (float) config('crm.features.print_areas.constraints.height.max', 1000);
-        $unit = (string) config('crm.features.print_areas.constraints.unit', 'px');
+        $allowedUnits = config('crm.features.print_areas.constraints.allowed_units', ['mm', 'cm', 'in', 'px']);
 
         $request->validate([
             'print_areas' => 'nullable|array',
             'print_areas.*.title' => 'nullable|string|max:255',
             'print_areas.*.area_width' => "required|numeric|between:{$minWidth},{$maxWidth}",
             'print_areas.*.area_height' => "required|numeric|between:{$minHeight},{$maxHeight}",
-            'print_areas.*.unit' => "required|in:{$unit}",
+            'print_areas.*.unit' => ['required', Rule::in($allowedUnits)],
             'print_areas.*.position_x' => 'nullable|numeric',
             'print_areas.*.position_y' => 'nullable|numeric',
             'print_areas.*.tshirt_size' => 'nullable|string|max:50',
@@ -94,8 +95,6 @@ class PrintAreaController extends CrmController
         if ($request->has('print_areas')) {
 
             foreach ($request->print_areas as $index => $area) {
-                $area['unit'] = $unit;
-
                 // if ($request->hasFile("print_area_images.$index")) {
                 //     $image = $request->file("print_area_images.$index")
                 //         ->store('print_areas', 'public');
@@ -134,13 +133,13 @@ public function update(Request $request, $id)
     $maxWidth = (float) config('crm.features.print_areas.constraints.width.max', 1000);
     $minHeight = (float) config('crm.features.print_areas.constraints.height.min', 1);
     $maxHeight = (float) config('crm.features.print_areas.constraints.height.max', 1000);
-    $unit = (string) config('crm.features.print_areas.constraints.unit', 'px');
+    $allowedUnits = config('crm.features.print_areas.constraints.allowed_units', ['mm', 'cm', 'in', 'px']);
 
     $request->validate([
         'print_areas.0.title' => 'nullable|string|max:255',
         'print_areas.0.area_width' => "required|numeric|between:{$minWidth},{$maxWidth}",
         'print_areas.0.area_height' => "required|numeric|between:{$minHeight},{$maxHeight}",
-        'print_areas.0.unit' => "required|in:{$unit}",
+        'print_areas.0.unit' => ['required', Rule::in($allowedUnits)],
         'print_areas.0.position_x' => 'nullable|numeric',
         'print_areas.0.position_y' => 'nullable|numeric',
         'print_areas.0.tshirt_size' => 'nullable|string|max:50',
@@ -150,7 +149,6 @@ public function update(Request $request, $id)
     ]);
 
     $areaData = $request->print_areas[0];
-    $areaData['unit'] = $unit;
 
     // ✅ Handle New Image Upload (ONLY THIS)
     // if ($request->hasFile('print_area_images.0')) {

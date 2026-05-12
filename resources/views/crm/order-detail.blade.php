@@ -102,38 +102,53 @@
                                             $size = $props['_dtfta_garment_size'] ?? 'N/A';
                                             $printPlan = $props['_dtfta_print_plan'] ?? 'N/A';
 
+                                            $layerArtworks = is_array($customDetail['layer_artworks'] ?? null) ? $customDetail['layer_artworks'] : [];
+                                            $useLayerArtworks = $layerArtworks !== [];
+
                                             $artworkEntries = [];
-                                            foreach ($props as $key => $value) {
-                                                if (str_starts_with((string) $key, '_dtfta_artwork_') && filled($value)) {
-                                                    $cleanLabel = str_replace(['_dtfta_artwork_', '_url', '_'], ['', '', ' '], (string) $key);
-                                                    $artworkEntries[] = ['label' => strtoupper(trim($cleanLabel)), 'url' => (string) $value];
+                                            if (! $useLayerArtworks) {
+                                                foreach ($props as $key => $value) {
+                                                    if (str_starts_with((string) $key, '_dtfta_artwork_') && filled($value)) {
+                                                        $cleanLabel = str_replace(['_dtfta_artwork_', '_url', '_'], ['', '', ' '], (string) $key);
+                                                        $artworkEntries[] = [
+                                                            'label' => strtoupper(trim($cleanLabel)),
+                                                            'url' => (string) $value,
+                                                            'layers_meta' => null,
+                                                        ];
+                                                    }
                                                 }
-                                            }
 
-                                            if (empty($artworkEntries)) {
-                                                $payloadImage = data_get($payload, 'image.src');
-                                                if (filled($payloadImage)) {
-                                                    $artworkEntries[] = ['label' => 'IMAGE', 'url' => (string) $payloadImage];
+                                                if (empty($artworkEntries)) {
+                                                    $payloadImage = data_get($payload, 'image.src');
+                                                    if (filled($payloadImage)) {
+                                                        $artworkEntries[] = ['label' => 'IMAGE', 'url' => (string) $payloadImage, 'layers_meta' => null];
+                                                    }
                                                 }
-                                            }
 
-                                            if (!empty($customDetail['library_artworks'] ?? [])) {
-                                                foreach ($customDetail['library_artworks'] as $libraryArtwork) {
-                                                    $placement = strtoupper(str_replace('_', ' ', trim((string) ($libraryArtwork['placement'] ?? ''))));
-                                                    $artworkEntries[] = [
-                                                        'label' => $placement !== '' ? ('ARTWORK ' . $placement) : ' ARTWORK',
-                                                        'url' => (string) ($libraryArtwork['url'] ?? ''),
-                                                    ];
+                                                if (!empty($customDetail['library_artworks'] ?? [])) {
+                                                    foreach ($customDetail['library_artworks'] as $libraryArtwork) {
+                                                        $placement = strtoupper(str_replace('_', ' ', trim((string) ($libraryArtwork['placement'] ?? ''))));
+                                                        $lm = $libraryArtwork['layers_meta'] ?? null;
+                                                        $lm = is_array($lm) && $lm !== [] ? $lm : null;
+                                                        $artworkEntries[] = [
+                                                            'label' => $placement !== '' ? ('ARTWORK ' . $placement) : ' ARTWORK',
+                                                            'url' => (string) ($libraryArtwork['url'] ?? ''),
+                                                            'layers_meta' => $lm,
+                                                        ];
+                                                    }
                                                 }
-                                            }
 
-                                            if (!empty($customDetail['custom_artworks'] ?? [])) {
-                                                foreach ($customDetail['custom_artworks'] as $index => $customArtwork) {
-                                                    $placement = strtoupper(str_replace('_', ' ', trim((string) ($customArtwork['placement'] ?? ''))));
-                                                    $artworkEntries[] = [
-                                                        'label' => $placement !== '' ? ('CUSTOM ARTWORK ' . $placement) : ('CUSTOM ARTWORK ' . ($index + 1)),
-                                                        'url' => (string) ($customArtwork['url'] ?? ''),
-                                                    ];
+                                                if (!empty($customDetail['custom_artworks'] ?? [])) {
+                                                    foreach ($customDetail['custom_artworks'] as $index => $customArtwork) {
+                                                        $placement = strtoupper(str_replace('_', ' ', trim((string) ($customArtwork['placement'] ?? ''))));
+                                                        $lm = $customArtwork['layers_meta'] ?? null;
+                                                        $lm = is_array($lm) && $lm !== [] ? $lm : null;
+                                                        $artworkEntries[] = [
+                                                            'label' => $placement !== '' ? ('CUSTOM ARTWORK ' . $placement) : ('CUSTOM ARTWORK ' . ($index + 1)),
+                                                            'url' => (string) ($customArtwork['url'] ?? ''),
+                                                            'layers_meta' => $lm,
+                                                        ];
+                                                    }
                                                 }
                                             }
                                         @endphp
@@ -149,7 +164,75 @@
                                                 <div><span style="color: #94a3b8;">Print Plan:</span> <b style="word-break: break-word;">{{ $printPlan }}</b></div>
                                                 <div>
                                                     <span style="color: #94a3b8;">Artwork URL:</span>
-                                                    @if (empty($artworkEntries))
+                                                    @if ($useLayerArtworks)
+                                                        <div style="display: grid; gap: 6px; margin-top: 6px;">
+                                                            @foreach ($layerArtworks as $row)
+                                                                @php
+                                                                    $layer = is_array($row['layer'] ?? null) ? $row['layer'] : [];
+                                                                    $placementLabel = strtoupper(str_replace('_', ' ', trim((string) ($row['placement'] ?? ''))));
+                                                                    $layerTitle = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? 'Layer'));
+                                                                    $cardTitle = ($placementLabel !== '' ? $placementLabel . ' — ' : '') . ($layerTitle !== '' ? $layerTitle : 'Layer');
+                                                                    $resolvedUrl = trim((string) ($row['artwork_url'] ?? ''));
+                                                                    $artworkId = trim((string) ($row['artwork_id'] ?? ''));
+                                                                    $position = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? ''));
+                                                                    if ($position === '') {
+                                                                        $position = '—';
+                                                                    }
+                                                                    $unit = trim((string) ($layer['unit'] ?? ''));
+                                                                    $left = $layer['left'] ?? null;
+                                                                    $top = $layer['top'] ?? null;
+                                                                    $width = $layer['width'] ?? null;
+                                                                    $height = $layer['height'] ?? null;
+                                                                    $rotation = $layer['rotation'] ?? null;
+                                                                    $fmt = function ($v) {
+                                                                        if ($v === null || $v === '') {
+                                                                            return '—';
+                                                                        }
+                                                                        if (! is_numeric($v)) {
+                                                                            return (string) $v;
+                                                                        }
+                                                                        $s = rtrim(rtrim(number_format((float) $v, 4, '.', ''), '0'), '.');
+
+                                                                        return $s === '' || $s === '-' ? '0' : $s;
+                                                                    };
+                                                                    $right = is_numeric($left) && is_numeric($width) ? ((float) $left + (float) $width) : null;
+                                                                @endphp
+                                                                <div style="padding: 8px 10px; border: 1px solid rgba(96,165,250,0.28); border-radius: 8px; background: rgba(15,23,42,0.55);">
+                                                                    <div style="font-size: 11px; color: #93c5fd; letter-spacing: 0.04em; margin-bottom: 3px;">{{ $cardTitle }}</div>
+                                                                    @if ($artworkId !== '')
+                                                                        <div style="font-size: 10px; color: #64748b; margin-bottom: 4px;">Artwork ID: <b style="color:#94a3b8;">{{ $artworkId }}</b></div>
+                                                                    @endif
+                                                                    @if ($resolvedUrl !== '')
+                                                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                                                            <a href="{{ $resolvedUrl }}" target="_blank" rel="noopener noreferrer" title="{{ $resolvedUrl }}" style="color: #60a5fa; text-decoration: none; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">
+                                                                                {{ \Illuminate\Support\Str::limit($resolvedUrl, 85) }}
+                                                                            </a>
+                                                                            <a href="{{ $resolvedUrl }}" target="_blank" rel="noopener noreferrer" style="color: #93c5fd; font-size: 11px; text-decoration: none; border: 1px solid rgba(147,197,253,0.35); border-radius: 999px; padding: 2px 8px;">
+                                                                                Open
+                                                                            </a>
+                                                                        </div>
+                                                                    @else
+                                                                        <div style="font-size: 12px; color: #94a3b8;">URL not found for this artwork id.</div>
+                                                                    @endif
+                                                                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(148,163,184,0.2);">
+                                                                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Layer meta</div>
+                                                                        <div style="font-size: 11px; line-height: 1.45; padding: 6px 8px; border-radius: 6px; background: rgba(30,41,59,0.45); border: 1px solid rgba(148,163,184,0.12);">
+                                                                            <div><span style="color:#94a3b8;">Position:</span> <b style="color:#e2e8f0;">{{ $position }}</b>@if (($layer['kind'] ?? '') !== '') <span style="color:#64748b;">({{ $layer['kind'] }})</span>@endif</div>
+                                                                            <div style="display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:4px;">
+                                                                                <span><span style="color:#94a3b8;">Left:</span> <b style="color:#e2e8f0;">{{ $fmt($left) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Top:</span> <b style="color:#e2e8f0;">{{ $fmt($top) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Right:</span> <b style="color:#e2e8f0;">{{ $fmt($right) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Width:</span> <b style="color:#e2e8f0;">{{ $fmt($width) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Height:</span> <b style="color:#e2e8f0;">{{ $fmt($height) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Rotation:</span> <b style="color:#e2e8f0;">{{ is_numeric($rotation) ? $fmt($rotation) . '°' : $fmt($rotation) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Units:</span> <b style="color:#e2e8f0;">{{ $unit !== '' ? $unit : '—' }}</b></span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    @elseif (empty($artworkEntries))
                                                         <b>N/A</b>
                                                     @else
                                                         <div style="display: grid; gap: 6px; margin-top: 6px;">
@@ -164,6 +247,55 @@
                                                                             Open
                                                                         </a>
                                                                     </div>
+                                                                    @php
+                                                                        $layersMeta = $artwork['layers_meta'] ?? null;
+                                                                    @endphp
+                                                                    @if (is_array($layersMeta) && $layersMeta !== [])
+                                                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(148,163,184,0.2);">
+                                                                            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Layer meta</div>
+                                                                            <div style="display: grid; gap: 6px;">
+                                                                                @foreach ($layersMeta as $layer)
+                                                                                    @php
+                                                                                        $layer = is_array($layer) ? $layer : [];
+                                                                                        $position = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? ''));
+                                                                                        if ($position === '') {
+                                                                                            $position = '—';
+                                                                                        }
+                                                                                        $unit = trim((string) ($layer['unit'] ?? ''));
+                                                                                        $left = $layer['left'] ?? null;
+                                                                                        $top = $layer['top'] ?? null;
+                                                                                        $width = $layer['width'] ?? null;
+                                                                                        $height = $layer['height'] ?? null;
+                                                                                        $rotation = $layer['rotation'] ?? null;
+                                                                                        $fmt = function ($v) {
+                                                                                            if ($v === null || $v === '') {
+                                                                                                return '—';
+                                                                                            }
+                                                                                            if (! is_numeric($v)) {
+                                                                                                return (string) $v;
+                                                                                            }
+                                                                                            $s = rtrim(rtrim(number_format((float) $v, 4, '.', ''), '0'), '.');
+
+                                                                                            return $s === '' || $s === '-' ? '0' : $s;
+                                                                                        };
+                                                                                        $right = is_numeric($left) && is_numeric($width) ? ((float) $left + (float) $width) : null;
+                                                                                    @endphp
+                                                                                    <div style="font-size: 11px; line-height: 1.45; padding: 6px 8px; border-radius: 6px; background: rgba(30,41,59,0.45); border: 1px solid rgba(148,163,184,0.12);">
+                                                                                        <div><span style="color:#94a3b8;">Position:</span> <b style="color:#e2e8f0;">{{ $position }}</b>@if (($layer['kind'] ?? '') !== '') <span style="color:#64748b;">({{ $layer['kind'] }})</span>@endif</div>
+                                                                                        <div style="display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:4px;">
+                                                                                            <span><span style="color:#94a3b8;">Left:</span> <b style="color:#e2e8f0;">{{ $fmt($left) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Top:</span> <b style="color:#e2e8f0;">{{ $fmt($top) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Right:</span> <b style="color:#e2e8f0;">{{ $fmt($right) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Width:</span> <b style="color:#e2e8f0;">{{ $fmt($width) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Height:</span> <b style="color:#e2e8f0;">{{ $fmt($height) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Rotation:</span> <b style="color:#e2e8f0;">{{ is_numeric($rotation) ? $fmt($rotation) . '°' : $fmt($rotation) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Units:</span> <b style="color:#e2e8f0;">{{ $unit !== '' ? $unit : '—' }}</b></span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                @endforeach
+                                                                            </div>
+                                                                        </div>
+                                                                    @endif
                                                                 </div>
                                                             @endforeach
                                                         </div>
