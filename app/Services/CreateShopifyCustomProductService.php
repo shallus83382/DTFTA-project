@@ -1526,8 +1526,23 @@ class CreateShopifyCustomProductService
     private function extractColorTokenFromArtworkSegments(array $segments): ?string
     {
         $knownColors = [
-            'blk', 'black', 'red', 'rd', 'blue', 'blu', 'nav', 'navy',
-            'wht', 'white', 'gry', 'gray', 'grey', 'grn', 'green',
+            'blk', 'black',
+            'red', 'rd',
+            'blue', 'blu',
+            'nav', 'navy',
+            'wht', 'white',
+            'gry', 'gray', 'grey',
+            'grn', 'green',
+        
+            // Added colors
+            'clay','antique_gold', 'banana_cream',
+            'blue_jean','bone','cardinal','classic_orange','cool_blue','cream','dark_chocolate',
+            'desert_pink','forest_green','gold','graphite_black','heather_gray','heavy_metal',
+            'indigo','kelly_green','light_blue','light_grey','light_olive',
+            'light_pink','maroon','mauve','midnight_navy','military_green',
+            'natural','oatmeal','oxblood','periblue','purple_rush',
+            'royal','royal_pine','sand','shiitake','stonewash_denim',
+            'tahiti_blue','tan','teal','turquoise','watermelon','hot_pink'
         ];
 
         foreach ($segments as $segment) {
