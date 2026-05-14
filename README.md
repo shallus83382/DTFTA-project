@@ -117,3 +117,8 @@ composer run test
 ## License
 
 See `composer.json` (Laravel skeleton is MIT unless your organization has added a different top-level license file).
+
+Preview Screenshot:
+
+![Screenshot 1](screenshot_1.png)
+![Screenshot 2](screenshot_2.png)
