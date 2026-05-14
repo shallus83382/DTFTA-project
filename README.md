@@ -120,5 +120,5 @@ See `composer.json` (Laravel skeleton is MIT unless your organization has added 
 
 Preview Screenshot:
 
-![Screenshot 1](screenshot_1.png)
-![Screenshot 2](screenshot_2.png)
+![Screenshot 1](Screenshot_1.png)
+![Screenshot 2](Screenshot_2.png)
