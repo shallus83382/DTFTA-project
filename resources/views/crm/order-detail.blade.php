@@ -9,10 +9,36 @@
         <div class="ld-header-panel">
             <div class="ld-right-header">
                 @if (isset($order))
+                    @php
+                        $orderPayload = is_array($order->payload ?? null)
+                            ? $order->payload
+                            : (is_array($order->raw_data ?? null) ? $order->raw_data : []);
+
+                        $shippingAddress = data_get($orderPayload, 'shipping_address', []);
+                        $billingAddress = data_get($orderPayload, 'billing_address', []);
+                        $resolvedAddress = is_array($shippingAddress) && !empty($shippingAddress) ? $shippingAddress : $billingAddress;
+
+                        $addressParts = array_values(array_filter([
+                            data_get($resolvedAddress, 'address1'),
+                            data_get($resolvedAddress, 'address2'),
+                            data_get($resolvedAddress, 'city'),
+                            data_get($resolvedAddress, 'province'),
+                            data_get($resolvedAddress, 'zip'),
+                            data_get($resolvedAddress, 'country'),
+                        ], fn ($value) => filled($value)));
+                    @endphp
                     <div class="job-info-card ld-card ld-right-header-block">
                         <div class="job-info-row">
                             <span>Order ID</span>
                             <b>#{{ $order->id ?? 'N/A' }}</b>
+                        </div>
+                        <div class="job-info-row">
+                            <span>Shopify Order ID</span>
+                            <b>{{ $order->shopify_order_id ?? 'N/A' }}</b>
+                        </div>
+                        <div class="job-info-row">
+                            <span>Order Number</span>
+                            <b>{{ $order->order_number ?? data_get($orderPayload, 'order_number', 'N/A') }}</b>
                         </div>
                         <div class="job-info-row">
                             <span>Store Name</span>
@@ -25,6 +51,12 @@
                         <div class="job-info-row">
                             <span>Customer Email</span>
                             <b>{{ $order->customer_email ?? 'N/A' }}</b>
+                        </div>
+                        <div class="job-info-row">
+                            <span>Customer Address</span>
+                            <b style="text-align: right; max-width: 70%; word-break: break-word;">
+                                {{ !empty($addressParts) ? implode(', ', $addressParts) : 'N/A' }}
+                            </b>
                         </div>
                         <div class="job-info-row status-row">
                             <span>Current Status</span>
@@ -44,10 +76,234 @@
                             <div><span>Updated
                                     At</span><b>{{ $order->updated_at_shopify?->format('Y-m-d H:i') ?? 'N/A' }}</b>
                             </div>
-                            @if (isset($job) && $job->payload)
-                                <div class="artwork-preview">
-                                    <span>Additional Info</span>
-                                    <p>{{ json_encode($job->payload) }}</p>
+                        </div>
+
+                        @php
+                            $orderItems = collect($order->orderItems ?? []);
+                        @endphp
+                        <div style="margin-top: 14px;">
+                            <h4 style="margin: 0 0 10px; font-size: 14px;">Imprint Line Items</h4>
+
+                            @if ($orderItems->isEmpty())
+                                <p style="margin: 0; color: #94a3b8;">No line item imprint details found.</p>
+                            @else
+                                <div style="display: grid; gap: 10px;">
+                                    @foreach ($orderItems as $item)
+                                        @php
+                                            $props = is_array($item->properties) ? $item->properties : [];
+                                            $payload = is_array($item->payload) ? $item->payload : [];
+                                            $customDetail = $orderItemCustomDetails[$item->id] ?? null;
+
+                                            $dtftaType = $props['_dtfta_type'] ?? $item->dtfta_type ?? 'N/A';
+                                            $color = $props['_dtfta_garment_color']
+                                                ?? data_get($payload, 'variant_title')
+                                                ?? $item->variant_title
+                                                ?? 'N/A';
+                                            $size = $props['_dtfta_garment_size'] ?? 'N/A';
+                                            $printPlan = $props['_dtfta_print_plan'] ?? 'N/A';
+
+                                            $layerArtworks = is_array($customDetail['layer_artworks'] ?? null) ? $customDetail['layer_artworks'] : [];
+                                            $useLayerArtworks = $layerArtworks !== [];
+
+                                            $artworkEntries = [];
+                                            if (! $useLayerArtworks) {
+                                                foreach ($props as $key => $value) {
+                                                    if (str_starts_with((string) $key, '_dtfta_artwork_') && filled($value)) {
+                                                        $cleanLabel = str_replace(['_dtfta_artwork_', '_url', '_'], ['', '', ' '], (string) $key);
+                                                        $artworkEntries[] = [
+                                                            'label' => strtoupper(trim($cleanLabel)),
+                                                            'url' => (string) $value,
+                                                            'layers_meta' => null,
+                                                        ];
+                                                    }
+                                                }
+
+                                                if (empty($artworkEntries)) {
+                                                    $payloadImage = data_get($payload, 'image.src');
+                                                    if (filled($payloadImage)) {
+                                                        $artworkEntries[] = ['label' => 'IMAGE', 'url' => (string) $payloadImage, 'layers_meta' => null];
+                                                    }
+                                                }
+
+                                                if (!empty($customDetail['library_artworks'] ?? [])) {
+                                                    foreach ($customDetail['library_artworks'] as $libraryArtwork) {
+                                                        $placement = strtoupper(str_replace('_', ' ', trim((string) ($libraryArtwork['placement'] ?? ''))));
+                                                        $lm = $libraryArtwork['layers_meta'] ?? null;
+                                                        $lm = is_array($lm) && $lm !== [] ? $lm : null;
+                                                        $artworkEntries[] = [
+                                                            'label' => $placement !== '' ? ('ARTWORK ' . $placement) : ' ARTWORK',
+                                                            'url' => (string) ($libraryArtwork['url'] ?? ''),
+                                                            'layers_meta' => $lm,
+                                                        ];
+                                                    }
+                                                }
+
+                                                if (!empty($customDetail['custom_artworks'] ?? [])) {
+                                                    foreach ($customDetail['custom_artworks'] as $index => $customArtwork) {
+                                                        $placement = strtoupper(str_replace('_', ' ', trim((string) ($customArtwork['placement'] ?? ''))));
+                                                        $lm = $customArtwork['layers_meta'] ?? null;
+                                                        $lm = is_array($lm) && $lm !== [] ? $lm : null;
+                                                        $artworkEntries[] = [
+                                                            'label' => $placement !== '' ? ('CUSTOM ARTWORK ' . $placement) : ('CUSTOM ARTWORK ' . ($index + 1)),
+                                                            'url' => (string) ($customArtwork['url'] ?? ''),
+                                                            'layers_meta' => $lm,
+                                                        ];
+                                                    }
+                                                }
+                                            }
+                                        @endphp
+                                        <details {{ $loop->first ? 'open' : '' }} style="border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 10px; background: linear-gradient(135deg, rgba(30,41,59,0.5), rgba(15,23,42,0.55)); overflow: hidden;">
+                                            <summary style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; cursor: pointer; list-style: none;">
+                                                <strong>{{ $item->title ?? 'Line Item' }}</strong>
+                                                <span style="color: #94a3b8;">Qty: {{ $item->quantity ?? 1 }}</span>
+                                            </summary>
+                                            <div style="display: grid; gap: 6px; font-size: 13px; padding: 0 12px 12px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
+                                                <div><span style="color: #94a3b8;">DTFA Type:</span> <b>{{ $dtftaType }}</b></div>
+                                                <div><span style="color: #94a3b8;">Color:</span> <b>{{ $color }}</b></div>
+                                                <div><span style="color: #94a3b8;">Size:</span> <b>{{ $size }}</b></div>
+                                                <div><span style="color: #94a3b8;">Print Plan:</span> <b style="word-break: break-word;">{{ $printPlan }}</b></div>
+                                                <div>
+                                                    <span style="color: #94a3b8;">Artwork URL:</span>
+                                                    @if ($useLayerArtworks)
+                                                        <div style="display: grid; gap: 6px; margin-top: 6px;">
+                                                            @foreach ($layerArtworks as $row)
+                                                                @php
+                                                                    $layer = is_array($row['layer'] ?? null) ? $row['layer'] : [];
+                                                                    $placementLabel = strtoupper(str_replace('_', ' ', trim((string) ($row['placement'] ?? ''))));
+                                                                    $layerTitle = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? 'Layer'));
+                                                                    $cardTitle = ($placementLabel !== '' ? $placementLabel . ' — ' : '') . ($layerTitle !== '' ? $layerTitle : 'Layer');
+                                                                    $resolvedUrl = trim((string) ($row['artwork_url'] ?? ''));
+                                                                    $artworkId = trim((string) ($row['artwork_id'] ?? ''));
+                                                                    $position = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? ''));
+                                                                    if ($position === '') {
+                                                                        $position = '—';
+                                                                    }
+                                                                    $unit = trim((string) ($layer['unit'] ?? ''));
+                                                                    $left = $layer['left'] ?? null;
+                                                                    $top = $layer['top'] ?? null;
+                                                                    $width = $layer['width'] ?? null;
+                                                                    $height = $layer['height'] ?? null;
+                                                                    $rotation = $layer['rotation'] ?? null;
+                                                                    $fmt = function ($v) {
+                                                                        if ($v === null || $v === '') {
+                                                                            return '—';
+                                                                        }
+                                                                        if (! is_numeric($v)) {
+                                                                            return (string) $v;
+                                                                        }
+                                                                        $s = rtrim(rtrim(number_format((float) $v, 4, '.', ''), '0'), '.');
+
+                                                                        return $s === '' || $s === '-' ? '0' : $s;
+                                                                    };
+                                                                    $right = is_numeric($left) && is_numeric($width) ? ((float) $left + (float) $width) : null;
+                                                                @endphp
+                                                                <div style="padding: 8px 10px; border: 1px solid rgba(96,165,250,0.28); border-radius: 8px; background: rgba(15,23,42,0.55);">
+                                                                    <div style="font-size: 11px; color: #93c5fd; letter-spacing: 0.04em; margin-bottom: 3px;">{{ $cardTitle }}</div>
+                                                                    @if ($artworkId !== '')
+                                                                        <div style="font-size: 10px; color: #64748b; margin-bottom: 4px;">Artwork ID: <b style="color:#94a3b8;">{{ $artworkId }}</b></div>
+                                                                    @endif
+                                                                    @if ($resolvedUrl !== '')
+                                                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                                                            <a href="{{ $resolvedUrl }}" target="_blank" rel="noopener noreferrer" title="{{ $resolvedUrl }}" style="color: #60a5fa; text-decoration: none; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">
+                                                                                {{ \Illuminate\Support\Str::limit($resolvedUrl, 85) }}
+                                                                            </a>
+                                                                            <a href="{{ $resolvedUrl }}" target="_blank" rel="noopener noreferrer" style="color: #93c5fd; font-size: 11px; text-decoration: none; border: 1px solid rgba(147,197,253,0.35); border-radius: 999px; padding: 2px 8px;">
+                                                                                Open
+                                                                            </a>
+                                                                        </div>
+                                                                    @else
+                                                                        <div style="font-size: 12px; color: #94a3b8;">URL not found for this artwork id.</div>
+                                                                    @endif
+                                                                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(148,163,184,0.2);">
+                                                                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Layer meta</div>
+                                                                        <div style="font-size: 11px; line-height: 1.45; padding: 6px 8px; border-radius: 6px; background: rgba(30,41,59,0.45); border: 1px solid rgba(148,163,184,0.12);">
+                                                                            <div><span style="color:#94a3b8;">Position:</span> <b style="color:#e2e8f0;">{{ $position }}</b>@if (($layer['kind'] ?? '') !== '') <span style="color:#64748b;">({{ $layer['kind'] }})</span>@endif</div>
+                                                                            <div style="display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:4px;">
+                                                                                <span><span style="color:#94a3b8;">Left:</span> <b style="color:#e2e8f0;">{{ $fmt($left) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Top:</span> <b style="color:#e2e8f0;">{{ $fmt($top) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Right:</span> <b style="color:#e2e8f0;">{{ $fmt($right) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Width:</span> <b style="color:#e2e8f0;">{{ $fmt($width) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Height:</span> <b style="color:#e2e8f0;">{{ $fmt($height) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Rotation:</span> <b style="color:#e2e8f0;">{{ is_numeric($rotation) ? $fmt($rotation) . '°' : $fmt($rotation) }}</b></span>
+                                                                                <span><span style="color:#94a3b8;">Units:</span> <b style="color:#e2e8f0;">{{ $unit !== '' ? $unit : '—' }}</b></span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    @elseif (empty($artworkEntries))
+                                                        <b>N/A</b>
+                                                    @else
+                                                        <div style="display: grid; gap: 6px; margin-top: 6px;">
+                                                            @foreach ($artworkEntries as $artwork)
+                                                                <div style="padding: 8px 10px; border: 1px solid rgba(96,165,250,0.28); border-radius: 8px; background: rgba(15,23,42,0.55);">
+                                                                    <div style="font-size: 11px; color: #93c5fd; letter-spacing: 0.04em; margin-bottom: 3px;">{{ $artwork['label'] }}</div>
+                                                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                                                        <a href="{{ $artwork['url'] }}" target="_blank" rel="noopener noreferrer" title="{{ $artwork['url'] }}" style="color: #60a5fa; text-decoration: none; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">
+                                                                            {{ \Illuminate\Support\Str::limit($artwork['url'], 85) }}
+                                                                        </a>
+                                                                        <a href="{{ $artwork['url'] }}" target="_blank" rel="noopener noreferrer" style="color: #93c5fd; font-size: 11px; text-decoration: none; border: 1px solid rgba(147,197,253,0.35); border-radius: 999px; padding: 2px 8px;">
+                                                                            Open
+                                                                        </a>
+                                                                    </div>
+                                                                    @php
+                                                                        $layersMeta = $artwork['layers_meta'] ?? null;
+                                                                    @endphp
+                                                                    @if (is_array($layersMeta) && $layersMeta !== [])
+                                                                        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(148,163,184,0.2);">
+                                                                            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;">Layer meta</div>
+                                                                            <div style="display: grid; gap: 6px;">
+                                                                                @foreach ($layersMeta as $layer)
+                                                                                    @php
+                                                                                        $layer = is_array($layer) ? $layer : [];
+                                                                                        $position = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? ''));
+                                                                                        if ($position === '') {
+                                                                                            $position = '—';
+                                                                                        }
+                                                                                        $unit = trim((string) ($layer['unit'] ?? ''));
+                                                                                        $left = $layer['left'] ?? null;
+                                                                                        $top = $layer['top'] ?? null;
+                                                                                        $width = $layer['width'] ?? null;
+                                                                                        $height = $layer['height'] ?? null;
+                                                                                        $rotation = $layer['rotation'] ?? null;
+                                                                                        $fmt = function ($v) {
+                                                                                            if ($v === null || $v === '') {
+                                                                                                return '—';
+                                                                                            }
+                                                                                            if (! is_numeric($v)) {
+                                                                                                return (string) $v;
+                                                                                            }
+                                                                                            $s = rtrim(rtrim(number_format((float) $v, 4, '.', ''), '0'), '.');
+
+                                                                                            return $s === '' || $s === '-' ? '0' : $s;
+                                                                                        };
+                                                                                        $right = is_numeric($left) && is_numeric($width) ? ((float) $left + (float) $width) : null;
+                                                                                    @endphp
+                                                                                    <div style="font-size: 11px; line-height: 1.45; padding: 6px 8px; border-radius: 6px; background: rgba(30,41,59,0.45); border: 1px solid rgba(148,163,184,0.12);">
+                                                                                        <div><span style="color:#94a3b8;">Position:</span> <b style="color:#e2e8f0;">{{ $position }}</b>@if (($layer['kind'] ?? '') !== '') <span style="color:#64748b;">({{ $layer['kind'] }})</span>@endif</div>
+                                                                                        <div style="display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:4px;">
+                                                                                            <span><span style="color:#94a3b8;">Left:</span> <b style="color:#e2e8f0;">{{ $fmt($left) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Top:</span> <b style="color:#e2e8f0;">{{ $fmt($top) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Right:</span> <b style="color:#e2e8f0;">{{ $fmt($right) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Width:</span> <b style="color:#e2e8f0;">{{ $fmt($width) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Height:</span> <b style="color:#e2e8f0;">{{ $fmt($height) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Rotation:</span> <b style="color:#e2e8f0;">{{ is_numeric($rotation) ? $fmt($rotation) . '°' : $fmt($rotation) }}</b></span>
+                                                                                            <span><span style="color:#94a3b8;">Units:</span> <b style="color:#e2e8f0;">{{ $unit !== '' ? $unit : '—' }}</b></span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                @endforeach
+                                                                            </div>
+                                                                        </div>
+                                                                    @endif
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
+                                                </div>
+                                            </div>
+                                        </details>
+                                    @endforeach
                                 </div>
                             @endif
                         </div>
@@ -56,6 +312,23 @@
 
             </div>
             <h3>Update Order Status</h3>
+            @php
+                $billingStatusLabel = strtoupper(str_replace('_', ' ', (string) ($billingChargeStatus ?? '')));
+            @endphp
+            <div id="billingRetrySection" style="display:flex; align-items:center; gap:10px; margin: 8px 0 12px;">
+                @if (!empty($billingChargeStatus))
+                    <span class="status-badge" style="font-size:11px;">
+                        BILLING: {{ $billingStatusLabel }}
+                    </span>
+                @endif
+                <button
+                    id="retryBillingBtn"
+                    type="button"
+                    onclick="retryBilling()"
+                    style="display: {{ !empty($showRetryBilling) ? 'inline-flex' : 'none' }}; align-items:center; justify-content:center; padding:8px 12px; border:none; border-radius:8px; background: linear-gradient(135deg, #0284c7, #2563eb); color:#fff; font-weight:600; cursor:pointer;">
+                    Retry Billing
+                </button>
+            </div>
 
             <div class="ld-stepper" id="ldStepper">
                 @php
@@ -313,6 +586,71 @@
             }
 
             document.addEventListener('DOMContentLoaded', loadCurrentOrderStatus);
+
+            function retryBilling() {
+                const orderId = {{ $order->id ?? 'null' }};
+                const retryBtn = document.getElementById('retryBillingBtn');
+                if (!orderId || !retryBtn) return;
+
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ||
+                    document.querySelector('input[name="_token"]')?.value || '';
+
+                retryBtn.disabled = true;
+                retryBtn.textContent = 'Retrying...';
+
+                fetch('/api/v1/retry-billing', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: JSON.stringify({
+                            order_id: orderId
+                        })
+                    })
+                    .then(async response => {
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            throw new Error(data.message || 'Billing retry failed');
+                        }
+                        return data;
+                    })
+                    .then(data => {
+                        const billingStatus = (data?.data?.billing_status || '').toString().trim();
+                        const showRetry = Boolean(data?.data?.show_retry_button);
+
+                        if (billingStatus) {
+                            const section = document.getElementById('billingRetrySection');
+                            let badge = section ? section.querySelector('.status-badge') : null;
+                            if (!badge && section) {
+                                badge = document.createElement('span');
+                                badge.className = 'status-badge';
+                                badge.style.fontSize = '11px';
+                                section.prepend(badge);
+                            }
+                            if (badge) {
+                                badge.textContent = `BILLING: ${billingStatus.replace(/_/g, ' ').toUpperCase()}`;
+                            }
+                        }
+
+                        retryBtn.style.display = showRetry ? 'inline-flex' : 'none';
+                        retryBtn.textContent = 'Retry Billing';
+                        retryBtn.disabled = false;
+
+                        refreshActivityLog(orderId, 'order');
+
+                        if (typeof showNotification === 'function') {
+                            showNotification(data.message || 'Billing updated successfully.', 'success');
+                        } else {
+                            window.crmAlert(data.message || 'Billing updated successfully.', 'success');
+                        }
+                    })
+                    .catch(error => {
+                        retryBtn.disabled = false;
+                        retryBtn.textContent = 'Retry Billing';
+                        window.crmAlert(error.message || 'Billing retry failed', 'error');
+                    });
+            }
 
             function updateJobStatus(newStatus, element) {
                 const orderId = {{ $order->id ?? 'null' }};

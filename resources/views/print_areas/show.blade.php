@@ -21,10 +21,10 @@
                 <div class="filter-select">{{ $area->title ?? '-' }}</div>
             </div>
 
-            <div>
+            <!-- <div>
                 <label>T-Shirt Size</label>
                 <div class="filter-select">{{ $area->tshirt_size ?? '-' }}</div>
-            </div>
+            </div> -->
 
             <div>
                 <label>Area Size</label>
@@ -64,10 +64,7 @@
             <div>
                 <label>Placement Image</label>
                 @if(!empty($area->images))
-                    <div style="margin-top:6px;">
-                        <img src="{{ asset('storage/'.$area->images) }}"
-                             style="width:120px; height:120px; object-fit:cover; border-radius:12px; border:1px solid #334155;">
-                    </div>
+                    <x-selected-asset :category="$area->images['category'] ?? null" :asset-key="$area->images['asset_key'] ?? null" dimension="120px" />
                 @else
                     <div class="filter-select">No Image</div>
                 @endif

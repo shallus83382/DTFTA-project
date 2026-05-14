@@ -11,6 +11,10 @@ use App\Http\Controllers\Api\ShipmentController;
 use App\Http\Controllers\Api\FulfillmentServiceController;
 use App\Http\Controllers\Api\FailedWebhookController;
 use App\Http\Controllers\Api\JobController;
+use App\Http\Controllers\Api\ArtworkController;
+use App\Http\Controllers\Api\BillingController;
+use App\Http\Controllers\Api\SystemSettingController;
+use App\Http\Controllers\Api\ShopifyApiController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\Shopify\WebhookController;
 use App\Http\Controllers\CrmController;
@@ -29,18 +33,33 @@ Route::prefix('v1')->group(function () {
     Route::post('/update-status', [CrmController::class, 'updateStatus']);
     Route::post('/get-activity-log', [CrmController::class, 'getActivityLog']);
     Route::get('/get-order-status/{orderId}', [CrmController::class, 'getOrderStatus']);
+    Route::post('/retry-billing', [CrmController::class, 'retryBilling']);
     Route::get('/notifications/recent', [CrmController::class, 'getRealtimeNotifications']);
 
     // Frontend signed endpoint (timestamp + signature HMAC)
     Route::get('/products/get', [ProductController::class, 'signedIndex']);
     Route::get('/products/get/{id}', [ProductController::class, 'signedShow']);
     Route::post('/products/create-in-shopify-signed', [ProductController::class, 'createInShopifySigned']);
+    Route::get('/custom-products/{customProduct}', [ProductController::class, 'customProduct']);
+    Route::get('/artworks/list', [ArtworkController::class, 'list']);
+    Route::post('/artworks/upload', [ArtworkController::class, 'upload']);
+
+    Route::post('/brand-settings', [ShopifyApiController::class, 'CreateStoreBrandSettings']);
+    Route::get('/brand-settings', [ShopifyApiController::class, 'GetStoreBrandSettings']);
+
+    Route::get('/dashboard-stats', [ShopifyApiController::class, 'GetStoreDashboardStats']);
+    Route::get('/orders-signed', [ShopifyApiController::class, 'GetStoreOrders']);
+    Route::get('/fulfillment-status', [ShopifyApiController::class, 'GetStoreFulfillmentStatus']);
+    Route::get('/billing/status', [BillingController::class, 'status']);
+    Route::post('/billing/approve', [BillingController::class, 'approve']);
+    
 });
 
 // ============================================
 // PROTECTED ROUTES (Authentication Required)
 // ============================================
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
+
     // User can update own profile
     Route::put('/profile', [UserManagementController::class, 'update']);
 
@@ -62,6 +81,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::post('/partner-profiles', [PartnerProfileController::class, 'store']);
     Route::get('/partner-profiles/{shop_id}', [PartnerProfileController::class, 'show']);
     Route::delete('/partner-profiles/{shop_id}', [PartnerProfileController::class, 'destroy']);
+
     // Backward compatibility for older clients
     Route::delete('/profiles/{shop_id}', [PartnerProfileController::class, 'destroy']);
     Route::get('/partner-profiles', [PartnerProfileController::class, 'index']);
@@ -116,4 +136,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Notifications
     Route::get('/notifications', [CrmController::class, 'getNotifications']);
     Route::post('/notifications/mark-read', [CrmController::class, 'markNotificationsRead']);
+    Route::get('/settings', [SystemSettingController::class, 'show']);
+    Route::put('/settings', [SystemSettingController::class, 'update']);
+    Route::post('/settings/test-email', [SystemSettingController::class, 'sendTestEmail']);
 });

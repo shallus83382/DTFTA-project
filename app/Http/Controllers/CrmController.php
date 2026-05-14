@@ -16,6 +16,7 @@ use App\Models\FulfillmentService;
 use App\Models\PartnerProfile;
 use App\Models\Product;
 use App\Models\AdminActivityLog;
+use App\Models\BillingCharge;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -23,6 +24,9 @@ use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
 use App\Models\PrintArea;
 use App\Models\ProductVariant;
+use App\Models\CustomProduct;
+use App\Models\Artwork;
+use App\Services\BillingService;
 use Illuminate\Support\Facades\DB;
 
 class CrmController extends Controller
@@ -743,35 +747,66 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         $data['ordersConfig'] = $this->getFeatures()['orders'] ?? [];
         $data['orderStatuses'] = $this->getStatuses()['order_statuses'] ?? [];
+    
         $statuses = ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled'];
-        $jobsByStatus = array_fill_keys($statuses, collect());
+        $allowedStatuses = [
+            'new',
+            'accepted',
+            'pending',
+            'artwork_needed',
+            'in_production',
+            'processing',
+            'shipped',
+            'cancelled',
+            'failed',
+            'exception',
+            'billing_pending',
+            'billing_required',
+            'billing_issue',
+            'payment_pending',
+            'payment_required',
+            'issue',
+        ];
+    
+        $jobsByStatus = [];
+        foreach ($statuses as $status) {
+            $jobsByStatus[$status] = collect();
+        }
+    
         $jobsForBoard = Job::query()
             ->with(['shop', 'order'])
-            ->whereIn('status', ['pending', 'artwork_needed', 'in_production', 'shipped', 'cancelled', 'failed', 'exception'])
-            ->orderBy('created_at', 'desc')
+            ->whereIn('status', $allowedStatuses)
+            ->orderByDesc('created_at')
             ->get();
-
+    
         foreach ($jobsForBoard as $job) {
-            $bucket = in_array($job->status, ['failed', 'exception', 'cancelled'], true)
-                ? 'cancelled'
-                : $job->status;
-
-            if (!array_key_exists($bucket, $jobsByStatus)) {
+            $rawStatus = strtolower((string) $job->status);
+            $bucket = match (true) {
+                in_array($rawStatus, ['new', 'accepted', 'pending', 'billing_pending', 'billing_required', 'billing_issue', 'payment_pending', 'payment_required', 'issue'], true) => 'pending',
+                str_contains($rawStatus, 'billing') || str_contains($rawStatus, 'issue') => 'pending',
+                in_array($rawStatus, ['processing', 'in_production'], true) => 'in_production',
+                in_array($rawStatus, ['failed', 'exception', 'cancelled'], true) => 'cancelled',
+                default => $rawStatus,
+            };
+    
+            if (!isset($jobsByStatus[$bucket])) {
                 continue;
             }
-
+    
             $jobsByStatus[$bucket]->push($job);
         }
-
+    
         $data['jobsByStatus'] = $jobsByStatus;
-        $data['allJobs'] = Job::with('shop', 'order')
-            ->orderBy('created_at', 'desc')
+    
+        $data['allJobs'] = Job::query()
+            ->with(['shop', 'order'])
+            ->whereIn('status', $allowedStatuses)
+            ->orderByDesc('created_at')
             ->paginate(15);
-
+    
         $data['stores'] = Shop::pluck('shop_domain');
-
-        $data['productTypes'] = Job::distinct('job_type')->pluck('job_type');
-
+        $data['productTypes'] = Job::whereNotNull('job_type')->distinct()->pluck('job_type');
+    
         return view('crm.orders', $data);
     }
 
@@ -789,6 +824,16 @@ class CrmController extends Controller
 
         $order = $job->order;
         $data['order'] = $order;
+        $latestBillingCharge = $order
+            ? BillingCharge::query()
+                ->where('order_id', $order->id)
+                ->where('charge_type', 'pre_fulfillment')
+                ->latest('id')
+                ->first()
+            : null;
+        $billingChargeStatus = strtolower((string) ($latestBillingCharge->status ?? ''));
+        $data['billingChargeStatus'] = $billingChargeStatus !== '' ? $billingChargeStatus : null;
+        $data['showRetryBilling'] = in_array($billingChargeStatus, ['pending', 'failed'], true);
 
         $data['orderItems'] = $order->orderItems;
 
@@ -1031,9 +1076,10 @@ class CrmController extends Controller
             'category' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'status' => 'required|in:active,draft,archived,inactive',
+            'price' => 'required|numeric|min:0',
     
             'images' => 'nullable|array',
-            'images.*' => 'nullable|image|max:5120',
+            'images.*' => 'nullable|string|max:5120',
     
             'colors' => 'required|array|min:1',
             'colors.*' => 'required|string|max:100',
@@ -1048,15 +1094,15 @@ class CrmController extends Controller
         $product = null;
     
         DB::transaction(function () use ($request, $validated, &$product) {
-            $imagePaths = [];
+            // $imagePaths = [];
     
-            if ($request->hasFile('images')) {
-                foreach ((array) $request->file('images') as $file) {
-                    if ($file) {
-                        $imagePaths[] = $file->store('products/images', 'public');
-                    }
-                }
-            }
+            // if ($request->hasFile('images')) {
+            //     foreach ((array) $request->file('images') as $file) {
+            //         if ($file) {
+            //             $imagePaths[] = $file->store('products/images', 'public');
+            //         }
+            //     }
+            // }
     
             $product = Product::create([
                 'title' => $validated['title'],
@@ -1065,7 +1111,8 @@ class CrmController extends Controller
                 'category' => $validated['category'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
-                'images' => $imagePaths ?: null,
+                'price' => $validated['price'],
+                'images' => $validated['images'] ?: null,
             ]);
     
             $colors = collect($validated['colors'])
@@ -1086,6 +1133,7 @@ class CrmController extends Controller
                         'sku' => $this->generateProductVariantSku($product, $color, $size),
                         'color' => $color,
                         'size' => $size,
+                        'price' => $validated['price'],
                         'is_active' => true,
                     ]);
                 }
@@ -1120,41 +1168,44 @@ class CrmController extends Controller
             'category' => 'nullable|string|max:255',
             'description' => 'nullable|string',
             'status' => 'required|in:active,draft,archived,inactive',
+            'price' => 'required|numeric|min:0',
     
             'images' => 'nullable|array',
-            'images.*' => 'nullable|image|max:5120',
-            'remove_existing_images' => 'nullable|boolean',
+            'images.*' => 'nullable|string|max:5120',
+          //  'remove_existing_images' => 'nullable|boolean',
     
             'colors' => 'required|array|min:1',
             'colors.*' => 'required|string|max:100',
     
             'sizes' => 'required|array|min:1',
             'sizes.*' => 'required|string|max:100',
+            'variant_prices' => 'nullable|array',
+            'variant_prices.*' => 'nullable|numeric|min:0',
     
             'print_area_ids' => 'nullable|array',
             'print_area_ids.*' => 'integer|exists:print_areas,id',
         ]);
     
         DB::transaction(function () use ($request, $validated, $product) {
-            $existingImages = is_array($product->images) ? $product->images : [];
+            // $existingImages = is_array($product->images) ? $product->images : [];
     
-            if ($request->boolean('remove_existing_images')) {
-                foreach ($existingImages as $path) {
-                    Storage::disk('public')->delete((string) $path);
-                }
-                $existingImages = [];
-            }
+            // if ($request->boolean('remove_existing_images')) {
+            //     foreach ($existingImages as $path) {
+            //         Storage::disk('public')->delete((string) $path);
+            //     }
+            //     $existingImages = [];
+            // }
     
-            $newImagePaths = [];
-            if ($request->hasFile('images')) {
-                foreach ((array) $request->file('images') as $file) {
-                    if ($file) {
-                        $newImagePaths[] = $file->store('products/images', 'public');
-                    }
-                }
-            }
+            // $newImagePaths = [];
+            // if ($request->hasFile('images')) {
+            //     foreach ((array) $request->file('images') as $file) {
+            //         if ($file) {
+            //             $newImagePaths[] = $file->store('products/images', 'public');
+            //         }
+            //     }
+            // }
     
-            $finalImages = array_values(array_filter(array_merge($existingImages, $newImagePaths)));
+            // $finalImages = array_values(array_filter(array_merge($existingImages, $newImagePaths)));
     
             $product->update([
                 'title' => $validated['title'],
@@ -1163,7 +1214,8 @@ class CrmController extends Controller
                 'category' => $validated['category'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
-                'images' => $finalImages ?: null,
+                'price' => $validated['price'],
+                'images' => $validated['images'] ?: null,
             ]);
     
             $colors = collect($validated['colors'])
@@ -1200,14 +1252,17 @@ class CrmController extends Controller
     
                 if ($existingVariants->has($key)) {
                     $variant = $existingVariants->get($key);
+                    $variantPrice = data_get($validated, 'variant_prices.' . $variant->id);
                     $variant->update([
                         'is_active' => true,
+                        'price' => $variantPrice !== null ? $variantPrice : ($variant->price ?? $validated['price']),
                     ]);
                 } else {
                     $variant = $product->variants()->create([
                         'sku' => $this->generateProductVariantSku($product, $combo['color'], $combo['size']),
                         'color' => $combo['color'],
                         'size' => $combo['size'],
+                        'price' => $validated['price'],
                         'is_active' => true,
                     ]);
                 }
@@ -1539,19 +1594,274 @@ class CrmController extends Controller
         $data = $this->prepareViewData();
         $order = Order::with('shop', 'orderItems', 'shipments')->findOrFail($orderId);
         $data['order'] = $order;
+        $latestBillingCharge = BillingCharge::query()
+            ->where('order_id', $order->id)
+            ->where('charge_type', 'pre_fulfillment')
+            ->latest('id')
+            ->first();
+        $billingChargeStatus = strtolower((string) ($latestBillingCharge->status ?? ''));
+        $data['billingChargeStatus'] = $billingChargeStatus !== '' ? $billingChargeStatus : null;
+        $data['showRetryBilling'] = in_array($billingChargeStatus, ['pending', 'failed'], true);
+
+        $extractTemplateId = function (OrderItem $item): ?string {
+            $properties = is_array($item->properties) ? $item->properties : [];
+            $payload = is_array($item->payload) ? $item->payload : [];
+
+            $candidates = [
+                $properties['_dtfta_template_id'] ?? null,
+                $properties['dtfta_template_id'] ?? null,
+                $properties['templateId'] ?? null,
+                data_get($payload, 'properties._dtfta_template_id'),
+                data_get($payload, 'properties.dtfta_template_id'),
+                data_get($payload, 'templateId'),
+            ];
+
+            foreach ($candidates as $candidate) {
+                $value = trim((string) $candidate);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+
+            return null;
+        };
+
+        $templateIds = $order->orderItems
+            ->map(fn (OrderItem $item) => $extractTemplateId($item))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $customProducts = CustomProduct::with([
+            'variants.artworks',
+            'artworks',
+        ])
+            ->where(function ($query) use ($templateIds) {
+                $query->whereIn('id', $templateIds->all())
+                    ->orWhereIn('product_key', $templateIds->all());
+            })
+            ->get();
+
+        $customProductsById = $customProducts->keyBy(fn ($cp) => (string) $cp->id);
+        $customProductsByKey = $customProducts->keyBy(fn ($cp) => (string) $cp->product_key);
+        $libraryArtworkIds = $customProducts
+            ->flatMap(function ($customProduct) {
+                $customArtworks = collect($customProduct->artworks ?? [])
+                    ->merge(collect($customProduct->variants ?? [])->flatMap(fn ($variant) => $variant->artworks ?? []));
+
+                return $customArtworks->map(function ($artwork) {
+                    $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+                    return trim((string) (
+                        $meta['legacy_artwork_id']
+                        ?? $meta['library_artwork_id']
+                        ?? ''
+                    ));
+                });
+            })
+            ->filter(fn ($id) => $id !== '' && ctype_digit($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $libraryArtworkUrlById = Artwork::query()
+            ->when($order->shop_id, fn ($query) => $query->where('shop_id', $order->shop_id))
+            ->whereIn('id', $libraryArtworkIds->all())
+            ->get(['id', 'url'])
+            ->mapWithKeys(fn ($artwork) => [(string) $artwork->id => (string) $artwork->url])
+            ->all();
+
+        $data['orderItemCustomDetails'] = $order->orderItems->mapWithKeys(function (OrderItem $item) use ($extractTemplateId, $customProductsById, $customProductsByKey, $libraryArtworkUrlById, $order) {
+            $properties = is_array($item->properties) ? $item->properties : [];
+            $templateId = $extractTemplateId($item);
+            $customProduct = $templateId ? ($customProductsById->get($templateId) ?? $customProductsByKey->get($templateId)) : null;
+
+            $variantIdCandidate = trim((string) ($properties['_dtfta_variant_id'] ?? $properties['dtfta_variant_id'] ?? $properties['custom_product_variant_id'] ?? ''));
+            $customVariant = null;
+
+            if ($customProduct) {
+                $variants = $customProduct->variants ?? collect();
+
+                if ($variantIdCandidate !== '') {
+                    $customVariant = $variants->first(function ($variant) use ($variantIdCandidate) {
+                        return (string) $variant->id === $variantIdCandidate
+                            || (string) $variant->shopify_variant_id === $variantIdCandidate
+                            || (string) $variant->product_variant_id === $variantIdCandidate;
+                    });
+                }
+
+                if (!$customVariant && $item->sku) {
+                    $customVariant = $variants->first(fn ($variant) => strcasecmp((string) $variant->sku, (string) $item->sku) === 0);
+                }
+            }
+
+            $artworks = $customVariant?->artworks
+                ?? $customProduct?->artworks
+                ?? collect();
+
+            return [
+                $item->id => [
+                    'template_id' => $templateId,
+                    'custom_product_id' => $customProduct?->id,
+                    'product_variant_id' => $customVariant?->product_variant_id,
+                    'custom_product_variant_id' => $customVariant?->id,
+                    'layer_artworks' => $this->buildCrmOrderItemLayerArtworkRows(
+                        $artworks,
+                        (int) ($order->shop_id ?? 0),
+                        $libraryArtworkUrlById
+                    ),
+                    'library_artworks' => $artworks
+                        ->map(function ($artwork) use ($libraryArtworkUrlById) {
+                            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+                            $libraryArtworkId = trim((string) (
+                                $meta['legacy_artwork_id']
+                                ?? $meta['library_artwork_id']
+                                ?? ''
+                            ));
+                            if ($libraryArtworkId === '') {
+                                return null;
+                            }
+
+                            $libraryArtworkUrl = trim((string) ($libraryArtworkUrlById[$libraryArtworkId] ?? ''));
+                            if ($libraryArtworkUrl === '') {
+                                return null;
+                            }
+
+                            $layersMeta = $meta['layers_meta'] ?? null;
+                            $layersMeta = is_array($layersMeta) && $layersMeta !== [] ? array_values($layersMeta) : null;
+
+                            return [
+                                'placement' => strtolower(trim((string) ($artwork->placement ?? ''))),
+                                'id' => $libraryArtworkId,
+                                'url' => $libraryArtworkUrl,
+                                'layers_meta' => $layersMeta,
+                            ];
+                        })
+                        ->filter()
+                        ->unique(fn ($item) => ($item['placement'] ?? '') . '|' . ($item['id'] ?? '') . '|' . ($item['url'] ?? ''))
+                        ->values()
+                        ->all(),
+                    'custom_artworks' => $artworks
+                        ->map(function ($artwork) {
+                            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+                            $libraryArtworkId = trim((string) (
+                                $meta['legacy_artwork_id']
+                                ?? $meta['library_artwork_id']
+                                ?? ''
+                            ));
+                            if ($libraryArtworkId !== '') {
+                                return null;
+                            }
+
+                            $customArtworkUrl = trim((string) (
+                                $meta['custom_artwork_url']
+                                ?? $meta['custom_artwork_source']
+                                ?? ''
+                            ));
+                            if ($customArtworkUrl === '') {
+                                return null;
+                            }
+
+                            $layersMeta = $meta['layers_meta'] ?? null;
+                            $layersMeta = is_array($layersMeta) && $layersMeta !== [] ? array_values($layersMeta) : null;
+
+                            return [
+                                'placement' => strtolower(trim((string) ($artwork->placement ?? ''))),
+                                'url' => $customArtworkUrl,
+                                'layers_meta' => $layersMeta,
+                            ];
+                        })
+                        ->filter()
+                        ->unique(fn ($item) => ($item['placement'] ?? '') . '|' . ($item['url'] ?? ''))
+                        ->values()
+                        ->all(),
+                ],
+            ];
+        })->all();
 
         $data['jobs'] = Job::where('order_id', $orderId)
             ->with('shop')
             ->get();
 
-        $data['activityLog'] = AdminActivityLog::where('model_type', 'Order')
-            ->where('model_id', $orderId)
+        $jobIdsForOrder = $data['jobs']->pluck('id')->filter()->values()->all();
+        $shipmentIdsForOrder = Shipment::where('order_id', $orderId)->pluck('id')->all();
+
+        $data['activityLog'] = AdminActivityLog::query()
+            ->where(function ($query) use ($orderId, $jobIdsForOrder, $shipmentIdsForOrder) {
+                $query->where(function ($orderQuery) use ($orderId) {
+                    $orderQuery->where('model_type', 'Order')
+                        ->where('model_id', $orderId);
+                });
+
+                if (!empty($jobIdsForOrder)) {
+                    $query->orWhere(function ($jobQuery) use ($jobIdsForOrder) {
+                        $jobQuery->where('model_type', 'Job')
+                            ->whereIn('model_id', $jobIdsForOrder);
+                    });
+                }
+
+                if (!empty($shipmentIdsForOrder)) {
+                    $query->orWhere(function ($shipmentQuery) use ($shipmentIdsForOrder) {
+                        $shipmentQuery->where('model_type', 'Shipment')
+                            ->whereIn('model_id', $shipmentIdsForOrder);
+                    });
+                }
+            })
             ->with('user')
             ->orderBy('created_at', 'desc')
             ->paginate(10, ['*'], 'activity_page')
             ->appends(request()->query());
 
         return view('crm.order-detail', $data);
+    }
+
+    /**
+     * API: Retry billing for an order
+     */
+    public function retryBilling(Request $request, BillingService $billingService): JsonResponse
+    {
+        $validated = $request->validate([
+            'order_id' => ['required', 'integer', Rule::exists('orders', 'id')],
+        ]);
+
+        $order = Order::with('shop')->findOrFail((int) $validated['order_id']);
+        $shop = $order->shop;
+
+        if (!$shop) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shop not found for this order.',
+            ], 422);
+        }
+
+        $latestCharge = BillingCharge::query()
+            ->where('order_id', $order->id)
+            ->where('charge_type', 'pre_fulfillment')
+            ->latest('id')
+            ->first();
+
+        if ($latestCharge && $latestCharge->status === 'accepted') {
+            return response()->json([
+                'success' => true,
+                'message' => 'Billing is already paid for this order.',
+                'data' => [
+                    'billing_status' => 'accepted',
+                    'show_retry_button' => false,
+                ],
+            ]);
+        }
+
+        $result = $billingService->chargePreFulfillment($shop, $order);
+        $latestStatus = strtolower((string) data_get($result, 'data.billing_charge.status', ''));
+        $isAccepted = ($result['success'] ?? false) === true || $latestStatus === 'accepted';
+
+        return response()->json([
+            'success' => $isAccepted,
+            'message' => $result['message'] ?? ($isAccepted ? 'Billing retry succeeded.' : 'Billing retry failed.'),
+            'data' => [
+                'billing_status' => $latestStatus !== '' ? $latestStatus : ($isAccepted ? 'accepted' : 'failed'),
+                'show_retry_button' => !$isAccepted,
+            ],
+            'errors' => $result['errors'] ?? [],
+        ], $isAccepted ? 200 : (($result['status'] ?? 422)));
     }
 
     /**
@@ -1562,40 +1872,76 @@ class CrmController extends Controller
         $id = $request->input('id');
         $type = $request->input('type');
         $status = $request->input('status');
-
+    
+        $allowedStatuses = [
+            'pending',
+            'artwork_needed',
+            'in_production',
+            'shipped',
+            'cancelled',
+            'failed',
+            'exception',
+        ];
+    
+        if (!in_array($status, $allowedStatuses, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid status.',
+            ], 422);
+        }
+    
         try {
             if ($type === 'job') {
                 $job = Job::findOrFail($id);
-                $job->update(['status' => $status]);
-                if ($job->order_id) {
-                    $order = Order::find($job->order_id);
-                    if ($order) {
-                        $order->update(['fulfillment_status' => $status]);
-                    }
-                }
+                $job->update([
+                    'status' => $status,
+                ]);
+    
                 AdminActivityLog::logActivity(
                     auth()->id(),
-                    'Updated Status to ' . $status,
+                    'Updated Job Status to ' . $status,
                     'Job',
-                    $id
+                    $job->id
                 );
-
-                return response()->json(['success' => true, 'message' => 'Job status updated successfully', 'status' => $status]);
+    
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Job status updated successfully',
+                    'status' => $status,
+                    'job_id' => $job->id,
+                ]);
             }
-
-            $order = Order::findOrFail($id);
-            $order->update(['fulfillment_status' => $status]);
-            Job::where('order_id', $order->id)->update(['status' => $status]);
-            AdminActivityLog::logActivity(
-                auth()->id(),
-                'Updated Status to ' . $status,
-                'Order',
-                $id
-            );
-
-            return response()->json(['success' => true, 'message' => 'Order status updated successfully', 'status' => $status]);
+    
+            if ($type === 'order') {
+                $order = Order::findOrFail($id);
+                $order->update([
+                    'fulfillment_status' => $status,
+                ]);
+    
+                AdminActivityLog::logActivity(
+                    auth()->id(),
+                    'Updated Order Status to ' . $status,
+                    'Order',
+                    $order->id
+                );
+    
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Order status updated successfully',
+                    'status' => $status,
+                    'order_id' => $order->id,
+                ]);
+            }
+    
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid type.',
+            ], 422);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 400);
         }
     }
 
@@ -1610,12 +1956,34 @@ class CrmController extends Controller
         $page = max(1, (int) $request->input('page', 1));
 
         try {
-            $activities = AdminActivityLog::where('model_id', $id);
-
             if ($type === 'job') {
-                $activities = $activities->where('model_type', 'Job');
+                $activities = AdminActivityLog::query()
+                    ->where('model_type', 'Job')
+                    ->where('model_id', $id);
             } else {
-                $activities = $activities->where('model_type', 'Order');
+                $jobIds = Job::where('order_id', $id)->pluck('id')->all();
+                $shipmentIds = Shipment::where('order_id', $id)->pluck('id')->all();
+                $activities = AdminActivityLog::query()
+                    ->where(function ($query) use ($id, $jobIds, $shipmentIds) {
+                        $query->where(function ($orderQuery) use ($id) {
+                            $orderQuery->where('model_type', 'Order')
+                                ->where('model_id', $id);
+                        });
+
+                    if (!empty($jobIds)) {
+                            $query->orWhere(function ($jobQuery) use ($jobIds) {
+                                $jobQuery->where('model_type', 'Job')
+                                    ->whereIn('model_id', $jobIds);
+                            });
+                        }
+
+                        if (!empty($shipmentIds)) {
+                            $query->orWhere(function ($shipmentQuery) use ($shipmentIds) {
+                                $shipmentQuery->where('model_type', 'Shipment')
+                                    ->whereIn('model_id', $shipmentIds);
+                            });
+                        }
+                    });
             }
 
             $paginated = $activities
@@ -1783,5 +2151,86 @@ class CrmController extends Controller
             'success' => true,
             'unread_count' => $this->computeUnreadCount($user->notification_last_read_at),
         ]);
+    }
+
+    /**
+     * CRM order detail: one row per layer meta entry that references a shop Artwork id, with URL resolved from artworks.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\CustomProductArtwork>  $artworks
+     * @return array<int, array{placement: string, artwork_id: string, artwork_url: ?string, layer: array<string, mixed>}>
+     */
+    private function buildCrmOrderItemLayerArtworkRows(iterable $artworks, int $shopId, array $prefetchedUrlById): array
+    {
+        $artworks = collect($artworks);
+        $urlById = [];
+        foreach ($prefetchedUrlById as $key => $value) {
+            $urlById[(string) $key] = trim((string) $value);
+        }
+
+        $neededIds = [];
+        foreach ($artworks as $artwork) {
+            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+            foreach ((array) ($meta['layers_meta'] ?? []) as $layer) {
+                if (! is_array($layer)) {
+                    continue;
+                }
+                $aid = trim((string) (
+                    $layer['library_artwork_id'] ?? $layer['artwork_id']
+                    ?? $layer['libraryArtworkId'] ?? $layer['artworkId'] ?? ''
+                ));
+                if ($aid !== '' && ctype_digit($aid)) {
+                    $neededIds[$aid] = true;
+                }
+            }
+        }
+
+        $missingIds = [];
+        foreach (array_keys($neededIds) as $id) {
+            if (($urlById[$id] ?? '') === '') {
+                $missingIds[] = (int) $id;
+            }
+        }
+
+        if ($missingIds !== [] && $shopId > 0) {
+            $fetched = Artwork::query()
+                ->where('shop_id', $shopId)
+                ->whereIn('id', $missingIds)
+                ->get(['id', 'url']);
+            foreach ($fetched as $row) {
+                $urlById[(string) $row->id] = trim((string) ($row->url ?? ''));
+            }
+        }
+
+        $out = [];
+        foreach ($artworks as $artwork) {
+            $meta = is_array($artwork->meta ?? null) ? $artwork->meta : [];
+            $layers = $meta['layers_meta'] ?? null;
+            if (! is_array($layers) || $layers === []) {
+                continue;
+            }
+            $placement = strtolower(trim((string) ($artwork->placement ?? '')));
+            foreach ($layers as $layer) {
+                if (! is_array($layer)) {
+                    continue;
+                }
+                $aid = trim((string) (
+                    $layer['library_artwork_id'] ?? $layer['artwork_id']
+                    ?? $layer['libraryArtworkId'] ?? $layer['artworkId'] ?? ''
+                ));
+                if ($aid === '' || ! ctype_digit($aid)) {
+                    continue;
+                }
+                $url = $urlById[$aid] ?? null;
+                $url = ($url !== null && $url !== '') ? $url : null;
+                $out[] = [
+                    'placement' => $placement,
+                    'artwork_id' => $aid,
+                    'artwork_url' => $url,
+                    'layer' => $layer,
+                ];
+            }
+        }
+
+        return $out;
     }
 }

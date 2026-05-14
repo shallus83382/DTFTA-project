@@ -26,7 +26,7 @@ class CustomProduct extends Model
         'tags' => 'array',
         'options' => 'array',
         'print_areas' => 'array',
-        'print_plan' => 'array',
+        'print_plan' => 'string',
     ];
 
     public function variants()

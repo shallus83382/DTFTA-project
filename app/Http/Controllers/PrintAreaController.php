@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\PrintArea;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\CrmController;
+use Illuminate\Validation\Rule;
 
 class PrintAreaController extends CrmController
 {
@@ -70,31 +71,35 @@ class PrintAreaController extends CrmController
     // Store
     public function store(Request $request)
     {
+        $minWidth = (float) config('crm.features.print_areas.constraints.width.min', 1);
+        $maxWidth = (float) config('crm.features.print_areas.constraints.width.max', 1000);
+        $minHeight = (float) config('crm.features.print_areas.constraints.height.min', 1);
+        $maxHeight = (float) config('crm.features.print_areas.constraints.height.max', 1000);
+        $allowedUnits = config('crm.features.print_areas.constraints.allowed_units', ['mm', 'cm', 'in', 'px']);
 
         $request->validate([
             'print_areas' => 'nullable|array',
             'print_areas.*.title' => 'nullable|string|max:255',
-            'print_areas.*.area_width' => 'nullable|numeric|min:0',
-            'print_areas.*.area_height' => 'nullable|numeric|min:0',
-            'print_areas.*.unit' => 'nullable|in:mm,cm,in,px',
+            'print_areas.*.area_width' => "required|numeric|between:{$minWidth},{$maxWidth}",
+            'print_areas.*.area_height' => "required|numeric|between:{$minHeight},{$maxHeight}",
+            'print_areas.*.unit' => ['required', Rule::in($allowedUnits)],
             'print_areas.*.position_x' => 'nullable|numeric',
             'print_areas.*.position_y' => 'nullable|numeric',
             'print_areas.*.tshirt_size' => 'nullable|string|max:50',
             'print_areas.*.display_order' => 'nullable|integer|min:0',
             'print_areas.*.is_active' => 'nullable|boolean',
-            'print_area_images' => 'nullable|array',
-            'print_area_images.*' => 'nullable|image|max:5120',
+            'print_area.*.images' => 'nullable|array',
+            'print_area.*.images.*' => 'nullable|image|max:5120',
         ]);
 
         if ($request->has('print_areas')) {
 
             foreach ($request->print_areas as $index => $area) {
-
-                if ($request->hasFile("print_area_images.$index")) {
-                    $image = $request->file("print_area_images.$index")
-                        ->store('print_areas', 'public');
-                    $area['images'] = $image; 
-                }
+                // if ($request->hasFile("print_area_images.$index")) {
+                //     $image = $request->file("print_area_images.$index")
+                //         ->store('print_areas', 'public');
+                //     $area['images'] = $image; 
+                // }
 
 
                 PrintArea::create($area);
@@ -124,34 +129,39 @@ class PrintAreaController extends CrmController
 public function update(Request $request, $id)
 {
     $printArea = PrintArea::findOrFail($id);
+    $minWidth = (float) config('crm.features.print_areas.constraints.width.min', 1);
+    $maxWidth = (float) config('crm.features.print_areas.constraints.width.max', 1000);
+    $minHeight = (float) config('crm.features.print_areas.constraints.height.min', 1);
+    $maxHeight = (float) config('crm.features.print_areas.constraints.height.max', 1000);
+    $allowedUnits = config('crm.features.print_areas.constraints.allowed_units', ['mm', 'cm', 'in', 'px']);
 
     $request->validate([
         'print_areas.0.title' => 'nullable|string|max:255',
-        'print_areas.0.area_width' => 'nullable|numeric|min:0',
-        'print_areas.0.area_height' => 'nullable|numeric|min:0',
-        'print_areas.0.unit' => 'nullable|in:mm,cm,in,px',
+        'print_areas.0.area_width' => "required|numeric|between:{$minWidth},{$maxWidth}",
+        'print_areas.0.area_height' => "required|numeric|between:{$minHeight},{$maxHeight}",
+        'print_areas.0.unit' => ['required', Rule::in($allowedUnits)],
         'print_areas.0.position_x' => 'nullable|numeric',
         'print_areas.0.position_y' => 'nullable|numeric',
         'print_areas.0.tshirt_size' => 'nullable|string|max:50',
         'print_areas.0.display_order' => 'nullable|integer|min:0',
         'print_areas.0.is_active' => 'nullable|in:0,1',
-        'print_area_images.0' => 'nullable|image|max:5120',
+        'print_area.0.images.0' => 'nullable|image|max:5120',
     ]);
 
     $areaData = $request->print_areas[0];
 
     // ✅ Handle New Image Upload (ONLY THIS)
-    if ($request->hasFile('print_area_images.0')) {
+    // if ($request->hasFile('print_area_images.0')) {
 
-        // Delete old image if exists
-        if ($printArea->images && Storage::disk('public')->exists($printArea->images)) {
-            Storage::disk('public')->delete($printArea->images);
-        }
+    //     // Delete old image if exists
+    //     if ($printArea->images && Storage::disk('public')->exists($printArea->images)) {
+    //         Storage::disk('public')->delete($printArea->images);
+    //     }
 
-        // Store new image
-        $areaData['images'] = $request->file('print_area_images.0')
-            ->store('print_areas', 'public');
-    }
+    //     // Store new image
+    //     $areaData['images'] = $request->file('print_area_images.0')
+    //         ->store('print_areas', 'public');
+    // }
 
     $printArea->update($areaData);
 
@@ -164,10 +174,10 @@ public function update(Request $request, $id)
 {
     $printArea = PrintArea::findOrFail($id);
 
-    // Delete image from storage
-    if ($printArea->images && Storage::disk('public')->exists($printArea->images)) {
-        Storage::disk('public')->delete($printArea->images);
-    }
+    // // Delete image from storage
+    // if ($printArea->images && Storage::disk('public')->exists($printArea->images)) {
+    //     Storage::disk('public')->delete($printArea->images);
+    // }
 
     $printArea->delete();
 

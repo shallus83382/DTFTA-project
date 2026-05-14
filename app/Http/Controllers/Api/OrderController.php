@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\AdminActivityLog;
 use App\Models\Order;
 
 class OrderController extends Controller
@@ -65,6 +66,13 @@ class OrderController extends Controller
                 'shop_id' => $data['shop_id']
             ],
             $data
+        );
+
+        AdminActivityLog::logActivity(
+            auth()->id(),
+            $order->wasRecentlyCreated ? 'Created Order via API' : 'Updated Order via API',
+            'Order',
+            $order->id
         );
 
         return response()->json([
@@ -191,6 +199,12 @@ class OrderController extends Controller
 
         if (!empty($updates)) {
             $order->update($updates);
+            AdminActivityLog::logActivity(
+                auth()->id(),
+                'Updated Order via API',
+                'Order',
+                $order->id
+            );
         }
 
         return response()->json([
@@ -216,6 +230,12 @@ class OrderController extends Controller
         }
 
         $order->delete();
+        AdminActivityLog::logActivity(
+            auth()->id(),
+            'Deleted Order via API',
+            'Order',
+            $order->id
+        );
 
         return response()->json([
             'success' => true,

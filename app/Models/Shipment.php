@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\BillingCharge;
 
 class Shipment extends Model
 {
@@ -52,5 +53,10 @@ class Shipment extends Model
     public function fulfillmentService()
     {
         return $this->belongsTo(FulfillmentService::class);
+    }
+
+    public function billingCharges()
+    {
+        return $this->hasMany(BillingCharge::class);
     }
 }

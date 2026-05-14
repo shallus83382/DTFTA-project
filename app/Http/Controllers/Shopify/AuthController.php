@@ -71,25 +71,28 @@ class AuthController extends Controller
     {
         $payload = $request->all();
         $token = trim((string) ($payload['shopify_access_token'] ?? ''));
+    
         if ($token === '') {
             Log::warning('Signed install rejected: missing shopify_access_token', [
                 'shop' => $shop,
             ]);
+    
             return response()->json([
                 'success' => false,
-                'message' => 'shopify_access_token is required for signed payload install.'
+                'message' => 'shopify_access_token is required for signed payload install.',
             ], 422);
         }
-
+    
         try {
             $versionsToTry = array_values(array_unique(array_filter([
                 (string) config('services.shopify.api_version', '2025-10'),
                 (string) config('services.shopify.webhook_api_version', '2026-04'),
                 '2026-04',
             ])));
-
+    
             $tokenValid = false;
             $validationErrors = [];
+    
             foreach ($versionsToTry as $version) {
                 $tokenValidation = Http::withHeaders([
                     'X-Shopify-Access-Token' => $token,
@@ -101,29 +104,30 @@ class AuthController extends Controller
                     ->post("https://{$shop}/admin/api/{$version}/graphql.json", [
                         'query' => '{ shop { id myshopifyDomain } }',
                     ]);
-
+    
                 if ($tokenValidation->successful()) {
                     $hasShopData = (bool) data_get($tokenValidation->json(), 'data.shop.id');
                     $hasErrors = !empty(data_get($tokenValidation->json(), 'errors', []));
+    
                     if ($hasShopData && !$hasErrors) {
                         $tokenValid = true;
                         break;
                     }
                 }
-
+    
                 $validationErrors[] = [
                     'version' => $version,
                     'status' => $tokenValidation->status(),
                     'response' => $tokenValidation->body(),
                 ];
             }
-
+    
             if (!$tokenValid) {
                 Log::warning('Signed install rejected: invalid Shopify access token', [
                     'shop' => $shop,
                     'attempts' => $validationErrors,
                 ]);
-
+    
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid shopify_access_token for this shop.',
@@ -135,21 +139,22 @@ class AuthController extends Controller
                 'shop' => $shop,
                 'error' => $e->getMessage(),
             ]);
-
+    
             return response()->json([
                 'success' => false,
                 'message' => 'Unable to validate shopify_access_token at this time.',
                 'shop' => $shop,
             ], 502);
         }
-
+    
         $status = strtolower(trim((string) ($payload['status'] ?? 'active')));
         if (!in_array($status, ['active', 'inactive', 'suspended', 'uninstalled'], true)) {
             $status = 'active';
         }
-
+    
         $installedAtInput = trim((string) ($payload['installed_at'] ?? ''));
         $installedAt = now();
+    
         if ($installedAtInput !== '') {
             try {
                 $installedAt = \Carbon\Carbon::parse($installedAtInput);
@@ -157,7 +162,7 @@ class AuthController extends Controller
                 $installedAt = now();
             }
         }
-
+    
         $shopData = [
             'store_id' => isset($payload['store_id']) ? (string) $payload['store_id'] : null,
             'name' => $payload['shop_name'] ?? ($payload['name'] ?? null),
@@ -169,20 +174,27 @@ class AuthController extends Controller
             'shopify_api_version' => config('services.shopify.api_version', '2025-10'),
             'shopify_webhook_api_version' => config('services.shopify.webhook_api_version', '2026-04'),
             'status' => $status,
+            'billing_status' => 'inactive',
+            'billing_plan_code' => 'usage_per_order',
+            'shopify_billing_subscription_gid' => null,
+            'shopify_billing_line_item_gid' => null,
+            'billing_approved_at' => null,
+            'billing_blocked_reason' => null,
             'installed_at' => $installedAt,
             'uninstalled_at' => null,
         ];
-
+    
         $shopRecord = null;
         $existingShop = Shop::withTrashed()
             ->where('shop_domain', $shop)
             ->orderByDesc('id')
             ->first();
-
+    
         if ($existingShop) {
             if ($existingShop->trashed()) {
                 $restoreCutoff = now()->subDays(30);
                 $deletedAt = $existingShop->deleted_at;
+    
                 if ($deletedAt && $deletedAt->gte($restoreCutoff)) {
                     $existingShop->restore();
                     $existingShop->fill($shopData);
@@ -199,50 +211,68 @@ class AuthController extends Controller
         } else {
             $shopRecord = Shop::create(array_merge(['shop_domain' => $shop], $shopData));
         }
-
+    
         Log::info('Signed install payload saved shop record', [
             'shop' => $shopRecord->shop_domain,
             'shop_id' => $shopRecord->id,
         ]);
-
-        $fulfillmentProvision = null;
+    
+        $provisioning = null;
+        $webhookProvision = null;
+    
         if (
             $shopRecord->status === 'active'
             && !empty($shopRecord->shopify_access_token)
-            && empty($shopRecord->fulfillment_service_id)
         ) {
-            $fulfillmentProvision = $this->shopifyService->ensureFulfillmentServiceAndLocation((int) $shopRecord->id, config('app.url'));
-            if (!($fulfillmentProvision['success'] ?? false)) {
-                Log::warning('Fulfillment provisioning failed after signed payload install', [
+            $provisioning = $this->shopifyService->provisionShopOnInstall(
+                (int) $shopRecord->id,
+                config('app.url')
+            );
+    
+            if (!($provisioning['success'] ?? false)) {
+                Log::warning('Shop provisioning failed after signed payload install', [
                     'shop_id' => $shopRecord->id,
                     'shop_domain' => $shopRecord->shop_domain,
-                    'result' => $fulfillmentProvision,
+                    'result' => $provisioning,
                 ]);
             } else {
                 $shopRecord = $shopRecord->fresh();
             }
         }
-
-        $webhookProvision = $this->shopifyService->ensureRequiredWebhooks((int) $shopRecord->id, config('app.url'));
-        if (!($webhookProvision['success'] ?? false)) {
-            Log::warning('Webhook provisioning partially failed after signed payload install', [
-                'shop_id' => $shopRecord->id,
-                'result' => $webhookProvision,
-            ]);
-        }
-
+    
+        // Optional: keep this only if provisionShopOnInstall does NOT already create webhooks.
+        // If it does, remove this block to avoid duplicate webhook provisioning.
+        // if (!$provisioning || empty(data_get($provisioning, 'data.webhooks'))) {
+        //     $webhookProvision = $this->shopifyService->ensureRequiredWebhooks(
+        //         (int) $shopRecord->id,
+        //         config('app.url')
+        //     );
+    
+        //     if (!($webhookProvision['success'] ?? false)) {
+        //         Log::warning('Webhook provisioning partially failed after signed payload install', [
+        //             'shop_id' => $shopRecord->id,
+        //             'result' => $webhookProvision,
+        //         ]);
+        //     }
+        // }
+    
         Log::info('Signed install flow completed', [
             'shop' => $shopRecord->shop_domain,
             'shop_id' => $shopRecord->id,
-            'fulfillment_provisioned' => (bool) ($fulfillmentProvision['success'] ?? false),
-            'webhooks_provisioned' => (bool) ($webhookProvision['success'] ?? false),
+            'provisioned' => (bool) ($provisioning['success'] ?? false),
+            'fulfillment_provisioned' => !empty($shopRecord->fulfillment_service_id),
+            'shipping_profile_provisioned' => !empty($shopRecord->shipping_profile_id),
+            'webhooks_provisioned' => (bool) (
+                data_get($provisioning, 'data.webhooks')
+                || ($webhookProvision['success'] ?? false)
+            ),
         ]);
-
+    
         return response()->json([
             'success' => true,
             'message' => 'Signed install payload processed successfully.',
-            'data' => $shopRecord,
-            'fulfillment_provisioning' => $fulfillmentProvision,
+            'data' => $shopRecord->fresh(),
+            'provisioning' => $provisioning,
             'webhook_provisioning' => $webhookProvision,
         ]);
     }

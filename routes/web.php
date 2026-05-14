@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Auth\LoginController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\PrintAreaController;
+use App\Http\Controllers\StaticAssetController;
 
 Route::get('/', [CrmController::class, 'landing']);
 
@@ -24,6 +25,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/crm/notifications/recent', [CrmController::class, 'getRealtimeNotifications'])->name('crm.notifications.recent');
     Route::get('/crm/notifications/data', [CrmController::class, 'getNotifications'])->name('crm.notifications.data');
     Route::post('/crm/notifications/mark-read', [CrmController::class, 'markNotificationsRead'])->name('crm.notifications.mark-read');
+
+    Route::get('/asset-categories/{category}/assets', [StaticAssetController::class, 'assetsByCategory']);
 
     Route::get('/crm/dashboard', [CrmController::class, 'dashboard'])->name('crm.dashboard');
     Route::get('/crm/orders', [CrmController::class, 'orders'])->name('crm.orders');

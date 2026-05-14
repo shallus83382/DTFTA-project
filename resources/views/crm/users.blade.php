@@ -5,7 +5,15 @@
 
 @section('content')
 <div class="users-page">
-    <div class="filters-section">
+    <div class="users-hero">
+        <div>
+            <p class="users-eyebrow">Administration</p>
+            <h2>Users Control Center</h2>
+            <p class="users-subtitle">Manage user access, roles, and account lifecycle from one place.</p>
+        </div>
+    </div>
+
+    <div class="filters-section users-filters">
         <div class="filter-group">
             <label>Search</label>
             <input type="text" id="usersSearch" class="filter-select" placeholder="Name or email" value="" autocomplete="off" spellcheck="false">
@@ -27,9 +35,11 @@
                 <option value="0">Inactive</option>
             </select>
         </div>
-        <button class="btn-secondary" type="button" onclick="loadUsers(1)">Apply</button>
-        <button class="btn-secondary" type="button" onclick="clearUsersFilters()">Clear</button>
-        <button class="btn-primary" type="button" onclick="openCreateUserForm()">Add User</button>
+        <div class="users-filter-actions">
+            <button class="btn-secondary" type="button" onclick="loadUsers(1)">Apply</button>
+            <button class="btn-secondary" type="button" onclick="clearUsersFilters()">Clear</button>
+            <button class="btn-primary" type="button" onclick="openCreateUserForm()">Add User</button>
+        </div>
     </div>
 
     <div class="users-form-shell" id="userFormShell" style="display:none;">
@@ -88,7 +98,7 @@
         </div>
     </div>
 
-    <div class="table-container">
+    <div class="table-container users-table-shell">
         <table class="jobs-table">
             <thead>
                 <tr>
@@ -113,25 +123,132 @@
 
 @push('styles')
 <style>
-.users-page .filters-section .filter-select {
-    min-width: 160px;
+.users-page {
+    display: grid;
+    gap: 14px;
+}
+
+.users-page .users-hero {
+    border-radius: 16px;
+    border: 1px solid rgba(96, 165, 250, 0.25);
+    background:
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 46%),
+        linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.96));
+    box-shadow: 0 18px 34px rgba(2, 6, 23, 0.34);
+    padding: 16px 18px;
+}
+
+.users-page .users-eyebrow {
+    margin: 0 0 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #93c5fd;
+    font-weight: 700;
+}
+
+.users-page .users-hero h2 {
+    margin: 0;
+    color: #f8fafc;
+    font-size: 26px;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+.users-page .users-subtitle {
+    margin: 9px 0 0;
+    color: #a9bddb;
+    font-size: 14px;
+}
+
+.users-page .users-filters {
+    margin: 0;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background:
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 48%),
+        linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.92));
+    box-shadow: 0 14px 28px rgba(2, 6, 23, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(170px, 1fr)) auto;
+    gap: 12px;
+    align-items: end;
+}
+
+.users-page .users-filters .filter-group {
+    margin: 0;
+}
+
+.users-page .users-filters .filter-group label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #b5c9e8;
+    font-weight: 700;
+}
+
+.users-page .users-filters .filter-select {
+    height: 42px;
+    min-height: 42px;
+    border-radius: 10px;
+    border-color: rgba(148, 163, 184, 0.32);
+    background-color: rgba(15, 23, 42, 0.8);
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 0;
+}
+
+.users-page .users-filter-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(102px, 1fr));
+    gap: 10px;
+    min-width: 340px;
+}
+
+.users-page .users-filter-actions .btn-secondary,
+.users-page .users-filter-actions .btn-primary {
+    height: 42px;
+    min-height: 42px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 14px;
+    margin: 0;
+    line-height: 1;
+    font-size: 13px;
+    font-weight: 700;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    white-space: nowrap;
+}
+
+.users-page .users-filter-actions .btn-primary {
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.28);
 }
 
 .users-form-shell {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background:
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.09), transparent 45%),
+        linear-gradient(165deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.94));
+    box-shadow: 0 14px 30px rgba(2, 6, 23, 0.28);
     padding: 16px;
-    margin-bottom: 18px;
+    margin-bottom: 2px;
 }
 
 .users-form-header {
-    margin-bottom: 12px;
+    margin-bottom: 14px;
 }
 
 .users-form-header h3 {
-    color: var(--text-primary);
-    font-size: 18px;
+    color: #f8fafc;
+    font-size: 21px;
+    letter-spacing: -0.01em;
 }
 
 .users-form-grid {
@@ -145,6 +262,24 @@
     margin-bottom: 0;
 }
 
+.users-form-shell .form-group label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #a9bddb;
+    font-weight: 700;
+}
+
+.users-form-shell .form-group input,
+.users-form-shell .form-group textarea,
+.users-form-shell .form-group select {
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    background-color: rgba(15, 23, 42, 0.82);
+    color: #f8fafc;
+    font-size: 13px;
+}
+
 .users-form-shell textarea {
     min-height: 84px;
     resize: vertical;
@@ -154,6 +289,19 @@
     display: flex;
     gap: 10px;
     justify-content: flex-end;
+}
+
+.users-form-actions .btn-secondary,
+.users-form-actions .btn-primary {
+    height: 40px;
+    min-height: 40px;
+    min-width: 110px;
+    padding: 0 14px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
 }
 
 .role-pill {
@@ -180,26 +328,89 @@
     color: #6ee7b7;
 }
 
+.users-table-shell {
+    margin-top: 0;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background:
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.08), transparent 44%),
+        linear-gradient(165deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.94));
+    box-shadow: 0 14px 30px rgba(2, 6, 23, 0.28);
+}
+
+.users-table-shell .jobs-table th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #a9bddf;
+    background: rgba(15, 23, 42, 0.52);
+    border-bottom-color: rgba(148, 163, 184, 0.2);
+}
+
+.users-table-shell .jobs-table td {
+    border-bottom-color: rgba(148, 163, 184, 0.15);
+    vertical-align: middle;
+}
+
+.users-table-shell .jobs-table tbody tr:hover {
+    background: linear-gradient(120deg, rgba(59, 130, 246, 0.1), rgba(15, 23, 42, 0.16));
+}
+
+.users-action-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .users-action-btn {
-    background: transparent;
-    border: none;
-    color: var(--accent-blue);
-    font-size: 13px;
-    font-weight: 600;
+    background: linear-gradient(135deg, rgba(71, 85, 105, 0.9), rgba(51, 65, 85, 0.82));
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #e5eefb;
+    font-size: 12px;
+    font-weight: 700;
     cursor: pointer;
-    padding: 0;
-    margin-right: 10px;
+    padding: 0 10px;
+    height: 32px;
+    min-height: 32px;
+    border-radius: 8px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
 }
 
 .users-action-btn:hover {
-    text-decoration: underline;
+    border-color: rgba(125, 211, 252, 0.55);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(37, 99, 235, 0.16));
+    color: #f8fbff;
 }
 
 .users-action-btn.danger {
-    color: #f87171;
+    color: #fee2e2;
+    border-color: rgba(248, 113, 113, 0.4);
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.82), rgba(185, 28, 28, 0.84));
+}
+
+.users-action-btn.danger:hover {
+    border-color: rgba(252, 165, 165, 0.7);
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.94), rgba(220, 38, 38, 0.92));
+}
+
+.users-page .pagination {
+    margin-top: 2px;
 }
 
 @media (max-width: 900px) {
+    .users-page .users-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .users-page .users-filter-actions {
+        grid-template-columns: 1fr;
+        min-width: 0;
+    }
+
     .users-form-grid {
         grid-template-columns: 1fr;
     }
@@ -324,9 +535,11 @@ function renderUsersTable() {
                 <td>${escapeHtml(user.phone || '-')}</td>
                 <td>${escapeHtml(createdAt)}</td>
                 <td>
+                    <div class="users-action-group">
                     <button class="users-action-btn" type="button" onclick="openEditUserForm(${user.id})">Edit</button>
                     <button class="users-action-btn" type="button" onclick="toggleUserStatus(${user.id})">${user.is_active ? 'Deactivate' : 'Activate'}</button>
                     <button class="users-action-btn danger" type="button" onclick="deleteUser(${user.id})">Delete</button>
+                    </div>
                 </td>
             </tr>
         `;

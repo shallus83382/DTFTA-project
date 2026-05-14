@@ -55,6 +55,19 @@ return [
             'enabled' => true,
             'items_per_page' => 10,
             'enable_images' => true,
+            'constraints' => [
+                'unit' => 'px',
+                'allowed_units' => ['mm', 'cm', 'in', 'px'],
+                // Unit-agnostic bounds: allows fractional inches/mm/cm and large px canvases.
+                'width' => [
+                    'min' => 0.001,
+                    'max' => 100000,
+                ],
+                'height' => [
+                    'min' => 0.001,
+                    'max' => 100000,
+                ],
+            ],
         ],
         'products' => [
             'enabled' => true,
@@ -134,6 +147,13 @@ return [
             'label' => 'Notifications',
             'route' => 'crm.notifications',
             'icon' => 'nav-icon-notifications',
+            'visible' => true,
+            'roles' => ['admin', 'manager', 'user'],
+        ],
+        [
+            'label' => 'Settings',
+            'route' => 'crm.settings',
+            'icon' => 'nav-icon-settings',
             'visible' => true,
             'roles' => ['admin', 'manager', 'user'],
         ],

@@ -3,7 +3,226 @@
 @section('title', 'DTFTA CRM - Add Product')
 @section('page-title', 'Add Product')
 
+@push('styles')
+<style>
+    .product-add-page {
+        display: grid;
+        gap: 14px;
+    }
+
+    .product-add-card {
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: linear-gradient(160deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.94));
+        box-shadow: 0 14px 30px rgba(2, 6, 23, 0.26);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .product-add-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(56, 189, 248, 0.28), rgba(45, 212, 191, 0.15), rgba(56, 189, 248, 0.28));
+        pointer-events: none;
+    }
+
+    .product-add-card h3 {
+        margin-bottom: 14px !important;
+        color: #f8fafc;
+        font-size: 24px;
+        line-height: 1.1;
+        letter-spacing: -0.01em;
+    }
+
+    .product-add-card h4 {
+        margin-bottom: 10px !important;
+        color: #e2e8f0;
+        font-size: 17px;
+    }
+
+    .product-add-card p {
+        color: #9fb1cf !important;
+    }
+
+    .product-add-card .filters-section {
+        margin-bottom: 0 !important;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.38));
+        box-shadow: none;
+        gap: 10px;
+    }
+
+    .product-add-card .filter-group {
+        margin-bottom: 0;
+    }
+
+    .product-add-card .filter-group label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #a9bddb;
+        font-weight: 700;
+    }
+
+    .product-add-card .filter-select {
+        border-radius: 10px;
+        border-color: rgba(148, 163, 184, 0.28);
+        background-color: rgba(15, 23, 42, 0.78);
+        color: #f8fafc;
+        font-size: 13px;
+    }
+
+    .product-add-card textarea.filter-select {
+        min-height: 92px;
+    }
+
+    .product-add-card input.filter-select::placeholder,
+    .product-add-card textarea.filter-select::placeholder {
+        color: #7f93b2;
+    }
+
+    .product-add-card .dynamic-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: center;
+    }
+
+    .product-add-card .dynamic-row .filter-select {
+        height: 38px;
+    }
+
+    .product-add-card .btn-primary,
+    .product-add-card .btn-secondary,
+    .product-add-card .btn-danger {
+        border-radius: 10px;
+        font-weight: 700;
+    }
+
+    .product-add-card #variant-preview {
+        padding: 12px !important;
+        border: 1px solid rgba(148, 163, 184, 0.2) !important;
+        border-radius: 10px !important;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.38)) !important;
+        color: #dbeafe;
+    }
+
+    .product-add-card .variant-chip-wrap {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .product-add-card .variant-chip {
+        padding: 6px 11px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        background: linear-gradient(135deg, rgba(51, 65, 85, 0.75), rgba(30, 41, 59, 0.72));
+        color: #e2e8f0;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.2;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .product-add-card .print-area-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 14px;
+    }
+
+    .product-add-card .print-area-section-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #a9bddb;
+        font-weight: 700;
+        margin-bottom: 10px;
+    }
+
+    .product-add-card .print-area-option {
+        position: relative;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        border-color: rgba(96, 165, 250, 0.24) !important;
+        border-radius: 12px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 22px rgba(2, 6, 23, 0.24);
+        transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+        padding: 14px 14px !important;
+        min-height: 112px;
+        overflow: hidden;
+    }
+
+    .product-add-card .print-area-option::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto auto 0;
+        height: 2px;
+        width: 100%;
+        background: linear-gradient(90deg, rgba(59, 130, 246, 0.68), rgba(56, 189, 248, 0.2));
+        opacity: 0.7;
+        pointer-events: none;
+    }
+
+    .product-add-card .print-area-option:hover {
+        border-color: rgba(96, 165, 250, 0.45) !important;
+        transform: translateY(-2px);
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(15, 23, 42, 0.65));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 16px 28px rgba(2, 6, 23, 0.3);
+    }
+
+    .product-add-card .print-area-option.is-selected {
+        border-color: rgba(96, 165, 250, 0.72) !important;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(15, 23, 42, 0.72));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 14px 28px rgba(30, 64, 175, 0.25);
+    }
+
+    .product-add-card .print-area-option strong {
+        color: #f8fafc;
+        font-size: 15px;
+        line-height: 1.2;
+        font-weight: 700;
+    }
+
+    .product-add-card .print-area-content {
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .product-add-card .print-area-meta {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 3px;
+    }
+
+    .product-add-card .print-area-meta-line {
+        font-size: 12px;
+        color: #bfd0e8 !important;
+        line-height: 1.35;
+        letter-spacing: 0.01em;
+        text-transform: none;
+    }
+
+    .product-add-card .print-area-option input[type="checkbox"] {
+        accent-color: #3b82f6;
+        width: 16px;
+        height: 16px;
+        margin-top: 2px !important;
+    }
+</style>
+@endpush
+
 @section('content')
+    <div class="product-add-page">
     @if ($errors->any())
         <div class="chart-card" style="margin-bottom: 16px; border: 1px solid #991b1b;">
             <strong>Validation failed:</strong>
@@ -15,7 +234,7 @@
         </div>
     @endif
 
-    <div class="chart-card">
+    <div class="chart-card product-add-card">
         <h3 style="margin-bottom: 14px;">Create New Product</h3>
 
         <form method="POST" action="{{ route('crm.products.store') }}" enctype="multipart/form-data">
@@ -81,6 +300,20 @@
                     </select>
                 </div>
 
+                <div class="filter-group">
+                    <label for="price">Base Price</label>
+                    <input
+                        id="price"
+                        name="price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        class="filter-select"
+                        value="{{ old('price', '0.00') }}"
+                        required
+                    >
+                </div>
+
                 <div class="filter-group" style="width: 100%;">
                     <label for="description">Description</label>
                     <textarea
@@ -92,18 +325,7 @@
                 </div>
 
                 <div class="filter-group" style="width: 100%;">
-                    <label for="images">Product Images</label>
-                    <input
-                        id="images"
-                        name="images[]"
-                        type="file"
-                        class="filter-select"
-                        accept="image/*"
-                        multiple
-                    >
-                    <small style="display:block; margin-top:6px; color:#6b7280;">
-                        You can upload multiple images.
-                    </small>
+                    <x-asset-selector category-input-name="images[category]" asset-input-name="images[asset_key]" />   
                 </div>
             </div>
 
@@ -113,10 +335,23 @@
             <p style="margin-bottom: 14px; color: #6b7280;">
                 Select colors and sizes. Variants and SKUs will be generated automatically in the backend.
             </p>
+            @php
+                $predefinedColors = collect(config('dtfta.common_colors', []))
+                    ->pluck('name')
+                    ->filter()
+                    ->values()
+                    ->all();
+            @endphp
 
             <div class="filters-section">
                 <div class="filter-group" style="width: 100%;">
                     <label>Colors</label>
+                    <!-- <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                        <select id="predefined-color-select" class="filter-select" style="max-width: 320px;">
+                            <option value="">Select predefined color</option>
+                        </select>
+                        <button type="button" class="btn-secondary" id="add-predefined-color-btn">Add Selected Color</button>
+                    </div> -->
                     <div id="colors-wrapper">
                         @php
                             $oldColors = old('colors', ['']);
@@ -124,14 +359,14 @@
 
                         @foreach($oldColors as $index => $color)
                             <div class="dynamic-row color-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
-                                <input
-                                    type="text"
-                                    name="colors[]"
-                                    class="filter-select"
-                                    value="{{ $color }}"
-                                    placeholder="e.g. Black"
-                                    required
-                                >
+                                <select name="colors[]" class="filter-select" required>
+                                    <option value="">Select color</option>
+                                    @foreach($predefinedColors as $predefinedColor)
+                                        <option value="{{ $predefinedColor }}" {{ $color === $predefinedColor ? 'selected' : '' }}>
+                                            {{ $predefinedColor }}
+                                        </option>
+                                    @endforeach
+                                </select>
                                 <button type="button" class="btn-danger remove-row-btn">Remove</button>
                             </div>
                         @endforeach
@@ -177,40 +412,37 @@
 
             <div class="filters-section">
                 <div class="filter-group" style="width: 100%;">
-                    <label for="print_area_ids">Available Print Areas</label>
+                    <label for="print_area_ids" class="print-area-section-title">Available Print Areas</label>
 
                     @if($printAreas->count())
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+                        <div class="print-area-grid">
                             @foreach ($printAreas as $printArea)
-                                <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px;">
+                                @php
+                                    $isSelected = in_array($printArea->id, old('print_area_ids', []));
+                                @endphp
+                                <label class="print-area-option {{ $isSelected ? 'is-selected' : '' }}">
                                     <input
                                         type="checkbox"
                                         name="print_area_ids[]"
                                         value="{{ $printArea->id }}"
-                                        {{ in_array($printArea->id, old('print_area_ids', [])) ? 'checked' : '' }}
-                                        style="margin-top: 4px;"
+                                        {{ $isSelected ? 'checked' : '' }}
                                     >
 
-                                    <span>
-                                        <strong>{{ $printArea->title ?: 'Untitled Area' }}</strong><br>
+                                    <span class="print-area-content">
+                                        <strong>{{ $printArea->title ?: 'Untitled Area' }}</strong>
 
-                                        <small style="color:#6b7280;">
-                                            Size:
-                                            {{ $printArea->area_width ?? '-' }}
-                                            x
-                                            {{ $printArea->area_height ?? '-' }}
-                                            {{ $printArea->unit ?? '' }}
-                                        </small><br>
+                                        <span class="print-area-meta">
+                                            <small class="print-area-meta-line">
+                                                Size: {{ $printArea->area_width ?? '-' }} x {{ $printArea->area_height ?? '-' }} {{ $printArea->unit ?? '' }}
+                                            </small>
 
-                                        <small style="color:#6b7280;">
-                                            Position:
-                                            X {{ $printArea->position_x ?? '-' }},
-                                            Y {{ $printArea->position_y ?? '-' }}
-                                        </small>
+                                            <small class="print-area-meta-line">
+                                                Position: X {{ $printArea->position_x ?? '-' }}, Y {{ $printArea->position_y ?? '-' }}
+                                            </small>
+                                        </span>
 
                                         @if($printArea->tshirt_size)
-                                            <br>
-                                            <small style="color:#6b7280;">
+                                            <small class="print-area-meta-line">
                                                 Garment Size: {{ $printArea->tshirt_size }}
                                             </small>
                                         @endif
@@ -219,7 +451,7 @@
                             @endforeach
                         </div>
                     @else
-                        <div style="padding: 12px; border: 1px dashed #d1d5db; border-radius: 8px; color: #6b7280;">
+                        <div style="padding: 14px; border: 1px dashed rgba(148, 163, 184, 0.45); border-radius: 10px; color: #9fb1cf;">
                             No print areas available.
                         </div>
                     @endif
@@ -243,6 +475,7 @@
             </div>
         </form>
     </div>
+    </div>
 
     @push('scripts')
     <script>
@@ -250,8 +483,11 @@
             const colorsWrapper = document.getElementById('colors-wrapper');
             const sizesWrapper = document.getElementById('sizes-wrapper');
             const addColorBtn = document.getElementById('add-color-btn');
+            const addPredefinedColorBtn = document.getElementById('add-predefined-color-btn');
+            const predefinedColorSelect = document.getElementById('predefined-color-select');
             const addSizeBtn = document.getElementById('add-size-btn');
             const variantPreview = document.getElementById('variant-preview');
+            const predefinedColors = @json($predefinedColors);
 
             function makeRow(name, placeholder, rowClass) {
                 const row = document.createElement('div');
@@ -260,16 +496,27 @@
                 row.style.gap = '10px';
                 row.style.marginBottom = '10px';
 
-                row.innerHTML = `
-                    <input
-                        type="text"
-                        name="${name}[]"
-                        class="filter-select"
-                        placeholder="${placeholder}"
-                        required
-                    >
-                    <button type="button" class="btn-danger remove-row-btn">Remove</button>
-                `;
+                if (name === 'colors') {
+                    const optionsHtml = predefinedColors.map(color => `<option value="${color}">${color}</option>`).join('');
+                    row.innerHTML = `
+                        <select name="colors[]" class="filter-select" required>
+                            <option value="">Select color</option>
+                            ${optionsHtml}
+                        </select>
+                        <button type="button" class="btn-danger remove-row-btn">Remove</button>
+                    `;
+                } else {
+                    row.innerHTML = `
+                        <input
+                            type="text"
+                            name="${name}[]"
+                            class="filter-select"
+                            placeholder="${placeholder}"
+                            required
+                        >
+                        <button type="button" class="btn-danger remove-row-btn">Remove</button>
+                    `;
+                }
 
                 return row;
             }
@@ -283,7 +530,7 @@
                         if (parent.querySelectorAll('.dynamic-row').length > 1) {
                             row.remove();
                         } else {
-                            const input = row.querySelector('input');
+                            const input = row.querySelector('input, select');
                             if (input) input.value = '';
                         }
 
@@ -300,7 +547,7 @@
             }
 
             function updateVariantPreview() {
-                const colors = getUniqueValues('input[name="colors[]"]');
+                const colors = getUniqueValues('select[name="colors[]"]');
                 const sizes = getUniqueValues('input[name="sizes[]"]');
 
                 if (!colors.length || !sizes.length) {
@@ -317,9 +564,9 @@
 
                 variantPreview.innerHTML = `
                     <div style="margin-bottom: 8px;"><strong>Total Variants:</strong> ${variants.length}</div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <div class="variant-chip-wrap" style="display: flex; flex-wrap: wrap; gap: 8px;">
                         ${variants.map(variant => `
-                            <span style="padding: 6px 10px; border-radius: 999px; background: #eef2ff; color: #3730a3; font-size: 13px;">
+                            <span class="variant-chip">
                                 ${variant}
                             </span>
                         `).join('')}
@@ -327,9 +574,66 @@
                 `;
             }
 
+            function refreshPredefinedColorOptions() {
+                if (!predefinedColorSelect) return;
+
+                const selectedColors = new Set(
+                    getUniqueValues('select[name="colors[]"]').map(color => color.toLowerCase())
+                );
+
+                predefinedColorSelect.innerHTML = '<option value="">Select predefined color</option>';
+
+                predefinedColors.forEach(function (color) {
+                    if (!selectedColors.has(String(color).toLowerCase())) {
+                        const option = document.createElement('option');
+                        option.value = color;
+                        option.textContent = color;
+                        predefinedColorSelect.appendChild(option);
+                    }
+                });
+            }
+
+            function refreshColorRowOptions() {
+                const colorSelects = Array.from(colorsWrapper.querySelectorAll('select[name="colors[]"]'));
+                const selectedCounts = {};
+
+                colorSelects.forEach(function (select) {
+                    const value = String(select.value || '').trim().toLowerCase();
+                    if (!value) return;
+                    selectedCounts[value] = (selectedCounts[value] || 0) + 1;
+                });
+
+                colorSelects.forEach(function (select) {
+                    const currentValue = String(select.value || '').trim();
+                    const currentLower = currentValue.toLowerCase();
+
+                    const availableOptions = predefinedColors.filter(function (color) {
+                        const lowerColor = String(color).toLowerCase();
+                        if (lowerColor === currentLower) return true;
+                        return !selectedCounts[lowerColor];
+                    });
+
+                    const optionsHtml = ['<option value="">Select color</option>']
+                        .concat(
+                            availableOptions.map(function (color) {
+                                const selected = color === currentValue ? ' selected' : '';
+                                return `<option value="${color}"${selected}>${color}</option>`;
+                            })
+                        )
+                        .join('');
+
+                    select.innerHTML = optionsHtml;
+                    if (currentValue) {
+                        select.value = currentValue;
+                    }
+                });
+            }
+
             addColorBtn.addEventListener('click', function () {
-                colorsWrapper.appendChild(makeRow('colors', 'e.g. Black', 'color-row'));
+                colorsWrapper.appendChild(makeRow('colors', 'Select color', 'color-row'));
                 bindRemoveButtons();
+                refreshColorRowOptions();
+                refreshPredefinedColorOptions();
             });
 
             addSizeBtn.addEventListener('click', function () {
@@ -337,17 +641,45 @@
                 bindRemoveButtons();
             });
 
+            if (addPredefinedColorBtn && predefinedColorSelect) {
+                addPredefinedColorBtn.addEventListener('click', function () {
+                    const selectedColor = predefinedColorSelect.value.trim();
+                    if (!selectedColor) return;
+
+                    const colorRows = Array.from(colorsWrapper.querySelectorAll('select[name="colors[]"]'));
+                    const emptyInput = colorRows.find(input => !input.value.trim());
+
+                    if (emptyInput) {
+                        emptyInput.value = selectedColor;
+                    } else {
+                        const row = makeRow('colors', 'Select color', 'color-row');
+                        row.querySelector('select[name="colors[]"]').value = selectedColor;
+                        colorsWrapper.appendChild(row);
+                        bindRemoveButtons();
+                    }
+
+                    predefinedColorSelect.value = '';
+                    updateVariantPreview();
+                    refreshColorRowOptions();
+                    refreshPredefinedColorOptions();
+                });
+            }
+
             document.addEventListener('input', function (event) {
                 if (
-                    event.target.matches('input[name="colors[]"]') ||
+                    event.target.matches('select[name="colors[]"]') ||
                     event.target.matches('input[name="sizes[]"]')
                 ) {
                     updateVariantPreview();
+                    refreshColorRowOptions();
+                    refreshPredefinedColorOptions();
                 }
             });
 
             bindRemoveButtons();
             updateVariantPreview();
+            refreshColorRowOptions();
+            refreshPredefinedColorOptions();
         });
     </script>
     @endpush

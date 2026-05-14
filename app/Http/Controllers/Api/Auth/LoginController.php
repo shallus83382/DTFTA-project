@@ -38,7 +38,13 @@ class LoginController extends Controller
 
         $user->update(['last_login_at' => now()]);
 
-        return redirect()->intended('/crm/dashboard');
+        // Optional: delete old tokens if you want one active token per user
+        $user->tokens()->delete();
+
+        $token = $user->createToken('web-api-token')->plainTextToken;
+
+        return redirect()->intended('/crm/dashboard')
+            ->with('auth_token', $token);
     }
 
     /**

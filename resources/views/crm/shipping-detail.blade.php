@@ -10,27 +10,56 @@
         $order = $ship->order;
     @endphp
     <style>
-        .sd-wrap { display: grid; gap: 16px; }
+        .sd-wrap { display: grid; gap: 14px; }
+        .sd-wrap::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at 16% 8%, rgba(59, 130, 246, 0.12), transparent 36%);
+            z-index: 0;
+        }
         .sd-head {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
+            border-radius: 16px;
+            border: 1px solid rgba(96, 165, 250, 0.25);
+            background:
+                radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 46%),
+                linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.96));
+            box-shadow: 0 18px 34px rgba(2, 6, 23, 0.34);
+            padding: 14px 16px;
+            position: relative;
+            z-index: 1;
         }
         .sd-back {
             text-decoration: none;
             color: #7dd3fc;
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
         }
         .sd-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
         .sd-card {
+            position: relative;
             background: linear-gradient(160deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.93));
             border: 1px solid rgba(148, 163, 184, 0.24);
             border-radius: 14px;
             padding: 18px;
-            box-shadow: 0 10px 24px rgba(2, 6, 23, 0.2);
+            box-shadow: 0 14px 30px rgba(2, 6, 23, 0.28);
+            overflow: hidden;
+            z-index: 1;
+        }
+        .sd-card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.7), rgba(56, 189, 248, 0.2));
         }
         .sd-card h3 { margin: 0 0 12px; color: #f8fafc; font-size: 17px; }
         .sd-list { display: grid; gap: 8px; margin-top: 8px; }
@@ -41,12 +70,27 @@
         .sd-card label { display:block; margin-bottom:6px; color:#bfdbfe; font-size:12px; font-weight:600; }
         .sd-card input, .sd-card select, .sd-card textarea {
             width:100%; border:1px solid rgba(148,163,184,.35); border-radius:10px; background:rgba(15,23,42,.7);
-            color:#e2e8f0; padding:10px 12px; font-size:13px;
+            color:#e2e8f0; padding:10px 12px; font-size:13px; min-height: 42px;
+        }
+        .sd-card select {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23cbd5e1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            padding-right: 40px;
+        }
+        .sd-card select option {
+            background: rgba(15, 23, 42, 0.98);
+            color: #e2e8f0;
         }
         .sd-card textarea { min-height: 86px; resize: vertical; }
         .sd-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
         .sd-btn {
-            border:none; border-radius:10px; padding:10px 14px; color:#fff; font-size:13px; font-weight:600; cursor:pointer;
+            border:none; border-radius:10px; padding:0 14px; color:#fff; font-size:13px; font-weight:700; cursor:pointer;
+            min-height: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center;
             transition: transform .2s ease, filter .2s ease;
         }
         .sd-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }

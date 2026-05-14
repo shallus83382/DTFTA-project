@@ -14,7 +14,7 @@ return new class extends Migration
        Schema::create('shipments', function (Blueprint $table) {
 
             $table->id();
-            $table->foreignId('job_id')->constrained()->onDelete('cascade');
+            $table->foreignId('job_id')->constrained('app_jobs')->onDelete('cascade');
 
             $table->string('carrier');
             $table->string('tracking_number');

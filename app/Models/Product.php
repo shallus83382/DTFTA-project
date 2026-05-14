@@ -18,11 +18,13 @@ class Product extends Model
         'category',
         'description',
         'status',
+        'price',
         'images',
     ];
 
     protected $casts = [
         'images' => 'array',
+        'price' => 'decimal:2',
     ];
 
     public function variants(): HasMany

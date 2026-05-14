@@ -4,19 +4,25 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\AdminActivityLog;
 use App\Models\Shipment;
 use App\Models\Order;
 use App\Models\Job;
+use App\Models\Shop;
+use App\Services\BillingService;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ShipmentController extends Controller
 {
     protected $shopifyService;
+    protected $billingService;
 
-    public function __construct(ShopifyService $shopifyService)
+    public function __construct(ShopifyService $shopifyService, BillingService $billingService)
     {
         $this->shopifyService = $shopifyService;
+        $this->billingService = $billingService;
     }
 
     /**
@@ -37,16 +43,19 @@ class ShipmentController extends Controller
             'tracking_url' => 'nullable|url'
         ]);
 
-        $jobId = $validated['job_id'] ?? Job::where('order_id', $validated['order_id'])->value('id');
+
+
+        $jobId = Job::where('order_id', $validated['order_id'])->first();
+
         if (!$jobId) {
             return response()->json([
                 'success' => false,
                 'message' => 'No job found for this order. Create a job before creating shipment.'
             ], 422);
         }
-
+        
         $payload = [
-            'job_id' => $jobId,
+            'job_id' => $jobId->id,
             'order_id' => $validated['order_id'],
             'shop_id' => $validated['shop_id'],
             'fulfillment_service_id' => $validated['fulfillment_service_id'] ?? null,
@@ -54,39 +63,216 @@ class ShipmentController extends Controller
             'tracking_number' => $validated['tracking_number'],
             'tracking_company' => $validated['tracking_company'] ?? $validated['carrier'] ?? null,
             'tracking_url' => $validated['tracking_url'] ?? null,
-            'status' => 'processing',
+            'status' => 'billing_pending',
             'line_items' => $validated['line_items'] ?? [],
             'shipped_at' => now(),
         ];
 
-        $shipment = Shipment::create($payload);
 
         try {
             $order = Order::find($validated['order_id']);
+            $shop = Shop::find($validated['shop_id']);
+
+            if (!$order || !$shop) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order or shop not found.',
+                ], 404);
+            }
+
+            $existingShipment = Shipment::query()
+                ->where('order_id', $order->id)
+                ->where('shop_id', $shop->id)
+                ->whereNotIn('status', ['cancelled'])
+                ->orderByDesc('id')
+                ->first();
+
+            if (
+                $existingShipment
+                && !empty($existingShipment->shipment_id)
+                && strtolower((string) $existingShipment->status) !== 'exception'
+            ) {
+                $existingShipment->update([
+                    'fulfillment_service_id' => $payload['fulfillment_service_id'] ?? $existingShipment->fulfillment_service_id,
+                    'carrier' => $payload['carrier'] ?? $existingShipment->carrier,
+                    'tracking_number' => $payload['tracking_number'] ?? $existingShipment->tracking_number,
+                    'tracking_company' => $payload['tracking_company'] ?? $existingShipment->tracking_company,
+                    'tracking_url' => $payload['tracking_url'] ?? $existingShipment->tracking_url,
+                    'line_items' => $payload['line_items'] ?? $existingShipment->line_items,
+                    'updated_at_shopify' => now(),
+                ]);
+
+                try {
+                    $this->shopifyService->updateFulfillmentTracking(
+                        (int) $existingShipment->shop_id,
+                        (string) $existingShipment->shipment_id,
+                        [
+                            'tracking_number' => $existingShipment->tracking_number,
+                            'tracking_company' => $existingShipment->tracking_company ?: $existingShipment->carrier,
+                            'tracking_url' => $existingShipment->tracking_url,
+                            'notify_customer' => true,
+                        ]
+                    );
+                } catch (\Throwable $trackingSyncError) {
+                    Log::warning('Tracking sync failed for existing generated shipment: ' . $trackingSyncError->getMessage());
+                }
+
+                AdminActivityLog::logActivity(
+                    auth()->id(),
+                    'Existing shipment updated (label already generated)',
+                    'Shipment',
+                    $existingShipment->id,
+                    [
+                        'order_id' => $order->id,
+                        'shipment_id' => $existingShipment->shipment_id,
+                    ],
+                    $request->ip(),
+                    $request->userAgent()
+                );
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Shipment label already generated for this order. Updated existing shipment details.',
+                    'code' => 'SHIPMENT_ALREADY_GENERATED',
+                    'data' => $existingShipment->fresh(),
+                ], 200);
+            }
+
+            $billingResult = $this->billingService->ensurePreFulfillmentPaid($shop, $order);
+            if (!($billingResult['success'] ?? false)) {
+                AdminActivityLog::logSystemActivity(
+                    'Shipment creation blocked: pre-fulfillment billing is not paid',
+                    'Order',
+                    $order->id
+                );
+                return response()->json([
+                    'success' => false,
+                    'message' => $billingResult['message'] ?? 'Pre-fulfillment billing is not paid.',
+                    'code' => data_get($billingResult, 'data.code', 'BILLING_NOT_PAID'),
+                    'billing_confirmation_url' => data_get($billingResult, 'data.billing_confirmation_url'),
+                    'errors' => $billingResult['errors'] ?? [],
+                ], $billingResult['status'] ?? 402);
+            }
+
+            $payload['status'] = 'processing';
+            $payload['payload'] = [
+                'billing' => $billingResult,
+            ];
+            $shipment = $existingShipment ?: new Shipment();
+            $shipment->fill(array_merge($payload, [
+                'status' => 'processing',
+                'payload' => array_merge((array) $shipment->payload, (array) ($payload['payload'] ?? [])),
+            ]));
+            $shipment->save();
+
+            $data = $jobId->payload ; // or json_decode($json, true);
+
             $response = $this->shopifyService->createFulfillment(
                 $order->shop_id,
                 $order->shopify_order_id,
                 [
-                    'line_items' => $validated['line_items'] ?? [],
+                    'line_items_by_fulfillment_order' => [
+                        [
+                            'fulfillment_order_id' => $data['fulfillment_order']['legacy_id'],
+                            'fulfillment_order_line_items' => collect($data['fulfillment_order']['line_items'] ?? [])
+                                ->map(function ($item) {
+                                    return [
+                                        'id' => $item['id'] ?? null,
+                                        'quantity' => $item['remaining_quantity'] ?? $item['total_quantity'] ?? 1,
+                                    ];
+                                })
+                                ->filter(fn ($item) => !empty($item['id']))
+                                ->values()
+                                ->all(),
+                        ]
+                    ],
                     'tracking_info' => [
                         'number' => $validated['tracking_number'] ?? null,
                         'company' => $validated['tracking_company'] ?? null,
-                        'url' => $validated['tracking_url'] ?? null
-                    ]
+                        'url' => $validated['tracking_url'] ?? null,
+                    ],
                 ]
             );
 
             if ($response['success']) {
                 $shipment->update([
-                    'shipment_id' => $response['data']['id'] ?? null,
+                    'shipment_id' => $this->legacyIdFromGid($response['data']['id']) ?? null,
                     'status' => 'created',
                     'created_at_shopify' => now(),
                     'updated_at_shopify' => now(),
                     'payload' => $response['data'] ?? []
                 ]);
+
+                AdminActivityLog::logActivity(
+                    auth()->id(),
+                    'Shipment created and Shopify fulfillment pushed',
+                    'Shipment',
+                    $shipment->id,
+                    [
+                        'order_id' => $order->id,
+                        'tracking_number' => $shipment->tracking_number,
+                        'carrier' => $shipment->carrier,
+                        'status' => $shipment->status,
+                    ],
+                    $request->ip(),
+                    $request->userAgent()
+                );
+            } else {
+                $shipment->update([
+                    'status' => 'exception',
+                    'payload' => array_merge((array) $shipment->payload, [
+                        'shopify_fulfillment_error' => $response,
+                    ]),
+                ]);
+
+                AdminActivityLog::logActivity(
+                    auth()->id(),
+                    'Shipment creation failed while pushing fulfillment to Shopify',
+                    'Shipment',
+                    $shipment->id,
+                    [
+                        'order_id' => $order->id,
+                        'error' => $response['message'] ?? 'Unknown error',
+                    ],
+                    $request->ip(),
+                    $request->userAgent()
+                );
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $response['message'] ?? 'Failed to create Shopify fulfillment.',
+                    'errors' => $response['errors'] ?? [],
+                ], $response['status'] ?? 422);
             }
         } catch (\Exception $e) {
             Log::error('Shopify Fulfillment Error: ' . $e->getMessage());
+            if (isset($shipment)) {
+                $shipment->update([
+                    'status' => 'exception',
+                    'payload' => array_merge((array) $shipment->payload, [
+                        'exception' => $e->getMessage(),
+                    ]),
+                ]);
+
+                AdminActivityLog::logActivity(
+                    auth()->id(),
+                    'Shipment exception occurred during fulfillment creation',
+                    'Shipment',
+                    $shipment->id,
+                    [
+                        'order_id' => $shipment->order_id,
+                        'error' => $e->getMessage(),
+                    ],
+                    $request->ip(),
+                    $request->userAgent()
+                );
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create fulfillment.',
+                'error' => $e->getMessage(),
+            ], 500);
         }
 
         return response()->json([
@@ -94,6 +280,11 @@ class ShipmentController extends Controller
             'message' => 'Shipment created successfully.',
             'data' => $shipment
         ], 201);
+    }
+
+    private function legacyIdFromGid(string $gid): string
+    {
+        return Str::afterLast($gid, '/');
     }
 
     /**
@@ -199,6 +390,21 @@ class ShipmentController extends Controller
             Log::error('Shopify tracking update sync failed: ' . $e->getMessage());
         }
 
+        AdminActivityLog::logActivity(
+            auth()->id(),
+            isset($validated['status']) && $validated['status'] === 'in_transit'
+                ? 'Shipment tracking pushed (in transit)'
+                : 'Shipment tracking/details updated',
+            'Shipment',
+            $shipment->id,
+            [
+                'order_id' => $shipment->order_id,
+                'changes' => $validated,
+            ],
+            $request->ip(),
+            $request->userAgent()
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Shipment updated successfully.',
@@ -221,6 +427,12 @@ class ShipmentController extends Controller
             ], 404);
         }
 
+        AdminActivityLog::logSystemActivity(
+            'Shipment deleted',
+            'Shipment',
+            $shipment->id,
+            ['order_id' => $shipment->order_id]
+        );
         $shipment->delete();
 
         return response()->json([
@@ -254,9 +466,33 @@ class ShipmentController extends Controller
 
             if ($response['success']) {
                 $shipment->update(['status' => 'cancelled']);
+                AdminActivityLog::logActivity(
+                    auth()->id(),
+                    'Shipment cancelled',
+                    'Shipment',
+                    $shipment->id,
+                    [
+                        'order_id' => $shipment->order_id,
+                        'status' => 'cancelled',
+                    ],
+                    $request->ip(),
+                    $request->userAgent()
+                );
             }
         } catch (\Exception $e) {
             Log::error('Cancel Fulfillment Error: ' . $e->getMessage());
+            AdminActivityLog::logActivity(
+                auth()->id(),
+                'Shipment cancellation failed',
+                'Shipment',
+                $shipment->id,
+                [
+                    'order_id' => $shipment->order_id,
+                    'error' => $e->getMessage(),
+                ],
+                $request->ip(),
+                $request->userAgent()
+            );
         }
 
         return response()->json([

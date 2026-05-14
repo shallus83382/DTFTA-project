@@ -154,20 +154,22 @@
 
 }
 
-/* Leads board: make horizontally scrollable on tablets */
+/* Leads board: wrap columns (no horizontal page scroll) */
 @media (max-width: 1024px) {
     .leads-board {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 16px;
-        align-items: flex-start;
-        overflow-x: auto;
-        padding-bottom: 8px;
-        -webkit-overflow-scrolling: touch;
+        align-items: stretch;
+        overflow-x: hidden;
+        width: 100%;
+        max-width: 100%;
     }
 
     .lead-column {
-        flex: 0 0 260px;
-        width: 260px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
     }
 }
 
@@ -266,16 +268,18 @@
         width: 100%;
     }
 
-    /* Mobile: stack columns vertically */
+    /* Mobile: single column */
     .leads-board {
-        display: flex;
-        flex-direction: column;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: 18px;
+        overflow-x: hidden;
     }
 
     .lead-column {
         width: 100%;
-        flex: 1 1 auto;
+        max-width: 100%;
+        min-width: 0;
     }
 
     .lead-column-body {
@@ -462,5 +466,164 @@
     .table-container::-webkit-scrollbar-thumb:hover,
     .table-responsive::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(180deg, #60a5fa, #3b82f6);
+    }
+}
+
+/* ============================================
+   Global layout hardening (all breakpoints)
+   Prevents flex children from forcing horizontal overflow
+   ============================================ */
+
+.sidebar {
+    flex-shrink: 0;
+}
+
+/* ============================================
+   Laptop / small desktop (max-width: 1200px)
+   ============================================ */
+
+@media (max-width: 1200px) {
+    .page-header {
+        flex-wrap: wrap;
+        row-gap: 12px;
+    }
+
+    .header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        margin-left: auto;
+    }
+
+    .page-header h1 {
+        font-size: clamp(22px, 4vw, 30px);
+    }
+
+    .charts-grid {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+    }
+}
+
+/* ============================================
+   Tablet (max-width: 1024px) — content rhythm
+   ============================================ */
+
+@media (max-width: 1024px) {
+    .main-content {
+        padding: 20px 16px;
+    }
+
+    .chart-card,
+    .activity-section {
+        max-width: 100%;
+    }
+
+    .pagination {
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 16px;
+    }
+}
+
+/* ============================================
+   Mobile (max-width: 768px)
+   ============================================ */
+
+@media (max-width: 768px) {
+    .header-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .page-header .user-dropdown-trigger {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .user-dropdown-info {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .user-dropdown-name,
+    .user-dropdown-plan {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .modal-overlay {
+        align-items: flex-start;
+        justify-content: center;
+        padding: 16px 12px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .modal {
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
+        margin-bottom: 16px;
+    }
+
+    .modal-actions {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .modal-actions .btn-secondary,
+    .modal-actions .btn-primary {
+        width: 100%;
+    }
+}
+
+/* ============================================
+   Small phones (max-width: 480px)
+   ============================================ */
+
+@media (max-width: 480px) {
+    .pagination {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .pagination .page-info {
+        order: -1;
+    }
+
+    .btn-pagination {
+        width: 100%;
+        max-width: 280px;
+    }
+}
+
+/* ============================================
+   CRM-wide: dense tables & notifications (mobile)
+   ============================================ */
+
+/* Long text in dense tables without breaking layout */
+@media (max-width: 991px) {
+    .jobs-table td,
+    .jobs-table th {
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+}
+
+/* Notification list rows: allow wrapping on very small screens */
+@media (max-width: 480px) {
+    .notification-item {
+        flex-wrap: wrap;
+    }
+
+    .notification-item .btn-link {
+        margin-left: auto;
+    }
+}
+
+/* Slightly larger tap targets for form controls on phones */
+@media (max-width: 480px) {
+    .filter-select:not(textarea),
+    select.filter-select {
+        min-height: 44px;
     }
 }

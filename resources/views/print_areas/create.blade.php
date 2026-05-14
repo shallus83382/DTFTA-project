@@ -22,14 +22,19 @@
 
         {{-- ================= PRINT AREAS SECTION ================= --}}
         @php
+            $unit = config('crm.features.print_areas.constraints.unit', 'px');
+            $minWidth = config('crm.features.print_areas.constraints.width.min', 1);
+            $maxWidth = config('crm.features.print_areas.constraints.width.max', 1000);
+            $minHeight = config('crm.features.print_areas.constraints.height.min', 1);
+            $maxHeight = config('crm.features.print_areas.constraints.height.max', 1000);
             $resolvedRows = old('print_areas') ?? [
                 [
                     'title' => '',
-                    'area_width' => null,
-                    'area_height' => null,
-                    'unit' => 'mm',
-                    'position_x' => null,
-                    'position_y' => null,
+                    'area_width' => 50,
+                    'area_height' => 90,
+                    'unit' => $unit,
+                    'position_x' => 225,
+                    'position_y' => 225,
                     'tshirt_size' => null,
                     'display_order' => 0,
                     'is_active' => true,
@@ -52,21 +57,21 @@
                                 <input type="text" class="filter-select" name="print_areas[{{ $index }}][title]"
                                     value="{{ $row['title'] ?? '' }}" placeholder="Front Chest">
                             </div>
-                            <div class="filter-group">
+                            <div class="filter-group" style="display:none;">
                                 <label>T-Shirt Size</label>
-                                <input type="text" class="filter-select"
+                                <input type="hidden" class="filter-select"
                                     name="print_areas[{{ $index }}][tshirt_size]"
                                     value="{{ $row['tshirt_size'] ?? '' }}" placeholder="S, M, L, XL">
                             </div>
                             <div class="filter-group">
                                 <label>Area Width</label>
-                                <input type="number" step="0.01" min="0" class="filter-select"
+                                <input type="number" step="any" min="{{ $minWidth }}" max="{{ $maxWidth }}" class="filter-select"
                                     name="print_areas[{{ $index }}][area_width]"
                                     value="{{ $row['area_width'] ?? '' }}">
                             </div>
                             <div class="filter-group">
                                 <label>Area Height</label>
-                                <input type="number" step="0.01" min="0" class="filter-select"
+                                <input type="number" step="any" min="{{ $minHeight }}" max="{{ $maxHeight }}" class="filter-select"
                                     name="print_areas[{{ $index }}][area_height]"
                                     value="{{ $row['area_height'] ?? '' }}">
                             </div>
@@ -75,7 +80,7 @@
                                 <select class="filter-select" name="print_areas[{{ $index }}][unit]">
                                     @foreach (['mm', 'cm', 'in', 'px'] as $unit)
                                         <option value="{{ $unit }}"
-                                            {{ ($row['unit'] ?? 'mm') === $unit ? 'selected' : '' }}>
+                                            {{ ($row['unit'] ?? 'px') === $unit ? 'selected' : '' }}>
                                             {{ strtoupper($unit) }}</option>
                                     @endforeach
                                 </select>
@@ -98,11 +103,11 @@
                                     name="print_areas[{{ $index }}][display_order]"
                                     value="{{ $row['display_order'] ?? $index }}">
                             </div>
-                            <div class="filter-group">
+                            <!-- <div class="filter-group">
                                 <label>Placement Image</label>
                                 <input type="file" class="filter-select" name="print_area_images[{{ $index }}]"
                                     accept="image/*">
-                            </div>
+                            </div> -->
 
                             <div class="filter-group">
                                 <label>Active</label>
@@ -112,6 +117,13 @@
                                 </select>
                             </div>
 
+                        </div>
+
+                        <div style="margin-top:20px;">
+                            <x-asset-selector
+                            category-input-name="print_areas[{{ $index }}][images][category]"
+                            asset-input-name="print_areas[{{ $index }}][images][asset_key]"
+                            />   
                         </div>
 
                         <div style="margin-top:20px;">

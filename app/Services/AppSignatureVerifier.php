@@ -26,7 +26,7 @@ class AppSignatureVerifier
             return false;
         }
 
-        $sharedSecret = (string) (config('services.shopify.webhook_secret', config('services.shopify.api_secret', '')));
+        $sharedSecret = (string) (config('services.shopify.external_secret', config('services.shopify.api_secret', '')));
         if ($sharedSecret === '') {
             Log::error('App signature verification failed: missing shared secret');
             return false;

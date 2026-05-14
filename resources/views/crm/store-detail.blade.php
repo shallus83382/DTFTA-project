@@ -3,7 +3,151 @@
 @section('title', 'DTFTA CRM - Store Details')
 @section('page-title', 'Store Details')
 
+@push('styles')
+<style>
+    .store-detail-page {
+        display: grid;
+        gap: 14px;
+    }
+
+    .store-detail-page .store-detail-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: linear-gradient(160deg, rgba(30, 41, 59, 0.94), rgba(15, 23, 42, 0.94));
+        box-shadow: 0 14px 30px rgba(2, 6, 23, 0.26);
+        margin-bottom: 0;
+    }
+
+    .store-detail-page .store-detail-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(56, 189, 248, 0.3), rgba(45, 212, 191, 0.16), rgba(56, 189, 248, 0.3));
+        pointer-events: none;
+    }
+
+    .store-detail-page .store-detail-card h3 {
+        margin-bottom: 16px;
+        font-size: 22px;
+        line-height: 1.15;
+        letter-spacing: -0.01em;
+        color: #f8fafc;
+    }
+
+    .store-detail-page .store-detail-grid {
+        gap: 10px;
+    }
+
+    .store-detail-page .detail-row {
+        padding: 10px 12px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.65));
+    }
+
+    .store-detail-page .detail-label {
+        color: #9fb1cf;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    .store-detail-page .detail-row span:last-child {
+        color: #f1f5f9;
+        font-weight: 600;
+        text-align: right;
+    }
+
+    .store-detail-page .filters-section {
+        margin-bottom: 0;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(15, 23, 42, 0.38));
+        box-shadow: none;
+        gap: 12px;
+    }
+
+    .store-detail-page .filter-group label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #a9bddb;
+        font-weight: 700;
+    }
+
+    .store-detail-page .filter-select {
+        height: 40px;
+        border-radius: 10px;
+        border-color: rgba(148, 163, 184, 0.28);
+        background-color: rgba(15, 23, 42, 0.78);
+        color: #f8fafc;
+        font-size: 13px;
+    }
+
+    .store-detail-page input.filter-select::placeholder {
+        color: #8296b5;
+    }
+
+    .store-detail-page .btn-primary,
+    .store-detail-page .btn-secondary {
+        height: 40px;
+        border-radius: 10px;
+        padding: 0 14px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .store-detail-page .table-container {
+        border-radius: 12px;
+        border-color: rgba(148, 163, 184, 0.22);
+        background: linear-gradient(165deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
+    }
+
+    .store-detail-page .jobs-table th {
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #a7bce0;
+        padding: 13px 14px;
+        border-bottom-color: rgba(148, 163, 184, 0.22);
+        background: rgba(15, 23, 42, 0.4);
+    }
+
+    .store-detail-page .jobs-table td {
+        padding: 12px 14px;
+        border-bottom-color: rgba(148, 163, 184, 0.16);
+    }
+
+    .store-detail-page .jobs-table tbody tr:hover {
+        background: linear-gradient(120deg, rgba(59, 130, 246, 0.1), rgba(15, 23, 42, 0.14));
+    }
+
+    .store-detail-page .status-badge {
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 10px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+        .store-detail-page .store-detail-card h3 {
+            font-size: 19px;
+        }
+    }
+</style>
+@endpush
+
 @section('content')
+    <div class="store-detail-page">
     @if(session('success'))
         <div class="chart-card" style="margin-bottom: 16px; border: 1px solid #166534;">
             <strong>{{ session('success') }}</strong>
@@ -184,4 +328,5 @@
         });
     </script>
     @endpush
+    </div>
 @endsection

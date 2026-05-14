@@ -20,7 +20,8 @@ return new class extends Migration
 
             $table->string('fulfillment_service_id')->nullable();
             $table->string('location_id')->nullable();
-
+            $table->string('shipping_profile_id')->nullable();
+            $table->string('delivery_location_group_id')->nullable();
             $table->enum('status', ['active', 'suspended', 'uninstalled'])->default('active');
 
             // Optional but recommended
