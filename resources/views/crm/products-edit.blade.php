@@ -529,6 +529,12 @@
                                             <small class="print-area-meta-line">
                                                 Position: X {{ $printArea->position_x ?? '-' }}, Y {{ $printArea->position_y ?? '-' }}
                                             </small>
+
+                                            @if($printArea->price !== null)
+                                                <small class="print-area-meta-line">
+                                                    Price: ${{ number_format((float) $printArea->price, 2) }}
+                                                </small>
+                                            @endif
                                         </span>
 
                                         @if($printArea->tshirt_size)

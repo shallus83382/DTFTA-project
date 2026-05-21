@@ -35,6 +35,7 @@
                     'position_y' => $printArea->position_y ?? null,
                     'tshirt_size' => $printArea->tshirt_size ?? null,
                     'display_order' => $printArea->display_order ?? 0,
+                    'price' => $printArea->price ?? '0.00',
                     'is_active' => $printArea->is_active ?? true,
                 ],
             ];
@@ -104,6 +105,14 @@
                                 <input type="number" min="0" class="filter-select"
                                     name="print_areas[0][display_order]"
                                     value="{{ old('print_areas.0.display_order', $row['display_order']) }}">
+                            </div>
+
+                            <div class="filter-group">
+                                <label>Price</label>
+                                <input type="number" step="0.01" min="0" class="filter-select"
+                                    name="print_areas[0][price]"
+                                    value="{{ old('print_areas.0.price', $row['price'] ?? '0.00') }}"
+                                    placeholder="50.00">
                             </div>
 
                             <!-- <input type="file" id="imageInput" class="filter-select" name="print_area_images[0]"

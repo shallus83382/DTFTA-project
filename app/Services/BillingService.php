@@ -6,10 +6,10 @@ use App\Models\AdminActivityLog;
 use App\Models\BillingCharge;
 use App\Models\Order;
 use App\Models\Job;
+use App\Models\PrintArea;
 use App\Models\ProductVariant;
 use App\Models\Shipment;
 use App\Models\Shop;
-use Illuminate\Support\Facades\Log;
 
 class BillingService
 {
@@ -253,6 +253,7 @@ class BillingService
             'idempotency_key' => $idempotencyKey,
             'meta' => [
                 'shopify_order_id' => $order->shopify_order_id,
+                'breakdown' => $amountBreakdown,
             ],
         ]);
 
@@ -261,7 +262,7 @@ class BillingService
             $lineItemId,
             $amount,
             sprintf(
-                'Pre-fulfillment charge for order %s (product + shipping + tax)',
+                'Pre-fulfillment charge for order %s (product + print areas + shipping + tax)',
                 (string) $order->order_number
             ),
             $idempotencyKey,
@@ -309,6 +310,9 @@ class BillingService
             'status' => 'accepted',
             'shopify_usage_record_gid' => $usageRecordId ?: null,
             'error_message' => null,
+            'meta' => array_merge((array) $charge->meta, [
+                'breakdown' => $amountBreakdown,
+            ]),
         ]);
         $this->syncStatusesAfterBillingPaid($order);
         $this->logPrepaymentAcceptedActivity($order, $usageRecordId);
@@ -368,7 +372,9 @@ class BillingService
     {
         $order->loadMissing('orderItems');
 
-        $subTotal = 0.0;
+        $variantSubTotal = 0.0;
+        $printAreaSubTotal = 0.0;
+
         foreach ($order->orderItems as $item) {
             $quantity = (int) ($item->quantity ?? 1);
             if ($quantity < 1) {
@@ -387,20 +393,123 @@ class BillingService
                 ? (float) $variantPrice
                 : (float) ($item->price ?? 0);
 
-            $subTotal += $unitPrice * $quantity;
+            $variantSubTotal += $unitPrice * $quantity;
+
+            $properties = is_array($item->properties) ? $item->properties : [];
+            $printAreaSubTotal += $this->calculatePrintAreaFeesForLineItem($sku, $properties, $quantity);
         }
 
         $payload = is_array($order->payload) ? $order->payload : [];
         $shipping = $this->extractShippingAmount($payload);
         $tax = $this->extractTaxAmount($payload);
 
-        $total = $subTotal + $shipping + $tax;
+        $variantSubTotal = round(max($variantSubTotal, 0), 2);
+        $printAreaSubTotal = round(max($printAreaSubTotal, 0), 2);
+        $shipping = round(max($shipping, 0), 2);
+        $tax = round(max($tax, 0), 2);
+
+        $total = round($variantSubTotal + $printAreaSubTotal + $shipping + $tax, 2);
+
         return [
-            'subtotal' => round(max($subTotal, 0), 2),
-            'shipping' => round(max($shipping, 0), 2),
-            'tax' => round(max($tax, 0), 2),
-            'total' => round(max($total, 0), 2),
+            'subtotal' => $variantSubTotal,
+            'print_areas' => $printAreaSubTotal,
+            'shipping' => $shipping,
+            'tax' => $tax,
+            'total' => $total,
         ];
+    }
+
+    /**
+     * Sum print-area prices for placements used on this line (front/back, etc.).
+     */
+    private function calculatePrintAreaFeesForLineItem(string $sku, array $properties, int $quantity): float
+    {
+        $placements = $this->resolvePrintPlacementsFromProperties($properties);
+        if ($placements === [] || $sku === '') {
+            return 0.0;
+        }
+
+        $productId = ProductVariant::query()
+            ->where('sku', $sku)
+            ->value('product_id');
+
+        if (!$productId) {
+            return 0.0;
+        }
+
+        $linkedPrintAreas = PrintArea::query()
+            ->join('product_print_areas', 'print_areas.id', '=', 'product_print_areas.print_area_id')
+            ->where('product_print_areas.product_id', $productId)
+            ->where('print_areas.is_active', true)
+            ->get(['print_areas.title', 'print_areas.price']);
+
+        if ($linkedPrintAreas->isEmpty()) {
+            return 0.0;
+        }
+
+        $unitFees = 0.0;
+        foreach ($placements as $placement) {
+            $matched = $linkedPrintAreas->first(function ($area) use ($placement) {
+                $title = strtolower(trim((string) $area->title));
+                return $title === $placement || str_contains($title, $placement);
+            });
+
+            if ($matched && is_numeric($matched->price)) {
+                $unitFees += (float) $matched->price;
+            }
+        }
+
+        return $unitFees * $quantity;
+    }
+
+    /**
+     * Detect which print placements to bill from line-item properties.
+     *
+     * @return list<string> e.g. ['front'], ['front', 'back']
+     */
+    private function resolvePrintPlacementsFromProperties(array $properties): array
+    {
+        $placements = [];
+
+        foreach ($properties as $key => $value) {
+            $key = (string) $key;
+            if (!str_starts_with($key, '_dtfta_artwork_') || trim((string) $value) === '') {
+                continue;
+            }
+
+            if (preg_match('/^_dtfta_artwork_(.+)_url$/', $key, $matches) !== 1) {
+                continue;
+            }
+
+            $placement = strtolower(trim((string) ($matches[1] ?? '')));
+            if ($placement !== '') {
+                $placements[] = $placement;
+            }
+        }
+
+        $placements = array_values(array_unique($placements));
+
+        if ($placements !== []) {
+            return $placements;
+        }
+
+        $printPlan = trim((string) ($properties['_dtfta_print_plan'] ?? ''));
+        if ($printPlan === '') {
+            return [];
+        }
+
+        foreach (explode('|', $printPlan) as $segment) {
+            $segment = trim($segment);
+            if ($segment === '') {
+                continue;
+            }
+
+            if (preg_match('/^(front|back)\s*:/i', $segment, $matches) === 1) {
+                $placements[] = strtolower($matches[1]);
+            }
+        }
+
+        return array_values(array_unique($placements));
     }
 
     private function extractShippingAmount(array $payload): float

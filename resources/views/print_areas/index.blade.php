@@ -95,6 +95,7 @@
                     <!-- <th>T-Shirt Size</th> -->
                     <th>Dimensions</th>
                     <th>Display Order</th>
+                    <th>Price</th>
                     <th>Status</th>
                     <th>Image</th>
                     <th>Actions</th>
@@ -119,6 +120,9 @@
                             {{ strtoupper($area->unit) }}
                         </td>
                         <td>{{ $area->display_order }}</td>
+                        <td>
+                            {{ $area->price !== null ? '$' . number_format((float) $area->price, 2) : '-' }}
+                        </td>
                         <td>
                             <span class="status-badge {{ $badgeClass }}">
                                 {{ $area->is_active ? 'Active' : 'Inactive' }}

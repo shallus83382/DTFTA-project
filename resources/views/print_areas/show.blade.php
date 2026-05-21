@@ -51,6 +51,13 @@
             </div>
 
             <div>
+                <label>Price</label>
+                <div class="filter-select">
+                    {{ $area->price !== null ? '$' . number_format((float) $area->price, 2) : '-' }}
+                </div>
+            </div>
+
+            <div>
                 <label>Status</label>
                 <div class="filter-select">
                     @if($area->is_active)

@@ -17,12 +17,14 @@ class PrintArea extends Model
         'tshirt_size',
         'display_order',
         'is_active',
+        'price',
         'images'
     ];
 
     protected $casts = [
         'images' => 'array',
-        'is_active' => 'boolean'
+        'is_active' => 'boolean',
+        'price' => 'decimal:2',
     ];
 
 

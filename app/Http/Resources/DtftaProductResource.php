@@ -38,6 +38,7 @@ class DtftaProductResource extends JsonResource
                     'size' => $variant->size,
                     'sku' => $variant->sku,
                     'is_active' => (bool) $variant->is_active,
+                    'price' => $variant->price,
                 ];
             })->values();
         }, collect());
@@ -83,6 +84,7 @@ class DtftaProductResource extends JsonResource
                     'position_y' => $printArea->position_y,
                     'tshirt_size' => $printArea->tshirt_size,
                     'display_order' => $printArea->display_order,
+                    'price' => $printArea->price,
                     'is_active' => (bool) $printArea->is_active,
                    // 'image' => $printArea->images ? url(Storage::url($printArea->images)) : null,
                     'image' => $printArea->images['asset_key'],

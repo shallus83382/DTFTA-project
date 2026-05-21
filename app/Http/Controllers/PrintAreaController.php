@@ -87,6 +87,7 @@ class PrintAreaController extends CrmController
             'print_areas.*.position_y' => 'nullable|numeric',
             'print_areas.*.tshirt_size' => 'nullable|string|max:50',
             'print_areas.*.display_order' => 'nullable|integer|min:0',
+            'print_areas.*.price' => 'nullable|numeric|min:0',
             'print_areas.*.is_active' => 'nullable|boolean',
             'print_area.*.images' => 'nullable|array',
             'print_area.*.images.*' => 'nullable|image|max:5120',
@@ -144,6 +145,7 @@ public function update(Request $request, $id)
         'print_areas.0.position_y' => 'nullable|numeric',
         'print_areas.0.tshirt_size' => 'nullable|string|max:50',
         'print_areas.0.display_order' => 'nullable|integer|min:0',
+        'print_areas.0.price' => 'nullable|numeric|min:0',
         'print_areas.0.is_active' => 'nullable|in:0,1',
         'print_area.0.images.0' => 'nullable|image|max:5120',
     ]);

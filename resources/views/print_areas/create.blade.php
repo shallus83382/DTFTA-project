@@ -37,6 +37,7 @@
                     'position_y' => 225,
                     'tshirt_size' => null,
                     'display_order' => 0,
+                    'price' => '0.00',
                     'is_active' => true,
                 ],
             ];
@@ -102,6 +103,13 @@
                                 <input type="number" min="0" class="filter-select"
                                     name="print_areas[{{ $index }}][display_order]"
                                     value="{{ $row['display_order'] ?? $index }}">
+                            </div>
+                            <div class="filter-group">
+                                <label>Price</label>
+                                <input type="number" step="0.01" min="0" class="filter-select"
+                                    name="print_areas[{{ $index }}][price]"
+                                    value="{{ old('print_areas.' . $index . '.price', $row['price'] ?? '0.00') }}"
+                                    placeholder="50.00">
                             </div>
                             <!-- <div class="filter-group">
                                 <label>Placement Image</label>
