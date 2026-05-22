@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\FailedWebhookController;
 use App\Http\Controllers\Api\JobController;
 use App\Http\Controllers\Api\ArtworkController;
 use App\Http\Controllers\Api\BillingController;
+use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\SystemSettingController;
 use App\Http\Controllers\Api\ShopifyApiController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
@@ -52,7 +53,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/fulfillment-status', [ShopifyApiController::class, 'GetStoreFulfillmentStatus']);
     Route::get('/billing/status', [BillingController::class, 'status']);
     Route::post('/billing/approve', [BillingController::class, 'approve']);
-    
+
+    Route::get('/wallet/cards', [WalletController::class, 'index']);
+    Route::post('/wallet/cards', [WalletController::class, 'store']);
 });
 
 // ============================================

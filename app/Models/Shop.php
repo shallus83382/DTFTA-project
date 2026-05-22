@@ -11,6 +11,7 @@ use App\Models\Shipment;
 use App\Models\Product;
 use App\Models\Artwork;
 use App\Models\BillingCharge;
+use App\Models\ShopPaymentCard;
 
 class Shop extends Model
 {
@@ -39,6 +40,7 @@ class Shop extends Model
         'shopify_billing_line_item_gid',
         'billing_approved_at',
         'billing_blocked_reason',
+        'square_customer_id',
         'installed_at',
         'uninstalled_at'
     ];
@@ -82,5 +84,18 @@ class Shop extends Model
     public function billingCharges()
     {
         return $this->hasMany(BillingCharge::class);
+    }
+
+    public function paymentCards()
+    {
+        return $this->hasMany(ShopPaymentCard::class);
+    }
+
+    public function defaultPaymentCard()
+    {
+        return $this->hasOne(ShopPaymentCard::class)
+            ->where('status', 'active')
+            ->where('is_default', true)
+            ->latest('id');
     }
 }

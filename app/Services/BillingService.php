@@ -13,8 +13,10 @@ use App\Models\Shop;
 
 class BillingService
 {
-    public function __construct(private ShopifyService $shopifyService)
-    {
+    public function __construct(
+        private ShopifyService $shopifyService,
+        private SquareWalletService $squareWalletService,
+    ) {
     }
 
     public function isEnforced(): bool
@@ -198,6 +200,19 @@ class BillingService
             ];
         }
 
+        if ($this->squareWalletService->shopHasChargeableCard($shop)) {
+            return $this->chargePreFulfillmentWithWalletCard(
+                $shop,
+                $order,
+                $shipment,
+                $amountBreakdown,
+                $amount,
+                $currency,
+                $idempotencyKey,
+                $existing,
+            );
+        }
+
         $billingReady = $this->assertMerchantBillingReady($shop);
         if (!($billingReady['success'] ?? false)) {
             $failed = $existing ?: BillingCharge::create([
@@ -324,6 +339,114 @@ class BillingService
             'data' => [
                 'billing_charge' => $charge->fresh(),
                 'usage_record_id' => $usageRecordId,
+            ],
+            'errors' => [],
+        ];
+    }
+
+    /**
+     * @param array<string, float> $amountBreakdown
+     */
+    private function chargePreFulfillmentWithWalletCard(
+        Shop $shop,
+        Order $order,
+        ?Shipment $shipment,
+        array $amountBreakdown,
+        float $amount,
+        string $currency,
+        string $idempotencyKey,
+        ?BillingCharge $existing,
+    ): array {
+        $card = $this->squareWalletService->getDefaultCard($shop);
+        if (!$card) {
+            return [
+                'success' => false,
+                'status' => 402,
+                'message' => 'A default payment card is required before fulfillment can start.',
+                'data' => ['code' => 'WALLET_CARD_REQUIRED'],
+                'errors' => [],
+            ];
+        }
+
+        $charge = $existing ?: BillingCharge::create([
+            'shop_id' => $shop->id,
+            'order_id' => $order->id,
+            'shipment_id' => $shipment?->id,
+            'charge_type' => 'pre_fulfillment',
+            'amount' => $amount,
+            'currency' => $currency,
+            'status' => 'pending',
+            'idempotency_key' => $idempotencyKey,
+            'meta' => [
+                'shopify_order_id' => $order->shopify_order_id,
+                'breakdown' => $amountBreakdown,
+                'payment_provider' => 'square',
+                'shop_payment_card_id' => $card->id,
+            ],
+        ]);
+
+        $paymentResult = $this->squareWalletService->chargeCard(
+            $shop,
+            $card,
+            $amount,
+            $currency,
+            $idempotencyKey,
+            sprintf(
+                'Pre-fulfillment charge for order %s (product + print areas + shipping + tax)',
+                (string) $order->order_number
+            ),
+        );
+
+        if (!($paymentResult['success'] ?? false)) {
+            $charge->update([
+                'status' => 'failed',
+                'error_message' => $paymentResult['message'] ?? 'Failed to charge saved card.',
+                'meta' => array_merge((array) $charge->meta, [
+                    'errors' => $paymentResult['errors'] ?? [],
+                ]),
+            ]);
+
+            AdminActivityLog::logSystemActivity(
+                'Billing failed for order (Square card charge failed)',
+                'Order',
+                $order->id
+            );
+
+            return [
+                'success' => false,
+                'status' => $paymentResult['status'] ?? 422,
+                'message' => $paymentResult['message'] ?? 'Unable to charge saved payment card.',
+                'data' => [
+                    'code' => 'WALLET_CHARGE_FAILED',
+                    'billing_charge' => $charge->fresh(),
+                ],
+                'errors' => $paymentResult['errors'] ?? [],
+            ];
+        }
+
+        $squarePaymentId = (string) data_get($paymentResult, 'data.square_payment_id', '');
+        $charge->update([
+            'status' => 'accepted',
+            'error_message' => null,
+            'meta' => array_merge((array) $charge->meta, [
+                'breakdown' => $amountBreakdown,
+                'payment_provider' => 'square',
+                'square_payment_id' => $squarePaymentId,
+                'shop_payment_card_id' => $card->id,
+            ]),
+        ]);
+
+        $this->syncStatusesAfterBillingPaid($order);
+        $this->logPrepaymentAcceptedActivity($order, $squarePaymentId);
+
+        return [
+            'success' => true,
+            'status' => 200,
+            'message' => 'Pre-fulfillment card charge accepted.',
+            'data' => [
+                'billing_charge' => $charge->fresh(),
+                'square_payment_id' => $squarePaymentId,
+                'payment_provider' => 'square',
             ],
             'errors' => [],
         ];

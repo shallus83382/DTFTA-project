@@ -35,6 +35,13 @@ return [
         ],
     ],
 
+    'square' => [
+        'access_token' => env('SQUARE_ACCESS_TOKEN', ''),
+        'location_id' => env('SQUARE_LOCATION_ID', ''),
+        'environment' => env('SQUARE_ENVIRONMENT', 'sandbox'),
+        'wallet_billing_enabled' => env('SQUARE_WALLET_BILLING_ENABLED', true),
+    ],
+
     'shopify' => [
         'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET', ''),
         'external_secret' => env('EXTERNAL_API_SECRET', ''),
