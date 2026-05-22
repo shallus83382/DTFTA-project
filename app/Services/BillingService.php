@@ -164,7 +164,7 @@ class BillingService
         }
         $shipmentToken = $shipment?->id ? 'shipment_' . $shipment->id : 'shipment_pending';
         $idempotencyKey = sprintf(
-            'pre_fulfillment:shop_%d:order_%d:%s',
+            'pf_%d_%d_%s',
             (int) $shop->id,
             (int) $order->id,
             $shipmentToken
