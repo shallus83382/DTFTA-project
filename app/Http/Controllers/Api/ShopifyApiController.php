@@ -40,6 +40,12 @@ class ShopifyApiController extends Controller
             'awaiting_payment',
             'awaiting_fulfillment' => 'New',
 
+            'billing_pending',
+            'billing_required',
+            'billing_issue',
+            'payment_pending',
+            'payment_required' => 'Billing Pending',
+
             'artwork_needed',
             'artwork needed',
             'needs_artwork',
