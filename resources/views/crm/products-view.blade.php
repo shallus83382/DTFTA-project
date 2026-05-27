@@ -188,6 +188,65 @@
 
     <hr style="margin:20px 0; border-color:#f1f5f9;">
 
+    @php
+        use Illuminate\Support\Facades\Storage;
+
+        $colorMockups = is_array($product->color_mockups) ? $product->color_mockups : [];
+        $cloudfrontBase = rtrim((string) config('app.cloudfront_url'), '/');
+        $colorMockupDisplayUrl = function (?string $path) use ($cloudfrontBase) {
+            if (!$path) {
+                return null;
+            }
+            $path = ltrim($path, '/');
+
+            if (str_starts_with($path, 'assets/')) {
+                return $cloudfrontBase . '/' . $path;
+            }
+
+            return Storage::disk('public')->exists($path)
+                ? Storage::disk('public')->url($path)
+                : $cloudfrontBase . '/' . $path;
+        };
+    @endphp
+
+    @if(count($colorMockups))
+        <h4 style="margin-bottom:15px;">Color Mockups</h4>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:15px; margin-bottom:25px;">
+            @foreach($colorMockups as $mockupKey => $mockup)
+                @php
+                    $mockupName = $mockup['name'] ?? $mockupKey;
+                    $mockupHex = $mockup['hex'] ?? '#e2e8f0';
+                    $frontUrl = !empty($mockup['front']) ? $colorMockupDisplayUrl($mockup['front']) : null;
+                    $backUrl = !empty($mockup['back']) ? $colorMockupDisplayUrl($mockup['back']) : null;
+                @endphp
+                <div style="border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                        <span style="width:18px; height:18px; border-radius:4px; background:{{ $mockupHex }}; border:1px solid #cbd5e1;"></span>
+                        <strong>{{ $mockupName }}</strong>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        @if($frontUrl)
+                            <div>
+                                <small style="color:#fff;">Front</small><br>
+                                <img src="{{ $frontUrl }}" alt="{{ $mockupName }} front" style="max-height:100px; border-radius:6px; background:#fff;">
+                            </div>
+                        @endif
+                        @if($backUrl)
+                            <div>
+                                <small style="color:#fff;">Back</small><br>
+                                <img src="{{ $backUrl }}" alt="{{ $mockupName }} back" style="max-height:100px; border-radius:6px; background:#fff;">
+                            </div>
+                        @endif
+                        @if(!$frontUrl && !$backUrl)
+                            <span style="color:#94a3b8;">No mockup images.</span>
+                        @endif
+                    </div>
+                </div>
+            @endforeach
+        </div>
+        <hr style="margin:20px 0; border-color:#f1f5f9;">
+    @endif
+
     {{-- Variants --}}
     <h4 style="margin-bottom:15px;">Variants</h4>
 

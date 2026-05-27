@@ -4,7 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class DtftaProductResource extends JsonResource
 {
@@ -25,16 +25,12 @@ class DtftaProductResource extends JsonResource
             return strtolower((string) ($item['name'] ?? '')) === strtolower((string) $this->brand);
         });
 
-        $variants = $this->whenLoaded('variants', function () use ($commonColors) {
-            return $this->variants->map(function ($variant) use ($commonColors) {
-                $color = $commonColors->first(function ($item) use ($variant) {
-                    return strtolower((string) ($item['name'] ?? '')) === strtolower((string) $variant->color);
-                });
-
+        $variants = $this->whenLoaded('variants', function () {
+            return $this->variants->map(function ($variant) {
                 return [
                     'id' => $variant->id,
-                    'colorCode' => $color['code'] ?? null,
-                    'colorName' => $color['name'] ?? $variant->color,
+                    'colorCode' => $this->resolveColorKey((string) $variant->color),
+                    'colorName' => $variant->color,
                     'size' => $variant->size,
                     'sku' => $variant->sku,
                     'is_active' => (bool) $variant->is_active,
@@ -118,8 +114,25 @@ class DtftaProductResource extends JsonResource
             'sizes' => $sizes,
             'variants' => $variants,
             'print_areas' => $printAreas,
+            'color_mockups' => is_array($this->color_mockups) ? $this->color_mockups : (object) [],
             'created_at' => optional($this->created_at)->toDateTimeString(),
             'updated_at' => optional($this->updated_at)->toDateTimeString(),
         ];
+    }
+
+    private function resolveColorKey(string $colorName): string
+    {
+        $normalized = strtolower(trim($colorName));
+
+        $commonColors = collect(config('dtfta.common_colors', []));
+        $match = $commonColors->first(function ($item) use ($normalized) {
+            return strtolower(trim((string) ($item['name'] ?? ''))) === $normalized;
+        });
+
+        if (is_array($match) && !empty($match['code'])) {
+            return Str::lower(trim((string) $match['code']));
+        }
+
+        return Str::slug($colorName);
     }
 }

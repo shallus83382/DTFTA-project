@@ -28,6 +28,8 @@ use App\Models\CustomProduct;
 use App\Models\Artwork;
 use App\Services\BillingService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class CrmController extends Controller
 {
@@ -1026,6 +1028,7 @@ class CrmController extends Controller
             ->get();
     
         $data['productStatusOptions'] = $this->getProductStatusOptions();
+        $data['colorRows'] = $this->prepareColorRowsForForm(null, old('colors'));
     
         return view('crm.products-add', $data);
     }
@@ -1045,6 +1048,7 @@ class CrmController extends Controller
         $data['productStatusOptions'] = $this->getProductStatusOptions();
         $data['selectedColors'] = $data['product']->variants->pluck('color')->unique()->values();
         $data['selectedSizes'] = $data['product']->variants->pluck('size')->unique()->values();
+        $data['colorRows'] = $this->prepareColorRowsForForm($data['product'], old('colors'));
     
         return view('crm.products-edit', $data);
     }
@@ -1089,6 +1093,25 @@ class CrmController extends Controller
     
             'print_area_ids' => 'nullable|array',
             'print_area_ids.*' => 'integer|exists:print_areas,id',
+
+            'color_hex' => 'nullable|array',
+            'color_hex.*' => 'nullable|string|max:20',
+            'color_front' => 'nullable|array',
+            'color_front.*' => 'nullable|image|max:10240',
+            'color_back' => 'nullable|array',
+            'color_back.*' => 'nullable|image|max:10240',
+            'color_front_existing' => 'nullable|array',
+            'color_front_existing.*' => 'nullable|string|max:5120',
+            'color_back_existing' => 'nullable|array',
+            'color_back_existing.*' => 'nullable|string|max:5120',
+            'color_front_remove' => 'nullable|array',
+            'color_front_remove.*' => 'nullable|string|max:10',
+            'color_back_remove' => 'nullable|array',
+            'color_back_remove.*' => 'nullable|string|max:10',
+            'color_front_filename' => 'nullable|array',
+            'color_front_filename.*' => 'nullable|string|max:120',
+            'color_back_filename' => 'nullable|array',
+            'color_back_filename.*' => 'nullable|string|max:120',
         ]);
     
         $product = null;
@@ -1140,6 +1163,10 @@ class CrmController extends Controller
             }
     
             $product->printAreas()->sync($validated['print_area_ids'] ?? []);
+
+            $product->update([
+                'color_mockups' => $this->syncColorMockups($product, $request),
+            ]);
         });
     
         AdminActivityLog::logActivity(
@@ -1184,6 +1211,25 @@ class CrmController extends Controller
     
             'print_area_ids' => 'nullable|array',
             'print_area_ids.*' => 'integer|exists:print_areas,id',
+
+            'color_hex' => 'nullable|array',
+            'color_hex.*' => 'nullable|string|max:20',
+            'color_front' => 'nullable|array',
+            'color_front.*' => 'nullable|image|max:10240',
+            'color_back' => 'nullable|array',
+            'color_back.*' => 'nullable|image|max:10240',
+            'color_front_existing' => 'nullable|array',
+            'color_front_existing.*' => 'nullable|string|max:5120',
+            'color_back_existing' => 'nullable|array',
+            'color_back_existing.*' => 'nullable|string|max:5120',
+            'color_front_remove' => 'nullable|array',
+            'color_front_remove.*' => 'nullable|string|max:10',
+            'color_back_remove' => 'nullable|array',
+            'color_back_remove.*' => 'nullable|string|max:10',
+            'color_front_filename' => 'nullable|array',
+            'color_front_filename.*' => 'nullable|string|max:120',
+            'color_back_filename' => 'nullable|array',
+            'color_back_filename.*' => 'nullable|string|max:120',
         ]);
     
         DB::transaction(function () use ($request, $validated, $product) {
@@ -1275,6 +1321,10 @@ class CrmController extends Controller
                 ->delete();
     
             $product->printAreas()->sync($validated['print_area_ids'] ?? []);
+
+            $product->update([
+                'color_mockups' => $this->syncColorMockups($product, $request),
+            ]);
         });
     
         AdminActivityLog::logActivity(
@@ -1290,25 +1340,309 @@ class CrmController extends Controller
     }
 
     /**
+     * Stable key for color_mockups JSON (not stored on variants).
+     */
+    private function resolveColorKey(string $colorName): string
+    {
+        $normalized = strtolower(trim($colorName));
+
+        $commonColors = collect(config('dtfta.common_colors', []));
+        $match = $commonColors->first(function ($item) use ($normalized) {
+            return strtolower(trim((string) ($item['name'] ?? ''))) === $normalized;
+        });
+
+        if (is_array($match) && !empty($match['code'])) {
+            return Str::lower(trim((string) $match['code']));
+        }
+
+        return Str::slug($colorName);
+    }
+
+    /**
+     * @return array<int, array{name: string, hex: string, front: ?string, back: ?string}>
+     */
+    private function prepareColorRowsForForm(?Product $product, $oldColors = null): array
+    {
+        $mockups = ($product && is_array($product->color_mockups)) ? $product->color_mockups : [];
+
+        if ($oldColors === null) {
+            $names = $product
+                ? $product->variants->pluck('color')->unique()->filter()->values()->all()
+                : [''];
+        } else {
+            $names = is_array($oldColors) ? $oldColors : [''];
+        }
+
+        if ($names === []) {
+            $names = [''];
+        }
+
+        $rows = [];
+        foreach ($names as $name) {
+            $name = trim((string) $name);
+            $key = $name !== '' ? $this->resolveColorKey($name) : '';
+            $entry = $key !== '' ? ($mockups[$key] ?? []) : [];
+
+            $rows[] = [
+                'name' => $name,
+                'hex' => (string) ($entry['hex'] ?? '#e2e8f0'),
+                'front' => $entry['front'] ?? null,
+                'back' => $entry['back'] ?? null,
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function colorMockupStorageDisk(): string
+    {
+        return (string) config('filesystems.default', 's3');
+    }
+
+    private function colorMockupRelativePath(
+        int $productId,
+        string $colorKey,
+        string $storedFilename
+    ): string {
+        return sprintf(
+            'assets/customizer/product/%d/%s/%s',
+            $productId,
+            $colorKey,
+            ltrim($storedFilename, '/')
+        );
+    }
+
+    private function buildColorMockupStoredFilename(
+        string $placement,
+        ?string $requestedFilename,
+        \Illuminate\Http\UploadedFile $file
+    ): string {
+        $ext = $this->resolveColorMockupExtension($file);
+        $base = trim((string) $requestedFilename);
+
+        if ($base === '') {
+            $base = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        }
+
+        $base = preg_replace('/\.(png|jpe?g|webp|gif)$/i', '', $base) ?? $base;
+        $base = Str::slug($base, '_');
+
+        if ($base === '') {
+            $base = (string) time();
+        }
+
+        return $placement.'_'.$base.'.'.$ext;
+    }
+
+    private function resolveColorMockupExtension(\Illuminate\Http\UploadedFile $file): string
+    {
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        $allowed = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
+
+        if (!in_array($ext, $allowed, true)) {
+            return 'png';
+        }
+
+        return $ext === 'jpeg' ? 'jpg' : $ext;
+    }
+
+    private function storeColorMockupFile(
+        \Illuminate\Http\UploadedFile $file,
+        Product $product,
+        string $colorKey,
+        string $placement,
+        ?string $requestedFilename = null
+    ): string {
+        $disk = $this->colorMockupStorageDisk();
+        $storedFilename = $this->buildColorMockupStoredFilename($placement, $requestedFilename, $file);
+        $relativePath = $this->colorMockupRelativePath(
+            $product->id,
+            $colorKey,
+            $storedFilename
+        );
+
+        // Match frontend artwork uploads: default disk, no public ACL (bucket uses policy + CloudFront).
+        $stored = $file->storeAs(
+            dirname($relativePath),
+            basename($relativePath),
+            $disk
+        );
+
+        if ($stored === false) {
+            throw new \RuntimeException("Unable to store color mockup at {$relativePath}");
+        }
+
+        return $stored;
+    }
+
+    private function deleteColorMockupPath(?string $path): void
+    {
+        if ($path === null || trim($path) === '') {
+            return;
+        }
+
+        $path = ltrim($path, '/');
+
+        if (str_starts_with($path, 'products/')) {
+            try {
+                Storage::disk('public')->delete($path);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to delete legacy color mockup from public disk', [
+                    'path' => $path,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            return;
+        }
+
+        $disk = $this->colorMockupStorageDisk();
+
+        try {
+            Storage::disk($disk)->delete($path);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to delete color mockup from storage', [
+                'disk' => $disk,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function isTruthyFormFlag(mixed $value): bool
+    {
+        return in_array((string) $value, ['1', 'true', 'on', 'yes'], true);
+    }
+
+    private function hasUploadedColorMockupFile(mixed $file): bool
+    {
+        return $file instanceof \Illuminate\Http\UploadedFile && $file->isValid();
+    }
+
+    /**
+     * @return array<string, array{name: string, hex: string, front?: string, back?: string}>
+     */
+    private function syncColorMockups(Product $product, Request $request): array
+    {
+        $existing = is_array($product->color_mockups) ? $product->color_mockups : [];
+        $newMockups = [];
+
+        $colorNames = array_values((array) $request->input('colors', []));
+        $hexInputs = (array) $request->input('color_hex', []);
+        $frontExisting = (array) $request->input('color_front_existing', []);
+        $backExisting = (array) $request->input('color_back_existing', []);
+        $frontRemove = (array) $request->input('color_front_remove', []);
+        $backRemove = (array) $request->input('color_back_remove', []);
+        $frontFilenames = (array) $request->input('color_front_filename', []);
+        $backFilenames = (array) $request->input('color_back_filename', []);
+        $frontFiles = (array) $request->file('color_front', []);
+        $backFiles = (array) $request->file('color_back', []);
+
+        foreach ($colorNames as $index => $colorName) {
+            $colorName = trim((string) $colorName);
+            if ($colorName === '') {
+                continue;
+            }
+
+            $key = $this->resolveColorKey($colorName);
+            $prev = $newMockups[$key] ?? $existing[$key] ?? [];
+
+            $entry = [
+                'name' => $colorName,
+                'hex' => trim((string) ($hexInputs[$index] ?? $prev['hex'] ?? '')),
+            ];
+
+            if ($this->hasUploadedColorMockupFile($frontFiles[$index] ?? null)) {
+                if (!empty($prev['front'])) {
+                    $this->deleteColorMockupPath((string) $prev['front']);
+                }
+                $entry['front'] = $this->storeColorMockupFile(
+                    $frontFiles[$index],
+                    $product,
+                    $key,
+                    'front',
+                    $frontFilenames[$index] ?? null
+                );
+            } elseif ($this->isTruthyFormFlag($frontRemove[$index] ?? null)) {
+                if (!empty($prev['front'])) {
+                    $this->deleteColorMockupPath((string) $prev['front']);
+                }
+            } elseif (!empty($frontExisting[$index])) {
+                $entry['front'] = ltrim((string) $frontExisting[$index], '/');
+            } elseif (!empty($prev['front'])) {
+                $entry['front'] = (string) $prev['front'];
+            }
+
+            if ($this->hasUploadedColorMockupFile($backFiles[$index] ?? null)) {
+                if (!empty($prev['back'])) {
+                    $this->deleteColorMockupPath((string) $prev['back']);
+                }
+                $entry['back'] = $this->storeColorMockupFile(
+                    $backFiles[$index],
+                    $product,
+                    $key,
+                    'back',
+                    $backFilenames[$index] ?? null
+                );
+            } elseif ($this->isTruthyFormFlag($backRemove[$index] ?? null)) {
+                if (!empty($prev['back'])) {
+                    $this->deleteColorMockupPath((string) $prev['back']);
+                }
+            } elseif (!empty($backExisting[$index])) {
+                $entry['back'] = ltrim((string) $backExisting[$index], '/');
+            } elseif (!empty($prev['back'])) {
+                $entry['back'] = (string) $prev['back'];
+            }
+
+            $newMockups[$key] = $entry;
+        }
+
+        foreach ($existing as $key => $data) {
+            if (isset($newMockups[$key])) {
+                continue;
+            }
+
+            if (!empty($data['front'])) {
+                $this->deleteColorMockupPath((string) $data['front']);
+            }
+            if (!empty($data['back'])) {
+                $this->deleteColorMockupPath((string) $data['back']);
+            }
+        }
+
+        return $newMockups;
+    }
+
+    private function deleteColorMockupFiles(?array $colorMockups): void
+    {
+        if (!is_array($colorMockups)) {
+            return;
+        }
+
+        foreach ($colorMockups as $data) {
+            if (!is_array($data)) {
+                continue;
+            }
+            $this->deleteColorMockupPath($data['front'] ?? null);
+            $this->deleteColorMockupPath($data['back'] ?? null);
+        }
+    }
+
+    /**
      * Generate product variant SKU.
      */
     private function generateProductVariantSku(Product $product, string $color, string $size): string
     {
         $brandNames = collect(config('dtfta.brand_names', []));
-        $commonColors = collect(config('dtfta.common_colors', []));
 
         $brandCode = $brandNames->first(function ($item) use ($product) {
             return strtolower((string) ($item['name'] ?? '')) === strtolower((string) $product->brand);
         });
 
-        $colorCode = $commonColors->first(function ($item) use ($color) {
-            return strtolower((string) ($item['name'] ?? '')) === strtolower((string) $color);
-        });
-
         $titlePart = strtoupper($product->category);
-        $brandPart = strtoupper($brandCode['code']);
+        $brandPart = strtoupper($brandCode['code'] ?? 'GEN');
         $modelPart = strtoupper($product->model_code);
-        $colorPart = strtoupper($colorCode['code']);
+        $colorPart = strtoupper($this->resolveColorKey($color));
         $sizePart = strtoupper($size);
 
         $baseSku = collect([
@@ -1344,6 +1678,8 @@ class CrmController extends Controller
         foreach ($images as $imagePath) {
             Storage::disk('public')->delete((string) $imagePath);
         }
+
+        $this->deleteColorMockupFiles(is_array($product->color_mockups) ? $product->color_mockups : null);
     
         $product->printAreas()->detach();
         $product->delete();

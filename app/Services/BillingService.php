@@ -26,6 +26,41 @@ class BillingService
 
     public function getBillingStatusForShop(Shop $shop): array
     {
+        // Wallet-first billing: active when shops.square_customer_id is set AND
+        // shop_payment_cards has at least one active row for that customer.
+        $walletBillingEnabled = $this->squareWalletService->isWalletBillingEnabled();
+
+        if ($walletBillingEnabled) {
+            if ($this->squareWalletService->shopHasActiveWalletBilling($shop)) {
+                return [
+                    'success' => true,
+                    'status' => 200,
+                    'message' => 'Billing status resolved (wallet card on file).',
+                    'data' => [
+                        'billing_status' => 'active',
+                        'active_subscription' => null,
+                        'line_item_id' => null,
+                        'is_billing_required' => false,
+                    ],
+                    'errors' => [],
+                ];
+            }
+
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Billing requires a saved payment card.',
+                'data' => [
+                    'billing_status' => 'inactive',
+                    'active_subscription' => null,
+                    'line_item_id' => null,
+                    'is_billing_required' => true,
+                ],
+                'errors' => [],
+            ];
+        }
+
+        // Legacy Shopify managed billing code (kept for now)
         $activeSubscription = $this->shopifyService->getActiveManagedSubscription((int) $shop->id);
         if (!($activeSubscription['success'] ?? false)) {
             return [
@@ -97,6 +132,32 @@ class BillingService
 
     public function assertMerchantBillingReady(Shop $shop): array
     {
+        // Wallet-first billing:
+        // If wallet billing is enabled, require a default active saved card before fulfillment.
+        $walletBillingEnabled = $this->squareWalletService->isWalletBillingEnabled();
+        if ($walletBillingEnabled) {
+            if ($this->squareWalletService->shopHasChargeableCard($shop)) {
+                return [
+                    'success' => true,
+                    'status' => 200,
+                    'message' => 'Payment card ready.',
+                    'data' => ['billing_status' => 'active'],
+                    'errors' => [],
+                ];
+            }
+
+            return [
+                'success' => false,
+                'status' => 402,
+                'message' => 'A default payment card is required before fulfillment can start.',
+                'data' => [
+                    'code' => 'WALLET_CARD_REQUIRED',
+                    'billing_status' => 'inactive',
+                ],
+                'errors' => [],
+            ];
+        }
+
         if (!$this->isEnforced()) {
             return [
                 'success' => true,

@@ -47,6 +47,22 @@ class WalletController extends Controller
         return response()->json($result, $result['status'] ?? 200);
     }
 
+    public function destroy(Request $request, int $card)
+    {
+        $shop = $this->resolveSignedShop($request);
+        if (!$shop) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Shop not found or invalid signature.',
+            ], 401);
+        }
+
+        $cardId = (int) ($request->input('cardId') ?: $card);
+        $result = $this->squareWalletService->deleteCardForShop($shop, $cardId);
+
+        return response()->json($result, $result['status'] ?? 200);
+    }
+
     private function resolveSignedShop(Request $request): ?Shop
     {
         $timestamp = (string) $request->header('X-App-Timestamp', '');

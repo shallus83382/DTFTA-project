@@ -20,10 +20,12 @@ class Product extends Model
         'status',
         'price',
         'images',
+        'color_mockups',
     ];
 
     protected $casts = [
         'images' => 'array',
+        'color_mockups' => 'array',
         'price' => 'decimal:2',
     ];
 

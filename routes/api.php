@@ -56,6 +56,7 @@ Route::prefix('v1')->group(function () {
 
     Route::get('/wallet/cards', [WalletController::class, 'index']);
     Route::post('/wallet/cards', [WalletController::class, 'store']);
+    Route::delete('/wallet/cards/{card}', [WalletController::class, 'destroy'])->whereNumber('card');
 });
 
 // ============================================

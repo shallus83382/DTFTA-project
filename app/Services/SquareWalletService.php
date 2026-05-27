@@ -7,6 +7,7 @@ use App\Models\ShopPaymentCard;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Square\Cards\Requests\CreateCardRequest;
+use Square\Cards\Requests\DisableCardsRequest;
 use Square\Customers\Requests\CreateCustomerRequest;
 use Square\Environments;
 use Square\Exceptions\SquareApiException;
@@ -29,14 +30,53 @@ class SquareWalletService
         return (bool) config('services.square.wallet_billing_enabled', true);
     }
 
+    /**
+     * Shop is linked to Square (customer id on shops table).
+     */
+    public function shopHasSquareCustomer(Shop $shop): bool
+    {
+        return trim((string) $shop->square_customer_id) !== '';
+    }
+
+    /**
+     * Billing "active" for UI/status: shop has square_customer_id AND at least one
+     * active card in shop_payment_cards for that customer.
+     */
+    public function shopHasActiveWalletBilling(Shop $shop): bool
+    {
+        if (!$this->isWalletBillingEnabled()) {
+            return false;
+        }
+
+        $squareCustomerId = trim((string) $shop->square_customer_id);
+        if ($squareCustomerId === '') {
+            return false;
+        }
+
+        return ShopPaymentCard::query()
+            ->where('shop_id', $shop->id)
+            ->where('square_customer_id', $squareCustomerId)
+            ->where('status', 'active')
+            ->exists();
+    }
+
+    /**
+     * Ready to charge orders: square customer on shop + default active card on file.
+     */
     public function shopHasChargeableCard(Shop $shop): bool
     {
         if (!$this->isWalletBillingEnabled() || !$this->isConfigured()) {
             return false;
         }
 
+        $squareCustomerId = trim((string) $shop->square_customer_id);
+        if ($squareCustomerId === '') {
+            return false;
+        }
+
         return ShopPaymentCard::query()
             ->where('shop_id', $shop->id)
+            ->where('square_customer_id', $squareCustomerId)
             ->where('status', 'active')
             ->where('is_default', true)
             ->exists();
@@ -241,6 +281,103 @@ class SquareWalletService
 
             return $this->errorResponse('Unexpected error while charging card.', 500);
         }
+    }
+
+    /**
+     * Disable the card in Square (by square_card_id), then delete the local row.
+     *
+     * @return array{success: bool, status: int, message: string, data: array<string, mixed>, errors: array<int, mixed>}
+     */
+    public function deleteCardForShop(Shop $shop, int $cardId): array
+    {
+        $squareCustomerId = trim((string) $shop->square_customer_id);
+
+        $card = ShopPaymentCard::query()
+            ->where('shop_id', $shop->id)
+            ->where('id', $cardId)
+            ->where('status', 'active')
+            ->when(
+                $squareCustomerId !== '',
+                fn ($query) => $query->where('square_customer_id', $squareCustomerId)
+            )
+            ->first();
+
+        if (!$card) {
+            return $this->errorResponse('Card not found.', 404);
+        }
+
+        $squareCardId = trim((string) $card->square_card_id);
+        if ($squareCardId === '') {
+            return $this->errorResponse('Card is missing a Square card id.', 422);
+        }
+
+        if ($this->isConfigured()) {
+            try {
+                $response = $this->client()->cards->disable(
+                    new DisableCardsRequest(['cardId' => $squareCardId]),
+                );
+
+                $errors = $response->getErrors();
+                if (!empty($errors)) {
+                    return $this->errorResponse(
+                        $this->formatSquareErrors($errors),
+                        422,
+                        ['square_errors' => $errors],
+                    );
+                }
+            } catch (SquareApiException $e) {
+                Log::warning('Square disable card failed', [
+                    'shop_id' => $shop->id,
+                    'card_id' => $card->id,
+                    'square_card_id' => $squareCardId,
+                    'message' => $e->getMessage(),
+                    'body' => $e->getBody(),
+                ]);
+
+                return $this->errorResponse($e->getMessage() ?: 'Failed to remove card with Square.', 422);
+            } catch (\Throwable $e) {
+                Log::error('Square disable card unexpected error', [
+                    'shop_id' => $shop->id,
+                    'card_id' => $card->id,
+                    'square_card_id' => $squareCardId,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return $this->errorResponse('Unexpected error while removing card.', 500);
+            }
+        }
+
+        $wasDefault = (bool) $card->is_default;
+        $localCardId = (int) $card->id;
+
+        ShopPaymentCard::query()
+            ->where('shop_id', $shop->id)
+            ->where('id', $localCardId)
+            ->where('square_card_id', $squareCardId)
+            ->delete();
+
+        if ($wasDefault) {
+            $nextDefault = ShopPaymentCard::query()
+                ->where('shop_id', $shop->id)
+                ->where('status', 'active')
+                ->when(
+                    $squareCustomerId !== '',
+                    fn ($query) => $query->where('square_customer_id', $squareCustomerId)
+                )
+                ->latest('id')
+                ->first();
+
+            if ($nextDefault) {
+                ShopPaymentCard::query()
+                    ->where('shop_id', $shop->id)
+                    ->where('status', 'active')
+                    ->update(['is_default' => false]);
+
+                $nextDefault->update(['is_default' => true]);
+            }
+        }
+
+        return $this->listCardsForShop($shop);
     }
 
     public function getDefaultCard(Shop $shop): ?ShopPaymentCard

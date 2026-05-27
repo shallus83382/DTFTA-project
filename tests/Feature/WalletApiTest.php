@@ -95,4 +95,53 @@ class WalletApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.card.last4', '4242');
     }
+
+    public function test_wallet_cards_destroy_deletes_card_via_service(): void
+    {
+        $shop = Shop::create([
+            'shop_domain' => 'wallet-delete-test.myshopify.com',
+            'status' => 'active',
+            'square_customer_id' => 'SQ_CUSTOMER_1',
+        ]);
+
+        $card = ShopPaymentCard::create([
+            'shop_id' => $shop->id,
+            'square_customer_id' => 'SQ_CUSTOMER_1',
+            'square_card_id' => 'ccof:card_delete',
+            'card_brand' => 'VISA',
+            'last4' => '4242',
+            'exp_month' => 12,
+            'exp_year' => 2030,
+            'is_default' => true,
+            'status' => 'active',
+        ]);
+
+        $verifier = $this->mock(AppSignatureVerifier::class);
+        $verifier->shouldReceive('verify')->andReturn(true);
+
+        $wallet = $this->mock(SquareWalletService::class);
+        $wallet->shouldReceive('deleteCardForShop')
+            ->once()
+            ->withArgs(fn (Shop $resolved, int $cardId) => $resolved->id === $shop->id && $cardId === $card->id)
+            ->andReturn([
+                'success' => true,
+                'status' => 200,
+                'message' => 'Saved cards loaded.',
+                'data' => ['cards' => []],
+                'errors' => [],
+            ]);
+
+        $response = $this->deleteJson('/api/v1/wallet/cards/' . $card->id, [
+            'shop' => $shop->shop_domain,
+            'cardId' => $card->id,
+        ], [
+            'X-Shop' => $shop->shop_domain,
+            'X-App-Timestamp' => (string) now()->valueOf(),
+            'X-App-Signature' => 'dummy-signature',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.cards', []);
+    }
 }
