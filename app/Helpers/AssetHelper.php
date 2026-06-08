@@ -27,8 +27,8 @@ class AssetHelper
 
         foreach ($items as $itemKey => &$item) {
             $item['key'] = $itemKey;
-            $item['url'] = asset($item['path']);
-            $item['thumbnail_url'] = asset($item['thumbnail'] ?? $item['path']);
+            $item['url'] = self::resolveUrl($item['path']);
+            $item['thumbnail_url'] = self::resolveUrl($item['thumbnail'] ?? $item['path']);
         }
 
         return $items;
@@ -58,10 +58,25 @@ class AssetHelper
 
         return [
             'name' => $item['name'] ?? $key,
-            'url' => asset($item['path']),
-            'thumbnail' => asset($item['thumbnail'] ?? $item['path']),
+            'url' => self::resolveUrl($item['path']),
+            'thumbnail' => self::resolveUrl($item['thumbnail'] ?? $item['path']),
             'key' => $key,
             'category' => $category,
         ];
+    }
+
+    private static function resolveUrl(?string $path): string
+    {
+        if (!$path) {
+            return '';
+        }
+
+        $path = ltrim($path, '/');
+
+        if (str_starts_with($path, 'assets/')) {
+            return rtrim((string) config('app.cloudfront_url'), '/').'/'.$path;
+        }
+
+        return asset($path);
     }
 }

@@ -1,7 +1,7 @@
 @php
     use Illuminate\Support\Facades\Storage;
 
-    $colorRows = $colorRows ?? [['name' => '', 'hex' => '', 'front' => null, 'back' => null]];
+    $colorRows = $colorRows ?? [['name' => '', 'hex' => '', 'front' => null, 'back' => null, 'left_sleeve' => null, 'right_sleeve' => null]];
     $cloudfrontBase = rtrim((string) config('app.cloudfront_url'), '/');
     $colorMockupDisplayUrl = function (?string $path) use ($cloudfrontBase) {
         if (!$path) {
@@ -193,7 +193,7 @@
 @endonce
 
 <p style="margin-bottom: 10px; color: #6b7280; font-size: 13px;">
-    Enter any color name (or pick a preset). Upload one front and one back mockup per color — saved as <code>front_filename.ext</code> / <code>back_filename.ext</code> on S3 (from the uploaded file name).
+    Enter any color name (or pick a preset). Upload front, back, left sleeve, and right sleeve mockups per color — saved as <code>placement_filename.ext</code> on S3 (from the uploaded file name).
 </p>
 
 <div id="colors-wrapper" data-predefined-colors='@json($predefinedColorNames)'>
@@ -203,10 +203,14 @@
             $colorHex = old('color_hex.' . $index, $row['hex'] ?? '');
             $frontPath = old('color_front_existing.' . $index, $row['front'] ?? null);
             $backPath = old('color_back_existing.' . $index, $row['back'] ?? null);
+            $leftSleevePath = old('color_left_sleeve_existing.' . $index, $row['left_sleeve'] ?? null);
+            $rightSleevePath = old('color_right_sleeve_existing.' . $index, $row['right_sleeve'] ?? null);
             $frontUrl = $colorMockupDisplayUrl($frontPath);
             $backUrl = $colorMockupDisplayUrl($backPath);
+            $leftSleeveUrl = $colorMockupDisplayUrl($leftSleevePath);
+            $rightSleeveUrl = $colorMockupDisplayUrl($rightSleevePath);
         @endphp
-        <div class="dynamic-row color-row product-color-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 30px; align-items: start;">
+        <div class="dynamic-row color-row product-color-row" style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; margin-bottom: 30px; align-items: start;">
             <div class="color-name-suggest-wrap">
                 <label style="font-size: 12px; color: #64748b; display: block; margin-bottom: 4px;">Color name</label>
                 <input
@@ -248,6 +252,24 @@
                     'rowIndex' => $index,
                 ])
             </div>
+            <div>
+                @include('crm.partials.product-color-mockup-field', [
+                    'placement' => 'left_sleeve',
+                    'label' => 'Left sleeve',
+                    'existingPath' => $leftSleevePath ?? '',
+                    'previewUrl' => $leftSleeveUrl,
+                    'rowIndex' => $index,
+                ])
+            </div>
+            <div>
+                @include('crm.partials.product-color-mockup-field', [
+                    'placement' => 'right_sleeve',
+                    'label' => 'Right sleeve',
+                    'existingPath' => $rightSleevePath ?? '',
+                    'previewUrl' => $rightSleeveUrl,
+                    'rowIndex' => $index,
+                ])
+            </div>
             <div style="padding-top: 22px;">
                 <button type="button" class="btn-danger remove-row-btn">Remove</button>
             </div>
@@ -256,7 +278,7 @@
 </div>
 
 <template id="product-color-row-template">
-    <div class="dynamic-row color-row product-color-row" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 30px; align-items: start;">
+    <div class="dynamic-row color-row product-color-row" style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; margin-bottom: 30px; align-items: start;">
         <div class="color-name-suggest-wrap">
             <label style="font-size: 12px; color: #64748b; display: block; margin-bottom: 4px;">Color name</label>
             <input type="text" name="colors[]" class="filter-select color-name-input" placeholder="e.g. Sage Green" autocomplete="off" required>
@@ -278,6 +300,22 @@
             @include('crm.partials.product-color-mockup-field', [
                 'placement' => 'back',
                 'label' => 'Back mockup',
+                'existingPath' => '',
+                'previewUrl' => '',
+            ])
+        </div>
+        <div>
+            @include('crm.partials.product-color-mockup-field', [
+                'placement' => 'left_sleeve',
+                'label' => 'Left sleeve',
+                'existingPath' => '',
+                'previewUrl' => '',
+            ])
+        </div>
+        <div>
+            @include('crm.partials.product-color-mockup-field', [
+                'placement' => 'right_sleeve',
+                'label' => 'Right sleeve',
                 'existingPath' => '',
                 'previewUrl' => '',
             ])

@@ -56,12 +56,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 assetKeyInput.value = key;
             }
 
-            card.innerHTML = `
+            // card.innerHTML = `
+            //     <img src="${asset.thumbnail_url}" alt="${asset.name}" class="asset-card-image">
+            //     <div class="asset-card-name">${asset.name}</div>
+            //     <div class="asset-card-key">${key}</div>
+            // `;
+
+             card.innerHTML = `
                 <img src="${asset.thumbnail_url}" alt="${asset.name}" class="asset-card-image">
                 <div class="asset-card-name">${asset.name}</div>
-                <div class="asset-card-key">${key}</div>
             `;
-
             card.addEventListener('click', function () {
                 document.querySelectorAll('#{{ $componentId }}-asset-list > div').forEach(function (el) {
                     el.classList.remove('active');

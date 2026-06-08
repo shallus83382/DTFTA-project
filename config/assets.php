@@ -106,12 +106,50 @@ return [
 
         'left_sleeve' => [
             'label' => 'Left Sleeve',
-            'items' => [ ],
+            'items' => [
+                'long_sleeve_tee_left_sleeve' => [
+                    'name' => 'Long Sleeve Tee Left Sleeve',
+                    'file' => 'long-sleeve-tee-left-sleeve.png',
+                    'path' => 'assets/customizer/left-sleeve/long-sleeve-tee-left-sleeve.png',
+                    'thumbnail' => 'assets/customizer/left-sleeve/long-sleeve-tee-left-sleeve.png',
+                ],
+                'heavyweight_hoodie_left_sleeve' => [
+                    'name' => 'Heavyweight Hoodie Left Sleeve',
+                    'file' => 'heavyweight-hoodie-left-sleeve.png',
+                    'path' => 'assets/customizer/left-sleeve/heavyweight-hoodie-left-sleeve.png',
+                    'thumbnail' => 'assets/customizer/left-sleeve/heavyweight-hoodie-left-sleeve.png',
+                ],
+                'heavy_blend_hoodie_left_sleeve' => [
+                    'name' => 'Heavy Blend Hoodie Left Sleeve',
+                    'file' => 'heavy-blend-hoodie-left-sleeve.png',
+                    'path' => 'assets/customizer/left-sleeve/heavy-blend-hoodie-left-sleeve.png',
+                    'thumbnail' => 'assets/customizer/left-sleeve/heavy-blend-hoodie-left-sleeve.png',
+                ],
+            ],
         ],
 
         'right_sleeve' => [
             'label' => 'Right Sleeve',
-            'items' => [ ],
+            'items' => [
+                'long_sleeve_tee_right_sleeve' => [
+                    'name' => 'Long Sleeve Tee Right Sleeve',
+                    'file' => 'long-sleeve-tee-right-sleeve.png',
+                    'path' => 'assets/customizer/right-sleeve/long-sleeve-tee-right-sleeve.png',
+                    'thumbnail' => 'assets/customizer/right-sleeve/long-sleeve-tee-right-sleeve.png',
+                ],
+                'heavyweight_hoodie_right_sleeve' => [
+                    'name' => 'Heavyweight Hoodie Right Sleeve',
+                    'file' => 'heavyweight-hoodie-right-sleeve1.png',
+                    'path' => 'assets/customizer/right-sleeve/heavyweight-hoodie-right-sleeve1.png',
+                    'thumbnail' => 'assets/customizer/right-sleeve/heavyweight-hoodie-right-sleeve1.png',
+                ],
+                'heavy_blend_hoodie_right_sleeve' => [
+                    'name' => 'Heavy Blend Hoodie Right Sleeve',
+                    'file' => 'heavy-blend-hoodie-right-sleeve1.png',
+                    'path' => 'assets/customizer/right-sleeve/heavy-blend-hoodie-right-sleeve1.png',
+                    'thumbnail' => 'assets/customizer/right-sleeve/heavy-blend-hoodie-right-sleeve1.png',
+                ],
+            ],
         ],
 
     ],

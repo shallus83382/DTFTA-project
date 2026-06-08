@@ -333,14 +333,14 @@
 
             <h4 style="margin-bottom: 12px;">Variant Options</h4>
             <p style="margin-bottom: 14px; color: #6b7280;">
-                Add colors and sizes. Variants and SKUs are generated automatically. One front/back mockup per color applies to all sizes.
+                Add colors and sizes. Variants and SKUs are generated automatically. Front, back, and sleeve mockups per color apply to all sizes.
             </p>
 
             <div class="filters-section">
                 <div class="filter-group" style="width: 100%;">
                     <label>Colors &amp; mockups</label>
                     @include('crm.partials.product-color-rows', [
-                        'colorRows' => $colorRows ?? [['name' => '', 'hex' => '#e2e8f0', 'front' => null, 'back' => null]],
+                        'colorRows' => $colorRows ?? [['name' => '', 'hex' => '#e2e8f0', 'front' => null, 'back' => null, 'left_sleeve' => null, 'right_sleeve' => null]],
                         'product' => null,
                     ])
                 </div>
@@ -349,7 +349,7 @@
                     <label>Sizes</label>
                     <div id="sizes-wrapper">
                         @php
-                            $oldSizes = old('sizes', ['']);
+                            $oldSizes = old('sizes', $defaultSizes);
                         @endphp
 
                         @foreach($oldSizes as $index => $size)

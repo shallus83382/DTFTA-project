@@ -382,7 +382,7 @@
                 <div class="filter-group" style="width: 100%; padding:30px 0;" >
                     <label>Colors &amp; mockups</label>
                     @include('crm.partials.product-color-rows', [
-                        'colorRows' => $colorRows ?? [['name' => '', 'hex' => '#e2e8f0', 'front' => null, 'back' => null]],
+                        'colorRows' => $colorRows ?? [['name' => '', 'hex' => '#e2e8f0', 'front' => null, 'back' => null, 'left_sleeve' => null, 'right_sleeve' => null]],
                         'product' => $product ?? null,
                     ])
                 </div>

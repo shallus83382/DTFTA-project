@@ -175,25 +175,19 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             row.querySelectorAll('.color-mockup-box').forEach(function (box) {
-                const placement = box.dataset.placement === 'back' ? 'back' : 'front';
+                const fieldBase = box.dataset.fieldBase || 'color_front';
                 const fileInput = box.querySelector('.color-mockup-file-input');
                 const existingInput = box.querySelector('.color-mockup-existing-input');
                 const removeInput = box.querySelector('.color-mockup-remove-input');
 
                 if (fileInput) {
-                    fileInput.name = placement === 'back'
-                        ? 'color_back[' + index + ']'
-                        : 'color_front[' + index + ']';
+                    fileInput.name = fieldBase + '[' + index + ']';
                 }
                 if (existingInput) {
-                    existingInput.name = placement === 'back'
-                        ? 'color_back_existing[' + index + ']'
-                        : 'color_front_existing[' + index + ']';
+                    existingInput.name = fieldBase + '_existing[' + index + ']';
                 }
                 if (removeInput) {
-                    removeInput.name = placement === 'back'
-                        ? 'color_back_remove[' + index + ']'
-                        : 'color_front_remove[' + index + ']';
+                    removeInput.name = fieldBase + '_remove[' + index + ']';
                 }
             });
         });

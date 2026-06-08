@@ -4,15 +4,25 @@
     $existingPath = $existingPath ?? '';
     $previewUrl = $previewUrl ?? '';
     $rowIndex = $rowIndex ?? 0;
-    $fileInputName = $placement === 'back' ? "color_back[{$rowIndex}]" : "color_front[{$rowIndex}]";
-    $existingInputName = $placement === 'back' ? "color_back_existing[{$rowIndex}]" : "color_front_existing[{$rowIndex}]";
-    $removeInputName = $placement === 'back' ? "color_back_remove[{$rowIndex}]" : "color_front_remove[{$rowIndex}]";
+    $fieldBase = match ($placement) {
+        'back' => 'color_back',
+        'left_sleeve' => 'color_left_sleeve',
+        'right_sleeve' => 'color_right_sleeve',
+        default => 'color_front',
+    };
+    $fileInputName = "{$fieldBase}[{$rowIndex}]";
+    $existingInputName = "{$fieldBase}_existing[{$rowIndex}]";
+    $removeInputName = "{$fieldBase}_remove[{$rowIndex}]";
     $hasImage = $previewUrl !== '';
 @endphp
 
 <div class="color-mockup-field">
     <label class="color-mockup-field-label">{{ $label }}</label>
-    <div class="color-mockup-box {{ $hasImage ? 'has-image' : '' }}" data-placement="{{ $placement }}">
+    <div
+        class="color-mockup-box {{ $hasImage ? 'has-image' : '' }}"
+        data-placement="{{ $placement }}"
+        data-field-base="{{ $fieldBase }}"
+    >
         <input
             type="file"
             name="{{ $fileInputName }}"

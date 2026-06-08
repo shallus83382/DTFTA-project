@@ -1029,6 +1029,7 @@ class CrmController extends Controller
     
         $data['productStatusOptions'] = $this->getProductStatusOptions();
         $data['colorRows'] = $this->prepareColorRowsForForm(null, old('colors'));
+        $data['defaultSizes'] = config('dtfta.sizes');
     
         return view('crm.products-add', $data);
     }
@@ -1096,23 +1097,7 @@ class CrmController extends Controller
 
             'color_hex' => 'nullable|array',
             'color_hex.*' => 'nullable|string|max:20',
-            'color_front' => 'nullable|array',
-            'color_front.*' => 'nullable|image|max:10240',
-            'color_back' => 'nullable|array',
-            'color_back.*' => 'nullable|image|max:10240',
-            'color_front_existing' => 'nullable|array',
-            'color_front_existing.*' => 'nullable|string|max:5120',
-            'color_back_existing' => 'nullable|array',
-            'color_back_existing.*' => 'nullable|string|max:5120',
-            'color_front_remove' => 'nullable|array',
-            'color_front_remove.*' => 'nullable|string|max:10',
-            'color_back_remove' => 'nullable|array',
-            'color_back_remove.*' => 'nullable|string|max:10',
-            'color_front_filename' => 'nullable|array',
-            'color_front_filename.*' => 'nullable|string|max:120',
-            'color_back_filename' => 'nullable|array',
-            'color_back_filename.*' => 'nullable|string|max:120',
-        ]);
+        ] + $this->colorMockupValidationRules());
     
         $product = null;
     
@@ -1214,23 +1199,7 @@ class CrmController extends Controller
 
             'color_hex' => 'nullable|array',
             'color_hex.*' => 'nullable|string|max:20',
-            'color_front' => 'nullable|array',
-            'color_front.*' => 'nullable|image|max:10240',
-            'color_back' => 'nullable|array',
-            'color_back.*' => 'nullable|image|max:10240',
-            'color_front_existing' => 'nullable|array',
-            'color_front_existing.*' => 'nullable|string|max:5120',
-            'color_back_existing' => 'nullable|array',
-            'color_back_existing.*' => 'nullable|string|max:5120',
-            'color_front_remove' => 'nullable|array',
-            'color_front_remove.*' => 'nullable|string|max:10',
-            'color_back_remove' => 'nullable|array',
-            'color_back_remove.*' => 'nullable|string|max:10',
-            'color_front_filename' => 'nullable|array',
-            'color_front_filename.*' => 'nullable|string|max:120',
-            'color_back_filename' => 'nullable|array',
-            'color_back_filename.*' => 'nullable|string|max:120',
-        ]);
+        ] + $this->colorMockupValidationRules());
     
         DB::transaction(function () use ($request, $validated, $product) {
             // $existingImages = is_array($product->images) ? $product->images : [];
@@ -1359,7 +1328,47 @@ class CrmController extends Controller
     }
 
     /**
-     * @return array<int, array{name: string, hex: string, front: ?string, back: ?string}>
+     * @return list<string>
+     */
+    private function colorMockupPlacements(): array
+    {
+        return ['front', 'back', 'left_sleeve', 'right_sleeve'];
+    }
+
+    private function colorMockupFieldBase(string $placement): string
+    {
+        return match ($placement) {
+            'back' => 'color_back',
+            'left_sleeve' => 'color_left_sleeve',
+            'right_sleeve' => 'color_right_sleeve',
+            default => 'color_front',
+        };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function colorMockupValidationRules(): array
+    {
+        $rules = [];
+
+        foreach ($this->colorMockupPlacements() as $placement) {
+            $fieldBase = $this->colorMockupFieldBase($placement);
+            $rules[$fieldBase] = 'nullable|array';
+            $rules["{$fieldBase}.*"] = 'nullable|image|max:10240';
+            $rules["{$fieldBase}_existing"] = 'nullable|array';
+            $rules["{$fieldBase}_existing.*"] = 'nullable|string|max:5120';
+            $rules["{$fieldBase}_remove"] = 'nullable|array';
+            $rules["{$fieldBase}_remove.*"] = 'nullable|string|max:10';
+            $rules["{$fieldBase}_filename"] = 'nullable|array';
+            $rules["{$fieldBase}_filename.*"] = 'nullable|string|max:120';
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<int, array{name: string, hex: string, front: ?string, back: ?string, left_sleeve: ?string, right_sleeve: ?string}>
      */
     private function prepareColorRowsForForm(?Product $product, $oldColors = null): array
     {
@@ -1388,6 +1397,8 @@ class CrmController extends Controller
                 'hex' => (string) ($entry['hex'] ?? '#e2e8f0'),
                 'front' => $entry['front'] ?? null,
                 'back' => $entry['back'] ?? null,
+                'left_sleeve' => $entry['left_sleeve'] ?? null,
+                'right_sleeve' => $entry['right_sleeve'] ?? null,
             ];
         }
 
@@ -1520,7 +1531,7 @@ class CrmController extends Controller
     }
 
     /**
-     * @return array<string, array{name: string, hex: string, front?: string, back?: string}>
+     * @return array<string, array{name: string, hex: string, front?: string, back?: string, left_sleeve?: string, right_sleeve?: string}>
      */
     private function syncColorMockups(Product $product, Request $request): array
     {
@@ -1529,14 +1540,6 @@ class CrmController extends Controller
 
         $colorNames = array_values((array) $request->input('colors', []));
         $hexInputs = (array) $request->input('color_hex', []);
-        $frontExisting = (array) $request->input('color_front_existing', []);
-        $backExisting = (array) $request->input('color_back_existing', []);
-        $frontRemove = (array) $request->input('color_front_remove', []);
-        $backRemove = (array) $request->input('color_back_remove', []);
-        $frontFilenames = (array) $request->input('color_front_filename', []);
-        $backFilenames = (array) $request->input('color_back_filename', []);
-        $frontFiles = (array) $request->file('color_front', []);
-        $backFiles = (array) $request->file('color_back', []);
 
         foreach ($colorNames as $index => $colorName) {
             $colorName = trim((string) $colorName);
@@ -1552,46 +1555,33 @@ class CrmController extends Controller
                 'hex' => trim((string) ($hexInputs[$index] ?? $prev['hex'] ?? '')),
             ];
 
-            if ($this->hasUploadedColorMockupFile($frontFiles[$index] ?? null)) {
-                if (!empty($prev['front'])) {
-                    $this->deleteColorMockupPath((string) $prev['front']);
-                }
-                $entry['front'] = $this->storeColorMockupFile(
-                    $frontFiles[$index],
-                    $product,
-                    $key,
-                    'front',
-                    $frontFilenames[$index] ?? null
-                );
-            } elseif ($this->isTruthyFormFlag($frontRemove[$index] ?? null)) {
-                if (!empty($prev['front'])) {
-                    $this->deleteColorMockupPath((string) $prev['front']);
-                }
-            } elseif (!empty($frontExisting[$index])) {
-                $entry['front'] = ltrim((string) $frontExisting[$index], '/');
-            } elseif (!empty($prev['front'])) {
-                $entry['front'] = (string) $prev['front'];
-            }
+            foreach ($this->colorMockupPlacements() as $placement) {
+                $fieldBase = $this->colorMockupFieldBase($placement);
+                $placementExisting = (array) $request->input("{$fieldBase}_existing", []);
+                $placementRemove = (array) $request->input("{$fieldBase}_remove", []);
+                $placementFilenames = (array) $request->input("{$fieldBase}_filename", []);
+                $placementFiles = (array) $request->file($fieldBase, []);
 
-            if ($this->hasUploadedColorMockupFile($backFiles[$index] ?? null)) {
-                if (!empty($prev['back'])) {
-                    $this->deleteColorMockupPath((string) $prev['back']);
+                if ($this->hasUploadedColorMockupFile($placementFiles[$index] ?? null)) {
+                    if (!empty($prev[$placement])) {
+                        $this->deleteColorMockupPath((string) $prev[$placement]);
+                    }
+                    $entry[$placement] = $this->storeColorMockupFile(
+                        $placementFiles[$index],
+                        $product,
+                        $key,
+                        $placement,
+                        $placementFilenames[$index] ?? null
+                    );
+                } elseif ($this->isTruthyFormFlag($placementRemove[$index] ?? null)) {
+                    if (!empty($prev[$placement])) {
+                        $this->deleteColorMockupPath((string) $prev[$placement]);
+                    }
+                } elseif (!empty($placementExisting[$index])) {
+                    $entry[$placement] = ltrim((string) $placementExisting[$index], '/');
+                } elseif (!empty($prev[$placement])) {
+                    $entry[$placement] = (string) $prev[$placement];
                 }
-                $entry['back'] = $this->storeColorMockupFile(
-                    $backFiles[$index],
-                    $product,
-                    $key,
-                    'back',
-                    $backFilenames[$index] ?? null
-                );
-            } elseif ($this->isTruthyFormFlag($backRemove[$index] ?? null)) {
-                if (!empty($prev['back'])) {
-                    $this->deleteColorMockupPath((string) $prev['back']);
-                }
-            } elseif (!empty($backExisting[$index])) {
-                $entry['back'] = ltrim((string) $backExisting[$index], '/');
-            } elseif (!empty($prev['back'])) {
-                $entry['back'] = (string) $prev['back'];
             }
 
             $newMockups[$key] = $entry;
@@ -1602,11 +1592,10 @@ class CrmController extends Controller
                 continue;
             }
 
-            if (!empty($data['front'])) {
-                $this->deleteColorMockupPath((string) $data['front']);
-            }
-            if (!empty($data['back'])) {
-                $this->deleteColorMockupPath((string) $data['back']);
+            foreach ($this->colorMockupPlacements() as $placement) {
+                if (!empty($data[$placement])) {
+                    $this->deleteColorMockupPath((string) $data[$placement]);
+                }
             }
         }
 
@@ -1623,8 +1612,10 @@ class CrmController extends Controller
             if (!is_array($data)) {
                 continue;
             }
-            $this->deleteColorMockupPath($data['front'] ?? null);
-            $this->deleteColorMockupPath($data['back'] ?? null);
+
+            foreach ($this->colorMockupPlacements() as $placement) {
+                $this->deleteColorMockupPath($data[$placement] ?? null);
+            }
         }
     }
 

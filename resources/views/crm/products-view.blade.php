@@ -218,6 +218,8 @@
                     $mockupHex = $mockup['hex'] ?? '#e2e8f0';
                     $frontUrl = !empty($mockup['front']) ? $colorMockupDisplayUrl($mockup['front']) : null;
                     $backUrl = !empty($mockup['back']) ? $colorMockupDisplayUrl($mockup['back']) : null;
+                    $leftSleeveUrl = !empty($mockup['left_sleeve']) ? $colorMockupDisplayUrl($mockup['left_sleeve']) : null;
+                    $rightSleeveUrl = !empty($mockup['right_sleeve']) ? $colorMockupDisplayUrl($mockup['right_sleeve']) : null;
                 @endphp
                 <div style="border:1px solid #e2e8f0; border-radius:10px; padding:12px;">
                     <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
@@ -237,7 +239,19 @@
                                 <img src="{{ $backUrl }}" alt="{{ $mockupName }} back" style="max-height:100px; border-radius:6px; background:#fff;">
                             </div>
                         @endif
-                        @if(!$frontUrl && !$backUrl)
+                        @if($leftSleeveUrl)
+                            <div>
+                                <small style="color:#fff;">Left sleeve</small><br>
+                                <img src="{{ $leftSleeveUrl }}" alt="{{ $mockupName }} left sleeve" style="max-height:100px; border-radius:6px; background:#fff;">
+                            </div>
+                        @endif
+                        @if($rightSleeveUrl)
+                            <div>
+                                <small style="color:#fff;">Right sleeve</small><br>
+                                <img src="{{ $rightSleeveUrl }}" alt="{{ $mockupName }} right sleeve" style="max-height:100px; border-radius:6px; background:#fff;">
+                            </div>
+                        @endif
+                        @if(!$frontUrl && !$backUrl && !$leftSleeveUrl && !$rightSleeveUrl)
                             <span style="color:#94a3b8;">No mockup images.</span>
                         @endif
                     </div>
