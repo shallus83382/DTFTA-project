@@ -129,10 +129,19 @@
 
                         <div style="margin-top:20px;">
                             <x-asset-selector
+                            :selected-category="$row['images']['category'] ?? null"
+                            :selected-asset-key="$row['images']['asset_key'] ?? null"
                             category-input-name="print_areas[{{ $index }}][images][category]"
                             asset-input-name="print_areas[{{ $index }}][images][asset_key]"
                             />   
                         </div>
+
+                        @include('print_areas.partials.canvas-preview', [
+                            'previewData' => $previewData,
+                            'index' => $index,
+                            'region' => $row,
+                            'submitLabel' => 'Save Product',
+                        ])
 
                         <div style="margin-top:20px;">
                             <button type="submit" class="btn-primary">

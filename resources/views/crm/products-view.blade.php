@@ -315,7 +315,14 @@
     <hr style="margin:20px 0; border-color:#f1f5f9;">
 
     {{-- Print Areas --}}
-    <h4 style="margin-bottom:15px;">Assigned Print Areas</h4>
+    <div style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:15px;">
+        <h4 style="margin:0;">Assigned Print Areas</h4>
+        @if($product->printAreas->count())
+            <a href="{{ route('crm.print-areas.designer', ['product' => $product->id]) }}" class="btn-secondary" style="text-decoration:none;">
+                Preview &amp; adjust print areas
+            </a>
+        @endif
+    </div>
 
     @if($product->printAreas->count())
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:15px; margin-bottom:25px;">

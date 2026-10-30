@@ -193,6 +193,13 @@ class CrmController extends Controller
                     ['label' => 'Edit Print Area', 'url' => null],
                 ];
 
+            case 'crm.print-areas.designer':
+                return [
+                    $dashboardCrumb,
+                    ['label' => 'Print Areas', 'url' => route('crm.print-areas.index')],
+                    ['label' => 'Preview on Products', 'url' => null],
+                ];
+
             case 'crm.print-areas.show':
                 return [
                     $dashboardCrumb,

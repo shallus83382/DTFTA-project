@@ -11,7 +11,10 @@
         </div>
     @endif
 
-    <div style="margin-bottom:16px; display:flex; justify-content:flex-end;">
+    <div style="margin-bottom:16px; display:flex; flex-wrap:wrap; gap:12px; justify-content:flex-end;">
+        <a href="{{ route('crm.print-areas.designer') }}" class="btn-secondary" style="text-decoration:none;">
+            Preview on Products
+        </a>
         <a href="{{ route('crm.print-areas.create') }}" class="btn-primary">
             Add Print Area
         </a>
@@ -146,6 +149,12 @@
                                class="btn-secondary"
                                style="margin-right:8px;">
                                 Edit
+                            </a>
+
+                            <a href="{{ route('crm.print-areas.designer', ['area' => $area->id]) }}"
+                               class="btn-secondary"
+                               style="margin-right:8px;">
+                                Preview
                             </a>
 
                             <form method="POST"

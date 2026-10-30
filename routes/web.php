@@ -61,6 +61,9 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/crm/print-areas/list', [PrintAreaController::class, 'index'])->name('crm.print-areas.index');
 
+        Route::get('/crm/print-areas/designer', [PrintAreaController::class, 'designer'])->name('crm.print-areas.designer');
+        Route::post('/crm/print-areas/{id}/region', [PrintAreaController::class, 'updateRegion'])->whereNumber('id')->name('crm.print-areas.region.update');
+
         Route::get('/crm/print-areas/create', [PrintAreaController::class, 'create'])->name('crm.print-areas.create');
         Route::post('/crm/print-areas/store', [PrintAreaController::class, 'store'])->name('crm.print-areas.store');
 

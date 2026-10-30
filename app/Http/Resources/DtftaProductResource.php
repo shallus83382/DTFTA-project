@@ -70,7 +70,7 @@ class DtftaProductResource extends JsonResource
                 //     }
                 // }
 
-                return [
+                $payload = [
                     'id' => $printArea->id,
                     'title' => $printArea->title,
                     'area_width' => $printArea->area_width,
@@ -83,8 +83,21 @@ class DtftaProductResource extends JsonResource
                     'price' => $printArea->price,
                     'is_active' => (bool) $printArea->is_active,
                    // 'image' => $printArea->images ? url(Storage::url($printArea->images)) : null,
-                    'image' => $printArea->images['asset_key'],
+                    'image' => $printArea->images['asset_key'] ?? '',
                 ];
+
+                // Exact customizer canvas region (logical 0-500 space) set in the CRM preview.
+                // The Shopify app reads these in getDesignRegionFromPrintArea() and only
+                // accepts strings, so they are cast explicitly. Omitted when not set so the
+                // app keeps deriving the region from area/position fields.
+                if (method_exists($printArea, 'hasDesignRegion') && $printArea->hasDesignRegion()) {
+                    $payload['design_position_x'] = number_format((float) $printArea->design_position_x, 2, '.', '');
+                    $payload['design_position_y'] = number_format((float) $printArea->design_position_y, 2, '.', '');
+                    $payload['design_area_width'] = number_format((float) $printArea->design_area_width, 2, '.', '');
+                    $payload['design_area_height'] = number_format((float) $printArea->design_area_height, 2, '.', '');
+                }
+
+                return $payload;
             })->values();
         }, collect());
 

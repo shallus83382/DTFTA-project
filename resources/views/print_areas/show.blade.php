@@ -46,6 +46,22 @@
             </div>
 
             <div>
+                <label>Customizer Region</label>
+                <div class="filter-select">
+                    @if(method_exists($area, 'hasDesignRegion') && $area->hasDesignRegion())
+                        X {{ (float) $area->design_position_x }},
+                        Y {{ (float) $area->design_position_y }} ·
+                        {{ (float) $area->design_area_width }} ×
+                        {{ (float) $area->design_area_height }}
+                        <span style="color:#94a3b8;">(of 500)</span>
+                    @else
+                        <span style="color:#94a3b8;">Calculated from size &amp; position</span>
+                    @endif
+                </div>
+                <a href="{{ route('crm.print-areas.designer', ['area' => $area->id]) }}" style="display:inline-block; margin-top:6px; font-size:13px; color:#60a5fa;">Preview on products</a>
+            </div>
+
+            <div>
                 <label>Display Order</label>
                 <div class="filter-select">{{ $area->display_order ?? 0 }}</div>
             </div>

@@ -33,6 +33,10 @@
                     'unit' => $printArea->unit ?? $unit,
                     'position_x' => $printArea->position_x ?? null,
                     'position_y' => $printArea->position_y ?? null,
+                    'design_position_x' => $printArea->design_position_x,
+                    'design_position_y' => $printArea->design_position_y,
+                    'design_area_width' => $printArea->design_area_width,
+                    'design_area_height' => $printArea->design_area_height,
                     'tshirt_size' => $printArea->tshirt_size ?? null,
                     'display_order' => $printArea->display_order ?? 0,
                     'price' => $printArea->price ?? '0.00',
@@ -142,11 +146,21 @@
                         />   
                     </div>
 
+                    @include('print_areas.partials.canvas-preview', [
+                        'previewData' => $previewData,
+                        'index' => 0,
+                        'region' => $row,
+                        'printAreaId' => $printArea->id,
+                        'submitLabel' => 'Update Print Area',
+                    ])
 
-                    <div style="margin-top:20px;">
+                    <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
                         <button type="submit" class="btn-primary">
                             Update Print Area
                         </button>
+                        <a href="{{ route('crm.print-areas.designer', ['area' => $printArea->id]) }}" class="btn-secondary" style="text-decoration:none;">
+                            Preview on all products
+                        </a>
                     </div>
 
             </div>
@@ -157,7 +171,7 @@
 
     </form>
 <script>
-document.getElementById('imageInput').addEventListener('change', function(e) {
+document.getElementById('imageInput')?.addEventListener('change', function(e) {
 
     const file = e.target.files[0];
 

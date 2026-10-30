@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\PrintArea;
+use App\Helpers\PrintAreaPreviewData;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Controllers\CrmController;
 use Illuminate\Validation\Rule;
@@ -65,7 +66,9 @@ class PrintAreaController extends CrmController
     // Create Form
     public function create()
     {
-        return view('print_areas.create');
+        return view('print_areas.create', [
+            'previewData' => PrintAreaPreviewData::payload(),
+        ]);
     }
 
     // Store
@@ -85,6 +88,10 @@ class PrintAreaController extends CrmController
             'print_areas.*.unit' => ['required', Rule::in($allowedUnits)],
             'print_areas.*.position_x' => 'nullable|numeric',
             'print_areas.*.position_y' => 'nullable|numeric',
+            'print_areas.*.design_position_x' => 'nullable|numeric|min:0|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
+            'print_areas.*.design_position_y' => 'nullable|numeric|min:0|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
+            'print_areas.*.design_area_width' => 'nullable|numeric|min:' . PrintArea::DESIGN_MIN_EDGE . '|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
+            'print_areas.*.design_area_height' => 'nullable|numeric|min:' . PrintArea::DESIGN_MIN_EDGE . '|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
             'print_areas.*.tshirt_size' => 'nullable|string|max:50',
             'print_areas.*.display_order' => 'nullable|integer|min:0',
             'print_areas.*.price' => 'nullable|numeric|min:0',
@@ -103,7 +110,7 @@ class PrintAreaController extends CrmController
                 // }
 
 
-                PrintArea::create($area);
+                PrintArea::create(array_merge($area, PrintArea::normalizeDesignRegion($area)));
             }
         }
 
@@ -122,8 +129,12 @@ class PrintAreaController extends CrmController
     // Edit
     public function edit($id)
     {
-        $printArea = PrintArea::findOrFail($id);
-        return view('print_areas.edit', compact('printArea'));
+        $printArea = PrintArea::withCount('products')->findOrFail($id);
+
+        return view('print_areas.edit', [
+            'printArea' => $printArea,
+            'previewData' => PrintAreaPreviewData::payload(),
+        ]);
     }
 
     // Update
@@ -143,6 +154,10 @@ public function update(Request $request, $id)
         'print_areas.0.unit' => ['required', Rule::in($allowedUnits)],
         'print_areas.0.position_x' => 'nullable|numeric',
         'print_areas.0.position_y' => 'nullable|numeric',
+        'print_areas.0.design_position_x' => 'nullable|numeric|min:0|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
+        'print_areas.0.design_position_y' => 'nullable|numeric|min:0|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
+        'print_areas.0.design_area_width' => 'nullable|numeric|min:' . PrintArea::DESIGN_MIN_EDGE . '|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
+        'print_areas.0.design_area_height' => 'nullable|numeric|min:' . PrintArea::DESIGN_MIN_EDGE . '|max:' . PrintArea::DESIGN_LOGICAL_SIZE,
         'print_areas.0.tshirt_size' => 'nullable|string|max:50',
         'print_areas.0.display_order' => 'nullable|integer|min:0',
         'print_areas.0.price' => 'nullable|numeric|min:0',
@@ -151,6 +166,12 @@ public function update(Request $request, $id)
     ]);
 
     $areaData = $request->print_areas[0];
+    // Only touch the canvas region when the form actually sent it (keeps a saved region intact otherwise).
+    if (array_intersect_key($areaData, array_flip(PrintArea::DESIGN_REGION_FIELDS))) {
+        $areaData = array_merge($areaData, PrintArea::normalizeDesignRegion($areaData));
+    } else {
+        $areaData = array_diff_key($areaData, array_flip(PrintArea::DESIGN_REGION_FIELDS));
+    }
 
     // ✅ Handle New Image Upload (ONLY THIS)
     // if ($request->hasFile('print_area_images.0')) {
@@ -170,6 +191,52 @@ public function update(Request $request, $id)
     return redirect()->route('crm.print-areas.index')
         ->with('success', 'Updated Successfully');
 }
+
+    /**
+     * Product → placement preview: pick a product, switch between its print areas
+     * and adjust each canvas region over the product image before saving.
+     */
+    public function designer(Request $request)
+    {
+        $previewData = PrintAreaPreviewData::payload();
+
+        return view('print_areas.designer', [
+            'previewData' => $previewData,
+            'initialProductId' => $request->integer('product') ?: null,
+            'initialPrintAreaId' => $request->integer('area') ?: null,
+            'initialColor' => (string) $request->query('color', ''),
+        ]);
+    }
+
+    /**
+     * Save only the customizer canvas region of one print area (JSON, used by the designer page).
+     * Sending all four fields empty clears the region so the app derives it again.
+     */
+    public function updateRegion(Request $request, $id)
+    {
+        $printArea = PrintArea::withCount('products')->findOrFail($id);
+        $size = PrintArea::DESIGN_LOGICAL_SIZE;
+        $minEdge = PrintArea::DESIGN_MIN_EDGE;
+
+        $validated = $request->validate([
+            'design_position_x' => "nullable|numeric|min:0|max:{$size}",
+            'design_position_y' => "nullable|numeric|min:0|max:{$size}",
+            'design_area_width' => "nullable|numeric|min:{$minEdge}|max:{$size}",
+            'design_area_height' => "nullable|numeric|min:{$minEdge}|max:{$size}",
+        ]);
+
+        $region = PrintArea::normalizeDesignRegion($validated);
+        $printArea->update($region);
+        $printArea->refresh()->loadCount('products');
+
+        return response()->json([
+            'success' => true,
+            'message' => $printArea->hasDesignRegion()
+                ? 'Print area saved.'
+                : 'Custom region cleared. The customizer will calculate it from size and position.',
+            'print_area' => PrintAreaPreviewData::printArea($printArea),
+        ]);
+    }
 
     // Delete
    public function destroy($id)
