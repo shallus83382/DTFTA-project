@@ -1117,6 +1117,10 @@
     var area = this.currentArea();
     var warn = this.refs.aspectwarn;
     if (!area || !warn) return;
+    if (this.mode === 'form' && !this.opts.printAreaId) {
+      warn.hidden = true;
+      return;
+    }
     var phys = physicalPrintSize(area);
     var s = this.scale();
     var vis = (region.width * s.x) / (region.height * s.y);
