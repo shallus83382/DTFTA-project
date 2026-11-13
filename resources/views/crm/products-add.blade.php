@@ -453,6 +453,7 @@
     </div>
 
     @push('scripts')
+    @vite('resources/js/app.js')
     @include('crm.partials.product-colors-scripts')
     <script>
         document.addEventListener('DOMContentLoaded', function () {

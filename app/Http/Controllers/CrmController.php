@@ -1072,8 +1072,274 @@ class CrmController extends Controller
             ->orderBy('display_order')
             ->orderBy('title')
             ->get();
-    
+
         return view('crm.products-view', $data);
+    }
+
+    public function bulkMockupImport(Request $request): View
+    {
+        $data = $this->prepareViewData();
+        $data['products'] = Product::orderBy('title')->get(['id', 'title']);
+        $data['selectedProduct'] = null;
+        $data['importProductData'] = null;
+
+        if ($request->filled('product_id')) {
+            $product = Product::with('variants')->find($request->input('product_id'));
+            if ($product) {
+                $data['selectedProduct'] = $product;
+                $mockups = is_array($product->color_mockups) ? $product->color_mockups : [];
+                $variantColorsByKey = $product->variants
+                    ->pluck('color')
+                    ->filter()
+                    ->unique()
+                    ->groupBy(fn (string $color) => $this->resolveColorKey($color));
+                $colorsByKey = $variantColorsByKey;
+                $mockupsByColorKey = [];
+                foreach ($mockups as $mockupKey => $entry) {
+                    $name = trim((string) ($entry['name'] ?? $mockupKey));
+                    $key = $name !== '' ? $this->resolveColorKey($name) : '';
+                    if ($key === '') {
+                        continue;
+                    }
+
+                    $mockupsByColorKey[$key] = $entry;
+                    if (!$colorsByKey->has($key)) {
+                        $colorsByKey->put($key, collect([$name]));
+                    }
+                }
+
+                $data['importProductData'] = [
+                    'id' => $product->id,
+                    'title' => $product->title,
+                    'price' => $product->price,
+                    'sizes' => $product->variants->pluck('size')->filter()->unique()->values(),
+                    'colors' => $colorsByKey->map(function ($names, $key) use ($mockupsByColorKey, $variantColorsByKey) {
+                        $name = (string) $names->first();
+                        $entry = $mockupsByColorKey[$key] ?? [];
+                        $slots = [];
+
+                        foreach ($this->colorMockupPlacements() as $placement) {
+                            $slots[$placement] = !empty($entry[$placement]);
+                        }
+
+                        return [
+                            'name' => $name,
+                            'key' => (string) $key,
+                            'ambiguous' => $names->count() > 1,
+                            'hasVariants' => $variantColorsByKey->has($key),
+                            'slots' => $slots,
+                        ];
+                    })->values(),
+                ];
+            }
+        }
+
+        return view('crm.products-mockup-import', $data);
+    }
+
+    public function saveBulkMockupImport(Request $request, string $productId): JsonResponse
+    {
+        $validated = $request->validate([
+            'files' => 'required|array|min:1|max:500',
+            'files.*' => 'required|image|mimes:png,jpg,jpeg,webp,gif|max:10240',
+            'mappings' => 'required|string|max:200000',
+        ]);
+
+        try {
+            $mappings = json_decode($validated['mappings'], true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'mappings' => 'The mockup mapping data is invalid. Preview the ZIP again before applying it.',
+            ]);
+        }
+
+        $files = array_values($request->file('files', []));
+        if (!is_array($mappings) || !array_is_list($mappings) || count($mappings) !== count($files)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'mappings' => 'Each selected mockup must have exactly one mapping.',
+            ]);
+        }
+
+        $normalizedMappings = [];
+        $mappingSlots = [];
+        $colorNamesByKey = [];
+
+        foreach ($mappings as $index => $mapping) {
+            if (!is_array($mapping)
+                || !isset($mapping['color'], $mapping['placement'])
+                || !is_string($mapping['color'])
+                || !is_string($mapping['placement'])
+                || trim($mapping['color']) === ''
+                || mb_strlen(trim($mapping['color'])) > 100
+                || !in_array($mapping['placement'], $this->colorMockupPlacements(), true)
+                || !in_array($mapping['replace'] ?? false, [true, false, 0, 1, '0', '1'], true)
+            ) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'mappings' => 'A mockup mapping is invalid. Review the color and placement selections.',
+                ]);
+            }
+
+            $color = trim($mapping['color']);
+            $key = $this->resolveColorKey($color);
+            $slotKey = $key . '|' . $mapping['placement'];
+
+            if ($key === '' || isset($mappingSlots[$slotKey])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'mappings' => 'There are duplicate color and placement mappings. Resolve the duplicate before applying.',
+                ]);
+            }
+
+            $mappingSlots[$slotKey] = true;
+            $colorNamesByKey[$key][strtolower($color)] = $color;
+            $normalizedMappings[] = [
+                'file_index' => $index,
+                'color' => $color,
+                'key' => $key,
+                'placement' => $mapping['placement'],
+                'replace' => in_array($mapping['replace'] ?? false, [true, 1, '1'], true),
+            ];
+        }
+
+        foreach ($colorNamesByKey as $names) {
+            if (count($names) > 1) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'mappings' => 'Two imported color names resolve to the same color key. Use one consistent color name.',
+                ]);
+            }
+        }
+
+        $storedPaths = [];
+        $pathsToDelete = [];
+        $savedImageCount = 0;
+        $skippedImageCount = 0;
+        $createdVariantCount = 0;
+
+        try {
+            DB::transaction(function () use (
+                $productId,
+                $files,
+                $normalizedMappings,
+                &$storedPaths,
+                &$pathsToDelete,
+                &$savedImageCount,
+                &$skippedImageCount,
+                &$createdVariantCount
+            ) {
+                $product = Product::with('variants')->lockForUpdate()->findOrFail($productId);
+                $existingColorsByKey = $product->variants
+                    ->filter(fn (ProductVariant $variant) => trim((string) $variant->color) !== '')
+                    ->groupBy(fn (ProductVariant $variant) => $this->resolveColorKey((string) $variant->color));
+
+                foreach ($existingColorsByKey as $key => $variants) {
+                    if ($variants->pluck('color')->map(fn ($name) => strtolower(trim((string) $name)))->unique()->count() > 1) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'product_id' => 'This product has duplicate existing color keys. Resolve them before importing mockups.',
+                        ]);
+                    }
+                }
+
+                $mockups = is_array($product->color_mockups) ? $product->color_mockups : [];
+                $activeMappings = [];
+                $newColors = [];
+
+                foreach ($normalizedMappings as $mapping) {
+                    $existingVariants = $existingColorsByKey->get($mapping['key']);
+                    $colorName = $existingVariants
+                        ? (string) $existingVariants->first()->color
+                        : $mapping['color'];
+                    $entry = $mockups[$mapping['key']] ?? [];
+                    $occupied = !empty($entry[$mapping['placement']]);
+
+                    if ($occupied && !$mapping['replace']) {
+                        $skippedImageCount++;
+                        continue;
+                    }
+
+                    $mapping['color'] = $colorName;
+                    $mapping['old_path'] = $entry[$mapping['placement']] ?? null;
+                    $activeMappings[] = $mapping;
+                    if (!$existingVariants) {
+                        $newColors[$mapping['key']] = $colorName;
+                    }
+                }
+
+                if ($activeMappings === []) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'files' => 'Every selected image matches an occupied slot. Choose replacement for at least one image.',
+                    ]);
+                }
+
+                foreach ($activeMappings as $mapping) {
+                    $file = $files[$mapping['file_index']] ?? null;
+                    if (!$file instanceof \Illuminate\Http\UploadedFile || !$file->isValid()) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'files' => 'A selected mockup could not be uploaded. Please select the ZIP and preview it again.',
+                        ]);
+                    }
+
+                    $path = $this->storeImportedColorMockupFile(
+                        $file,
+                        $product,
+                        $mapping['key'],
+                        $mapping['placement']
+                    );
+                    $storedPaths[] = $path;
+
+                    if ($mapping['old_path']) {
+                        $pathsToDelete[] = $mapping['old_path'];
+                    }
+
+                    $entry = $mockups[$mapping['key']] ?? [
+                        'name' => $mapping['color'],
+                        'hex' => '#e2e8f0',
+                    ];
+                    $entry['name'] = $mapping['color'];
+                    $entry['hex'] = (string) ($entry['hex'] ?? '#e2e8f0');
+                    $entry[$mapping['placement']] = $path;
+                    $mockups[$mapping['key']] = $entry;
+                    $savedImageCount++;
+                }
+
+                $product->update(['color_mockups' => $mockups]);
+
+                $sizes = $product->variants->pluck('size')->filter()->unique()->values();
+                foreach ($newColors as $color) {
+                    foreach ($sizes as $size) {
+                        $product->variants()->create([
+                            'sku' => $this->generateProductVariantSku($product, $color, (string) $size),
+                            'color' => $color,
+                            'size' => $size,
+                            'price' => $product->price,
+                            'is_active' => true,
+                        ]);
+                        $createdVariantCount++;
+                    }
+                }
+            });
+        } catch (\Throwable $exception) {
+            foreach ($storedPaths as $path) {
+                $this->deleteColorMockupPath($path);
+            }
+            throw $exception;
+        }
+
+        foreach (array_unique($pathsToDelete) as $path) {
+            $this->deleteColorMockupPath((string) $path);
+        }
+
+        AdminActivityLog::logActivity(
+            auth()->id(),
+            'Imported Product Mockups',
+            'Product',
+            (int) $productId
+        );
+
+        return response()->json([
+            'message' => 'Mockups imported successfully.',
+            'saved_images' => $savedImageCount,
+            'skipped_existing' => $skippedImageCount,
+            'created_variants' => $createdVariantCount,
+        ]);
     }
 
     /**
@@ -1488,6 +1754,33 @@ class CrmController extends Controller
 
         if ($stored === false) {
             throw new \RuntimeException("Unable to store color mockup at {$relativePath}");
+        }
+
+        return $stored;
+    }
+
+    private function storeImportedColorMockupFile(
+        \Illuminate\Http\UploadedFile $file,
+        Product $product,
+        string $colorKey,
+        string $placement
+    ): string {
+        $extension = match (strtolower((string) $file->getMimeType())) {
+            'image/png', 'image/x-png' => 'png',
+            'image/jpeg', 'image/pjpeg' => 'jpg',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            default => throw \Illuminate\Validation\ValidationException::withMessages([
+                'files' => 'Only PNG, JPEG, WebP, or GIF mockups can be imported.',
+            ]),
+        };
+        $baseName = Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), '_');
+        $storedFilename = $placement . '_' . ($baseName ?: 'mockup') . '_' . Str::lower(Str::random(10)) . '.' . $extension;
+        $relativePath = $this->colorMockupRelativePath($product->id, $colorKey, $storedFilename);
+        $stored = $file->storeAs(dirname($relativePath), basename($relativePath), $this->colorMockupStorageDisk());
+
+        if ($stored === false) {
+            throw new \RuntimeException("Unable to store imported color mockup at {$relativePath}");
         }
 
         return $stored;

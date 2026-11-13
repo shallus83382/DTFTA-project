@@ -188,6 +188,185 @@
             border-color: rgba(96, 165, 250, 0.35);
             color: #f8fafc;
         }
+
+        .mockup-zip-import-tools {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 14px 0;
+        }
+
+        .mockup-zip-import-status {
+            color: #9fb1cf;
+            font-size: 13px;
+        }
+
+        .mockup-zip-review {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(2, 6, 23, 0.82);
+        }
+
+        .mockup-zip-review[hidden] {
+            display: none;
+        }
+
+        .mockup-zip-review-dialog {
+            width: min(1120px, 96vw);
+            max-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            border-radius: 14px;
+            background: #0f172a;
+            color: #e2e8f0;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+        }
+
+        .mockup-zip-review-header,
+        .mockup-zip-review-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 18px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .mockup-zip-review-header h3 {
+            margin: 0;
+            color: #f8fafc;
+        }
+
+        .mockup-zip-review-content {
+            display: grid;
+            gap: 12px;
+            min-height: 0;
+            padding: 16px;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
+        .mockup-zip-review-footer {
+            justify-content: flex-end;
+            border-top: 1px solid rgba(148, 163, 184, 0.2);
+            border-bottom: 0;
+        }
+
+        .mockup-zip-review-color {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(100px, 150px);
+            gap: 12px;
+            align-items: end;
+            padding: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.45);
+            min-width: 0;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .mockup-zip-review-color label {
+            display: grid;
+            gap: 5px;
+            color: #a9bddb;
+            font-size: 11px;
+            text-transform: uppercase;
+            min-width: 0;
+        }
+
+        .mockup-zip-review-color > div:not(.mockup-zip-review-files) {
+            grid-column: 1 / -1;
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .mockup-zip-review-color input[type="text"],
+        .mockup-zip-review-color input[type="color"] {
+            min-height: 36px;
+            box-sizing: border-box;
+        }
+
+        .mockup-zip-review-files {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .mockup-zip-review-file {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            align-content: start;
+            gap: 8px;
+            padding: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 9px;
+            background: rgba(15, 23, 42, 0.55);
+            font-size: 12px;
+            color: #cbd5e1;
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        .mockup-zip-review-file img {
+            width: 100%;
+            height: clamp(150px, 25vh, 240px);
+            object-fit: contain;
+            background-color: #fff;
+            border-radius: 7px;
+            cursor: zoom-in;
+        }
+
+        .mockup-zip-review-file select {
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .mockup-zip-review-file span {
+            overflow-wrap: anywhere;
+        }
+
+        .mockup-zip-review-warning {
+            color: #fbbf24;
+            font-size: 12px;
+        }
+
+        .mockup-zip-review-error {
+            color: #fca5a5;
+            font-size: 12px;
+        }
+
+        .mockup-zip-review-missing {
+            color: #f87171;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        @media (max-width: 760px) {
+            .mockup-zip-review {
+                padding: 8px;
+            }
+
+            .mockup-zip-review-dialog {
+                width: 100%;
+                max-height: 96vh;
+            }
+
+            .mockup-zip-review-color,
+            .mockup-zip-review-file {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
     @endpush
 @endonce
@@ -196,7 +375,29 @@
     Enter any color name (or pick a preset). Upload front, back, left sleeve, and right sleeve mockups per color — saved as <code>placement_filename.ext</code> on S3 (from the uploaded file name).
 </p>
 
-<div id="colors-wrapper" data-predefined-colors='@json($predefinedColorNames)'>
+<div class="mockup-zip-import-tools">
+    <button type="button" class="btn-secondary" id="mockup-zip-import-button">Import Mockups ZIP</button>
+    <input type="file" id="mockup-zip-import-input" accept=".zip,application/zip" hidden>
+    <span class="mockup-zip-import-status" id="mockup-zip-import-status" role="status" aria-live="polite">
+        ZIP images will populate the color rows below. Review names and swatches, then save the product normally.
+    </span>
+</div>
+<div class="mockup-zip-review" id="mockup-zip-review" role="dialog" aria-modal="true" aria-labelledby="mockup-zip-review-title" hidden>
+    <div class="mockup-zip-review-dialog">
+        <div class="mockup-zip-review-header">
+            <h3 id="mockup-zip-review-title">Review ZIP Images</h3>
+            <button type="button" class="btn-secondary" id="mockup-zip-review-close" aria-label="Close ZIP preview">Close</button>
+        </div>
+        <div class="mockup-zip-review-content" id="mockup-zip-review-content"></div>
+        <div class="mockup-zip-review-footer">
+            <button type="button" class="btn-secondary" id="mockup-zip-review-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<div id="colors-wrapper"
+     data-predefined-colors='@json($predefinedColorNames)'
+     data-color-keys='@json(config("dtfta.common_colors", []))'>
     @foreach($colorRows as $index => $row)
         @php
             $colorName = old('colors.' . $index, $row['name'] ?? '');
