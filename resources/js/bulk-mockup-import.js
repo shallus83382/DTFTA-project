@@ -146,6 +146,8 @@ function initializeInlineMockupImport() {
     const review = document.getElementById('mockup-zip-review');
     const reviewContent = document.getElementById('mockup-zip-review-content');
     const reviewFooter = review?.querySelector('.mockup-zip-review-footer');
+    const occupiedWarning = document.getElementById('mockup-zip-occupied-warning');
+    const closeOccupiedWarningButton = document.getElementById('mockup-zip-occupied-warning-close');
     const closeReviewButton = document.getElementById('mockup-zip-review-close');
     const cancelReviewButton = document.getElementById('mockup-zip-review-cancel');
     const addColorButton = document.getElementById('add-color-btn');
@@ -204,6 +206,8 @@ function initializeInlineMockupImport() {
     const swatches = new Map();
     const manualSwatches = new Set();
     let previewUrls = [];
+    let occupiedWarningWasNeeded = false;
+    let occupiedWarningDismissed = false;
 
     function buildGroups() {
         const groups = new Map();
@@ -436,9 +440,17 @@ function initializeInlineMockupImport() {
         const willImportAtLeastOne = items.some((item) => {
             return item.selected && item.color.trim() && item.placement && (!occupiedTarget(item) || item.replace);
         });
-        if (items.some((item) => item.selected) && !willImportAtLeastOne) {
-            reviewContent.appendChild(makeElement('div', 'mockup-zip-review-warning', 'All selected images target occupied slots. Choose replacement for at least one image or uncheck occupied images.'));
+        const occupiedWarningNeeded = items.some((item) => item.selected) && !willImportAtLeastOne;
+        if (occupiedWarning) {
+            if (!occupiedWarningNeeded) {
+                occupiedWarning.hidden = true;
+                occupiedWarningDismissed = false;
+            } else if (!occupiedWarningWasNeeded && !occupiedWarningDismissed) {
+                occupiedWarning.hidden = false;
+                closeOccupiedWarningButton?.focus();
+            }
         }
+        occupiedWarningWasNeeded = occupiedWarningNeeded;
         return willImportAtLeastOne
             && !invalidItems
             && duplicateColors.length === 0
@@ -461,6 +473,11 @@ function initializeInlineMockupImport() {
     function closeReview() {
         review.hidden = true;
     }
+
+    closeOccupiedWarningButton?.addEventListener('click', () => {
+        occupiedWarningDismissed = true;
+        occupiedWarning.hidden = true;
+    });
 
     function applyImportToForm() {
         const groups = buildGroups().filter((group) => group.items.some((item) => item.selected));

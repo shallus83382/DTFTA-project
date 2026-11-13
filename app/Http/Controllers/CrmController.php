@@ -1373,10 +1373,11 @@ class CrmController extends Controller
         ] + $this->colorMockupValidationRules());
     
         $product = null;
-    
-        DB::transaction(function () use ($request, $validated, &$product) {
+        $storedMockupPaths = [];
+
+        $saveProduct = function () use ($request, $validated, &$product, &$storedMockupPaths) {
             // $imagePaths = [];
-    
+
             // if ($request->hasFile('images')) {
             //     foreach ((array) $request->file('images') as $file) {
             //         if ($file) {
@@ -1384,7 +1385,7 @@ class CrmController extends Controller
             //         }
             //     }
             // }
-    
+
             $product = Product::create([
                 'title' => $validated['title'],
                 'brand' => $validated['brand'] ?? null,
@@ -1395,19 +1396,19 @@ class CrmController extends Controller
                 'price' => $validated['price'],
                 'images' => $validated['images'] ?: null,
             ]);
-    
+
             $colors = collect($validated['colors'])
                 ->map(fn ($color) => trim($color))
                 ->filter()
-                ->unique()
+                ->unique(fn ($color) => $this->resolveColorKey($color))
                 ->values();
-    
+
             $sizes = collect($validated['sizes'])
                 ->map(fn ($size) => trim($size))
                 ->filter()
-                ->unique()
+                ->unique(fn ($size) => mb_strtolower($size))
                 ->values();
-    
+
             foreach ($colors as $color) {
                 foreach ($sizes as $size) {
                     $product->variants()->create([
@@ -1419,13 +1420,23 @@ class CrmController extends Controller
                     ]);
                 }
             }
-    
+
             $product->printAreas()->sync($validated['print_area_ids'] ?? []);
 
             $product->update([
-                'color_mockups' => $this->syncColorMockups($product, $request),
+                'color_mockups' => $this->syncColorMockups($product, $request, $storedMockupPaths),
             ]);
-        });
+        };
+
+        try {
+            DB::transaction($saveProduct);
+        } catch (\Throwable $exception) {
+            foreach ($storedMockupPaths as $path) {
+                $this->deleteColorMockupPath($path);
+            }
+
+            throw $exception;
+        }
     
         AdminActivityLog::logActivity(
             auth()->id(),
@@ -1474,16 +1485,32 @@ class CrmController extends Controller
             'color_hex.*' => 'nullable|string|max:20',
         ] + $this->colorMockupValidationRules());
     
-        DB::transaction(function () use ($request, $validated, $product) {
+        $productId = $product->id;
+        $previousMockups = [];
+        $storedMockupPaths = [];
+
+        $saveProduct = function () use (
+            $request,
+            $validated,
+            $productId,
+            &$product,
+            &$previousMockups,
+            &$storedMockupPaths
+        ) {
+            $product = Product::with(['variants', 'printAreas'])
+                ->lockForUpdate()
+                ->findOrFail($productId);
+            $previousMockups = is_array($product->color_mockups) ? $product->color_mockups : [];
+
             // $existingImages = is_array($product->images) ? $product->images : [];
-    
+
             // if ($request->boolean('remove_existing_images')) {
             //     foreach ($existingImages as $path) {
             //         Storage::disk('public')->delete((string) $path);
             //     }
             //     $existingImages = [];
             // }
-    
+
             // $newImagePaths = [];
             // if ($request->hasFile('images')) {
             //     foreach ((array) $request->file('images') as $file) {
@@ -1492,9 +1519,9 @@ class CrmController extends Controller
             //         }
             //     }
             // }
-    
+
             // $finalImages = array_values(array_filter(array_merge($existingImages, $newImagePaths)));
-    
+
             $product->update([
                 'title' => $validated['title'],
                 'brand' => $validated['brand'] ?? null,
@@ -1505,21 +1532,21 @@ class CrmController extends Controller
                 'price' => $validated['price'],
                 'images' => $validated['images'] ?: null,
             ]);
-    
+
             $colors = collect($validated['colors'])
                 ->map(fn ($color) => trim($color))
                 ->filter()
-                ->unique()
+                ->unique(fn ($color) => $this->resolveColorKey($color))
                 ->values();
-    
+
             $sizes = collect($validated['sizes'])
                 ->map(fn ($size) => trim($size))
                 ->filter()
-                ->unique()
+                ->unique(fn ($size) => mb_strtolower($size))
                 ->values();
-    
+
             $desiredCombinations = [];
-    
+
             foreach ($colors as $color) {
                 foreach ($sizes as $size) {
                     $desiredCombinations[] = [
@@ -1528,16 +1555,16 @@ class CrmController extends Controller
                     ];
                 }
             }
-    
+
             $existingVariants = $product->variants->keyBy(function ($variant) {
-                return strtolower($variant->color . '|' . $variant->size);
+                return $this->productVariantCombinationKey($variant->color, $variant->size);
             });
-    
+
             $keptVariantIds = [];
-    
+
             foreach ($desiredCombinations as $combo) {
-                $key = strtolower($combo['color'] . '|' . $combo['size']);
-    
+                $key = $this->productVariantCombinationKey($combo['color'], $combo['size']);
+
                 if ($existingVariants->has($key)) {
                     $variant = $existingVariants->get($key);
                     $variantPrice = data_get($validated, 'variant_prices.' . $variant->id);
@@ -1554,20 +1581,35 @@ class CrmController extends Controller
                         'is_active' => true,
                     ]);
                 }
-    
+
                 $keptVariantIds[] = $variant->id;
             }
-    
+
             $product->variants()
                 ->whereNotIn('id', $keptVariantIds)
                 ->delete();
-    
+
             $product->printAreas()->sync($validated['print_area_ids'] ?? []);
 
             $product->update([
-                'color_mockups' => $this->syncColorMockups($product, $request),
+                'color_mockups' => $this->syncColorMockups($product, $request, $storedMockupPaths),
             ]);
-        });
+        };
+
+        try {
+            DB::transaction($saveProduct);
+        } catch (\Throwable $exception) {
+            foreach ($storedMockupPaths as $path) {
+                $this->deleteColorMockupPath($path);
+            }
+
+            throw $exception;
+        }
+
+        $this->deleteUnreferencedColorMockupFiles(
+            $previousMockups,
+            is_array($product->color_mockups) ? $product->color_mockups : []
+        );
     
         AdminActivityLog::logActivity(
             auth()->id(),
@@ -1598,6 +1640,11 @@ class CrmController extends Controller
         }
 
         return Str::slug($colorName);
+    }
+
+    private function productVariantCombinationKey(string $color, string $size): string
+    {
+        return $this->resolveColorKey($color) . '|' . mb_strtolower(trim($size));
     }
 
     /**
@@ -1702,6 +1749,7 @@ class CrmController extends Controller
         \Illuminate\Http\UploadedFile $file
     ): string {
         $ext = $this->resolveColorMockupExtension($file);
+        $contentHash = hash('sha256', $file->get());
         $base = trim((string) $requestedFilename);
 
         if ($base === '') {
@@ -1715,7 +1763,7 @@ class CrmController extends Controller
             $base = (string) time();
         }
 
-        return $placement.'_'.$base.'.'.$ext;
+        return $placement.'_'.$base.'_'.$contentHash.'.'.$ext;
     }
 
     private function resolveColorMockupExtension(\Illuminate\Http\UploadedFile $file): string
@@ -1820,6 +1868,84 @@ class CrmController extends Controller
         }
     }
 
+    private function colorMockupPathMatchesFile(
+        \Illuminate\Http\UploadedFile $file,
+        ?string $path
+    ): bool {
+        if ($path === null || trim($path) === '') {
+            return false;
+        }
+
+        $path = ltrim($path, '/');
+        $disk = str_starts_with($path, 'products/')
+            ? 'public'
+            : $this->colorMockupStorageDisk();
+        $storage = Storage::disk($disk);
+
+        if (!$storage->exists($path)) {
+            return false;
+        }
+
+        $stream = $storage->readStream($path);
+        if (!is_resource($stream)) {
+            throw new \RuntimeException("Unable to read existing color mockup at {$path}");
+        }
+
+        try {
+            $context = hash_init('sha256');
+            if (hash_update_stream($context, $stream) === false) {
+                throw new \RuntimeException("Unable to hash existing color mockup at {$path}");
+            }
+
+            return hash_equals(hash_final($context), hash('sha256', $file->get()));
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    /**
+     * Delete replaced or removed files only after commit and only when no slot still references them.
+     *
+     * @param  array<string, mixed>  $previous
+     * @param  array<string, mixed>  $current
+     */
+    private function deleteUnreferencedColorMockupFiles(array $previous, array $current): void
+    {
+        $referencedPaths = [];
+        foreach ($current as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            foreach ($this->colorMockupPlacements() as $placement) {
+                $path = $entry[$placement] ?? null;
+                if (is_string($path) && trim($path) !== '') {
+                    $referencedPaths[ltrim($path, '/')] = true;
+                }
+            }
+        }
+
+        $oldPaths = [];
+        foreach ($previous as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            foreach ($this->colorMockupPlacements() as $placement) {
+                $path = $entry[$placement] ?? null;
+                if (is_string($path) && trim($path) !== '') {
+                    $oldPaths[ltrim($path, '/')] = true;
+                }
+            }
+        }
+
+        foreach (array_keys($oldPaths) as $path) {
+            if (!isset($referencedPaths[$path])) {
+                $this->deleteColorMockupPath($path);
+            }
+        }
+    }
+
     private function isTruthyFormFlag(mixed $value): bool
     {
         return in_array((string) $value, ['1', 'true', 'on', 'yes'], true);
@@ -1833,10 +1959,11 @@ class CrmController extends Controller
     /**
      * @return array<string, array{name: string, hex: string, front?: string, back?: string, left_sleeve?: string, right_sleeve?: string}>
      */
-    private function syncColorMockups(Product $product, Request $request): array
+    private function syncColorMockups(Product $product, Request $request, array &$storedPaths): array
     {
         $existing = is_array($product->color_mockups) ? $product->color_mockups : [];
         $newMockups = [];
+        $seenColorKeys = [];
 
         $colorNames = array_values((array) $request->input('colors', []));
         $hexInputs = (array) $request->input('color_hex', []);
@@ -1848,6 +1975,10 @@ class CrmController extends Controller
             }
 
             $key = $this->resolveColorKey($colorName);
+            if ($key === '' || isset($seenColorKeys[$key])) {
+                continue;
+            }
+            $seenColorKeys[$key] = true;
             $prev = $newMockups[$key] ?? $existing[$key] ?? [];
 
             $entry = [
@@ -1863,20 +1994,23 @@ class CrmController extends Controller
                 $placementFiles = (array) $request->file($fieldBase, []);
 
                 if ($this->hasUploadedColorMockupFile($placementFiles[$index] ?? null)) {
-                    if (!empty($prev[$placement])) {
-                        $this->deleteColorMockupPath((string) $prev[$placement]);
+                    $file = $placementFiles[$index];
+                    if ($this->colorMockupPathMatchesFile($file, $prev[$placement] ?? null)) {
+                        $entry[$placement] = (string) $prev[$placement];
+                        continue;
                     }
-                    $entry[$placement] = $this->storeColorMockupFile(
-                        $placementFiles[$index],
+
+                    $path = $this->storeColorMockupFile(
+                        $file,
                         $product,
                         $key,
                         $placement,
                         $placementFilenames[$index] ?? null
                     );
+                    $storedPaths[] = $path;
+                    $entry[$placement] = $path;
                 } elseif ($this->isTruthyFormFlag($placementRemove[$index] ?? null)) {
-                    if (!empty($prev[$placement])) {
-                        $this->deleteColorMockupPath((string) $prev[$placement]);
-                    }
+                    continue;
                 } elseif (!empty($placementExisting[$index])) {
                     $entry[$placement] = ltrim((string) $placementExisting[$index], '/');
                 } elseif (!empty($prev[$placement])) {
@@ -1885,18 +2019,6 @@ class CrmController extends Controller
             }
 
             $newMockups[$key] = $entry;
-        }
-
-        foreach ($existing as $key => $data) {
-            if (isset($newMockups[$key])) {
-                continue;
-            }
-
-            foreach ($this->colorMockupPlacements() as $placement) {
-                if (!empty($data[$placement])) {
-                    $this->deleteColorMockupPath((string) $data[$placement]);
-                }
-            }
         }
 
         return $newMockups;

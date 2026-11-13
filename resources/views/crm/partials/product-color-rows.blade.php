@@ -217,6 +217,45 @@
             display: none;
         }
 
+        .mockup-zip-occupied-warning {
+            position: fixed;
+            inset: 0;
+            z-index: 10001;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            background: rgba(2, 6, 23, 0.72);
+        }
+
+        .mockup-zip-occupied-warning[hidden] {
+            display: none;
+        }
+
+        .mockup-zip-occupied-warning-dialog {
+            width: min(440px, 94vw);
+            padding: 22px;
+            border: 1px solid rgba(251, 191, 36, 0.55);
+            border-radius: 14px;
+            background: #0f172a;
+            color: #e2e8f0;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+        }
+
+        .mockup-zip-occupied-warning-dialog h3 {
+            margin: 0 0 10px;
+            color: #fde68a;
+        }
+
+        .mockup-zip-occupied-warning-dialog p {
+            margin: 0 0 18px;
+            line-height: 1.5;
+        }
+
+        .mockup-zip-occupied-warning-dialog button {
+            display: block;
+            margin-left: auto;
+        }
+
         .mockup-zip-review-dialog {
             width: min(800px, 96vw);
             max-height: 92vh;
@@ -462,6 +501,13 @@
         <div class="mockup-zip-review-footer">
             <button type="button" class="btn-secondary" id="mockup-zip-review-cancel">Cancel</button>
         </div>
+    </div>
+</div>
+<div class="mockup-zip-occupied-warning" id="mockup-zip-occupied-warning" role="alertdialog" aria-modal="true" aria-labelledby="mockup-zip-occupied-warning-title" aria-describedby="mockup-zip-occupied-warning-message" hidden>
+    <div class="mockup-zip-occupied-warning-dialog">
+        <h3 id="mockup-zip-occupied-warning-title">Images already exist in these slots</h3>
+        <p id="mockup-zip-occupied-warning-message">All selected images target occupied slots. Choose “Replace image” for a slot, or uncheck occupied images to continue.</p>
+        <button type="button" class="btn-primary" id="mockup-zip-occupied-warning-close">Got it</button>
     </div>
 </div>
 
