@@ -15,7 +15,9 @@
         </div>
     @endif
 
-    <form action="{{ route('crm.print-areas.store') }}" method="POST" enctype="multipart/form-data">
+    <form action="{{ route('crm.print-areas.store') }}" method="POST" enctype="multipart/form-data"
+          data-recoverable-draft
+          data-draft-key="print-area-create-{{ auth()->id() }}">
         @csrf
 
 

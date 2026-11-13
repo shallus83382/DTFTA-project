@@ -365,9 +365,9 @@
             setInterval(refreshNotifications, 20000);
         });
     </script>
+    <script src="{{ asset('js/recoverable-form-draft.js') }}?v={{ @filemtime(public_path('js/recoverable-form-draft.js')) ?: '1' }}"></script>
     @stack('scripts')
 </body>
 </html>
-
 
 

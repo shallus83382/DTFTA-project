@@ -309,6 +309,8 @@
       '.pap-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--accent-orange,#f97316)}',
       '.pap-sw.none{background:repeating-linear-gradient(45deg,#cbd5e1 0 4px,#f8fafc 4px 8px)}',
       '.pap-savebar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}',
+      '.pap-draft-banner{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(96,165,250,.4);border-radius:9px;background:rgba(30,58,138,.18);color:#dbeafe;font-size:13px}',
+      '.pap-draft-banner[hidden]{display:none}',
       '.pap-msg{font-size:13px}',
       '.pap-msg.ok{color:#34d399}.pap-msg.err{color:#f87171}'
     ].join('\n');
@@ -352,8 +354,10 @@
     this.areaId = null;
     this.custom = null; // form mode: current explicit region or null (= derived)
     this.bgToken = 0;
+    this.navigationConfirmed = false;
     this.build();
     this.initState();
+    this.offerDraftRecovery();
   }
 
   PrintAreaPreview.VIEWPORTS = VIEWPORTS;
@@ -365,6 +369,7 @@
     var designer = this.mode === 'designer';
     r.classList.add('pap');
     r.innerHTML =
+      '<div class="pap-draft-banner" data-ref="draftbanner" role="status" hidden></div>' +
       '<div class="pap-head"><div>' +
         '<h3>' + (designer ? 'Product print areas' : 'Customizer canvas preview') + '</h3>' +
         '<p class="pap-sub">' + (designer
@@ -468,6 +473,24 @@
       if (!b || !r.contains(b)) return;
       self.action(b.getAttribute('data-act'));
     });
+    document.addEventListener('click', function (e) {
+      if (self.mode !== 'designer' || e.defaultPrevented || e.button !== 0 ||
+          e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || !self.isDirty()) return;
+      var link = e.target.closest('a[href]');
+      if (!link || link.target || link.hasAttribute('download')) return;
+      var destination;
+      try {
+        destination = new URL(link.href, window.location.href);
+      } catch (error) {
+        return;
+      }
+      if (destination.origin !== window.location.origin || destination.href === window.location.href) return;
+      e.preventDefault();
+      if (!window.confirm('You have unsaved changes. Leave this page? Your edits are saved as a recoverable draft.')) return;
+      self.persistDesignerDraft();
+      self.navigationConfirmed = true;
+      window.location.assign(destination.href);
+    }, true);
     this.resizeObserver = new ResizeObserver(function () { self.fitDisplay(); });
     this.resizeObserver.observe(refs.stage.parentElement);
     refs.stage.tabIndex = 0;
@@ -958,6 +981,7 @@
       this.syncArtwork();
       this.updateAspectWarning(region);
       this.canvas.requestRenderAll();
+      if (this.mode === 'designer') this.commit(region);
     }
   };
 
@@ -997,6 +1021,8 @@
   };
 
   P.action = function (act) {
+    if (act === 'resume-draft') { this.resumeDesignerDraft(); return; }
+    if (act === 'discard-draft') { this.discardDesignerDraft(); return; }
     var area = this.currentArea();
     if (!area && act !== 'save') return;
     var r = area ? appRegion(area) : null;
@@ -1030,10 +1056,18 @@
     if (this.mode !== 'form' || !this.opts.regionInputs) return;
     var ri = this.opts.regionInputs;
     var c = this.custom;
-    ri.x.value = c ? fmt(c.left) : '';
-    ri.y.value = c ? fmt(c.top) : '';
-    ri.w.value = c ? fmt(c.width) : '';
-    ri.h.value = c ? fmt(c.height) : '';
+    var values = {
+      x: c ? fmt(c.left) : '',
+      y: c ? fmt(c.top) : '',
+      w: c ? fmt(c.width) : '',
+      h: c ? fmt(c.height) : ''
+    };
+    Object.keys(values).forEach(function (key) {
+      if (ri[key].value === values[key]) return;
+      ri[key].value = values[key];
+      ri[key].dispatchEvent(new Event('input', { bubbles: true }));
+      ri[key].dispatchEvent(new Event('change', { bubbles: true }));
+    });
   };
 
   P.isDirty = function () {
@@ -1143,6 +1177,114 @@
     btn.textContent = this.saving ? 'Saving…' : 'Save print area';
   };
 
+  P.draftStorageKey = function () {
+    return 'dtfta:print-area-designer:' + (this.opts.draftKey || window.location.pathname);
+  };
+
+  P.persistDesignerDraft = function () {
+    if (this.mode !== 'designer') return;
+    var key = this.draftStorageKey();
+    var existingDraft;
+    try {
+      existingDraft = localStorage.getItem(key);
+    } catch (error) {
+      this.setMsg('Could not check the saved draft: ' + error.message, 'err');
+      return;
+    }
+    if (!this.isDirty()) {
+      try {
+        localStorage.removeItem(key);
+      } catch (error) {
+        this.setMsg('Could not remove the saved draft: ' + error.message, 'err');
+      }
+      return;
+    }
+    if (existingDraft === null) return;
+
+    var payload = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      productId: this.productId,
+      colorKey: this.colorKey,
+      areaId: this.areaId,
+      drafts: this.drafts
+    };
+    try {
+      localStorage.setItem(key, JSON.stringify(payload));
+    } catch (error) {
+      this.setMsg('Draft could not be saved in this browser: ' + error.message, 'err');
+    }
+  };
+
+  P.offerDraftRecovery = function () {
+    if (this.mode !== 'designer') return;
+    var key = this.draftStorageKey();
+    var payload;
+    try {
+      payload = JSON.parse(localStorage.getItem(key) || 'null');
+    } catch (error) {
+      this.setMsg('Could not read the saved draft: ' + error.message, 'err');
+      return;
+    }
+    if (!payload || payload.version !== 1 || !payload.drafts || !Object.keys(payload.drafts).length) return;
+
+    var date = new Date(payload.savedAt);
+    this.refs.draftbanner.innerHTML =
+      '<span>Recoverable draft found · last saved ' + escapeHtml(date.toLocaleString()) + '</span>' +
+      '<button type="button" class="pap-btn" data-act="resume-draft">Resume</button>' +
+      '<button type="button" class="pap-btn" data-act="discard-draft">Discard</button>';
+    this.refs.draftbanner.hidden = false;
+    this.recoveryDraft = payload;
+  };
+
+  P.resumeDesignerDraft = function () {
+    var payload = this.recoveryDraft;
+    if (!payload) return;
+    var products = this.data.products || [];
+    var product = products.filter(function (item) { return Number(item.id) === Number(payload.productId); })[0];
+    if (!product) {
+      this.setMsg('This draft references a product that is no longer available.', 'err');
+      return;
+    }
+    this.productId = product.id;
+    this.refs.product.value = String(product.id);
+    this.areaId = payload.areaId;
+    var areas = this.productAreas();
+    if (!areas.some(function (area) { return Number(area.id) === Number(this.areaId); }, this)) {
+      this.areaId = areas[0] ? areas[0].id : null;
+    }
+    this.drafts = {};
+    var self = this;
+    Object.keys(payload.drafts).forEach(function (id) {
+      if (!self.areaById[id]) return;
+      var region = payload.drafts[id];
+      self.drafts[id] = region === null
+        ? null
+        : clampRegion({
+          left: region.left,
+          top: region.top,
+          width: region.width,
+          height: region.height
+        }, self.minEdge);
+    });
+    this.pickDefaultColor(payload.colorKey);
+    this.renderSwatches();
+    this.renderTabs();
+    this.refs.draftbanner.hidden = true;
+    this.refresh(true);
+    this.setMsg('Draft resumed · last saved ' + new Date(payload.savedAt).toLocaleString(), 'ok');
+  };
+
+  P.discardDesignerDraft = function () {
+    try {
+      localStorage.removeItem(this.draftStorageKey());
+      this.recoveryDraft = null;
+      this.refs.draftbanner.hidden = true;
+    } catch (error) {
+      this.setMsg('Could not discard the saved draft: ' + error.message, 'err');
+    }
+  };
+
   P.setMsg = function (text, kind) {
     if (!this.refs.msg) return;
     this.refs.msg.textContent = text || '';
@@ -1189,6 +1331,7 @@
       self.renderTabs();
       self.refresh(false);
       self.setMsg(r.json.message || 'Saved.', 'ok');
+      self.persistDesignerDraft();
     }).catch(function () {
       self.saving = false;
       self.setMsg('Could not reach the server. Check your connection and try again.', 'err');

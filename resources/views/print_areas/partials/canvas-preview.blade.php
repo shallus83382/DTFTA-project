@@ -100,6 +100,23 @@
                         mount.__pap = preview;
                         if (!preview.canvas) return;
 
+                        if (form) {
+                            form.addEventListener('recoverable-draft-restored', function () {
+                                var region = ['x', 'y', 'w', 'h'].map(function (key) {
+                                    return regionInputs[key] ? regionInputs[key].value : '';
+                                });
+                                var complete = region.every(function (value) {
+                                    return String(value).trim() !== '' && Number.isFinite(Number(value));
+                                }) && Number(region[2]) > 0 && Number(region[3]) > 0;
+                                preview.custom = complete
+                                    ? window.PrintAreaPreview.math.clampRegion({
+                                        left: region[0], top: region[1], width: region[2], height: region[3]
+                                    }, preview.minEdge)
+                                    : null;
+                                preview.refresh(true);
+                            });
+                        }
+
                         // Live-update when the form fields that affect the canvas change.
                         var timer = null;
                         var changed = function () {

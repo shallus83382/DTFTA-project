@@ -15,7 +15,9 @@
         </div>
     @endif
 
-    <form action="{{ route('crm.print-areas.update', $printArea->id) }}" method="POST" enctype="multipart/form-data">
+    <form action="{{ route('crm.print-areas.update', $printArea->id) }}" method="POST" enctype="multipart/form-data"
+          data-recoverable-draft
+          data-draft-key="print-area-edit-{{ auth()->id() }}-{{ $printArea->id }}">
         @csrf
 
 

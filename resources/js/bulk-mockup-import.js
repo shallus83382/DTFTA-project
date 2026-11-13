@@ -230,6 +230,14 @@ function initializeInlineMockupImport() {
         return rowHasImage(rows[0], item.placement);
     }
 
+    function existingImageUrl(item) {
+        const rows = findColorRows(item.color);
+        if (rows.length !== 1) return '';
+        const box = rows[0].querySelector(`.color-mockup-box[data-placement="${item.placement}"]`);
+        const image = box?.querySelector('.color-mockup-preview-img');
+        return image && !image.hidden ? image.getAttribute('src') || '' : '';
+    }
+
     function renderSummary() {
         reviewContent.replaceChildren();
         const groups = buildGroups();
@@ -314,11 +322,37 @@ function initializeInlineMockupImport() {
             const files = makeElement('div', 'mockup-zip-review-files');
             group.items.forEach((item) => {
                 const fileRow = makeElement('div', 'mockup-zip-review-file');
-                const image = document.createElement('img');
-                image.src = item.previewUrl;
-                image.alt = `Preview ${item.name}`;
-                image.title = 'Full image preview';
-                fileRow.appendChild(image);
+                const isOccupied = occupiedTarget(item);
+                const showComparison = item.selected && isOccupied && item.replace;
+
+                if (showComparison) {
+                    const comparison = makeElement('div', 'mockup-zip-review-comparison');
+                    const currentImage = existingImageUrl(item);
+                    [
+                        { label: 'Current image', src: currentImage, alt: `Current image for ${item.name}` },
+                        { label: 'Replacement image', src: item.previewUrl, alt: `Replacement image ${item.name}` },
+                    ].forEach(({ label, src, alt }) => {
+                        const preview = makeElement('div', 'mockup-zip-review-comparison-item');
+                        preview.appendChild(makeElement('span', '', label));
+                        if (src) {
+                            const image = document.createElement('img');
+                            image.src = src;
+                            image.alt = alt;
+                            image.title = 'Full image preview';
+                            preview.appendChild(image);
+                        } else {
+                            preview.appendChild(makeElement('div', 'mockup-zip-review-comparison-empty', 'Current image preview unavailable'));
+                        }
+                        comparison.appendChild(preview);
+                    });
+                    fileRow.appendChild(comparison);
+                } else {
+                    const image = document.createElement('img');
+                    image.src = item.previewUrl;
+                    image.alt = `Preview ${item.name}`;
+                    image.title = 'Full image preview';
+                    fileRow.appendChild(image);
+                }
 
                 const fileName = makeElement('span', '', item.name);
                 fileRow.appendChild(fileName);
@@ -355,10 +389,9 @@ function initializeInlineMockupImport() {
                 if (!item.placement) {
                     fileRow.appendChild(makeElement('span', 'mockup-zip-review-warning', 'Choose a view.'));
                 }
-                const isOccupied = occupiedTarget(item);
                 if (item.selected && isOccupied) {
-                    const replaceLabel = makeElement('label', 'mockup-zip-review-warning');
-                    replaceLabel.style.gridColumn = '2 / -1';
+                    const replaceLabel = makeElement('label', 'mockup-zip-replace-control');
+                    replaceLabel.style.gridColumn = '1 / -1';
                     const replace = document.createElement('input');
                     replace.type = 'checkbox';
                     replace.checked = item.replace;
@@ -367,7 +400,7 @@ function initializeInlineMockupImport() {
                         renderReview();
                     });
                     replaceLabel.appendChild(replace);
-                    replaceLabel.appendChild(document.createTextNode(' Replace existing image'));
+                    replaceLabel.appendChild(document.createTextNode('Replace image'));
                     fileRow.appendChild(replaceLabel);
                 }
 

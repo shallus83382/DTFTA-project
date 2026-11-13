@@ -218,7 +218,7 @@
         }
 
         .mockup-zip-review-dialog {
-            width: min(1120px, 96vw);
+            width: min(800px, 96vw);
             max-height: 92vh;
             display: flex;
             flex-direction: column;
@@ -298,7 +298,7 @@
         .mockup-zip-review-files {
             grid-column: 1 / -1;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 12px;
             min-width: 0;
         }
@@ -307,6 +307,7 @@
             display: grid;
             grid-template-columns: minmax(0, 1fr);
             align-content: start;
+            align-items: start;
             gap: 8px;
             padding: 10px;
             border: 1px solid rgba(148, 163, 184, 0.2);
@@ -320,20 +321,89 @@
 
         .mockup-zip-review-file img {
             width: 100%;
-            height: clamp(150px, 25vh, 240px);
+            height: clamp(140px, 21vh, 185px);
+            grid-column: 1 / -1;
             object-fit: contain;
             background-color: #fff;
             border-radius: 7px;
             cursor: zoom-in;
         }
 
+        .mockup-zip-review-comparison {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .mockup-zip-review-comparison-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            align-content: start;
+            gap: 6px;
+            min-width: 0;
+            color: #a9bddb;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .mockup-zip-review-comparison-item > span {
+            display: flex;
+            align-items: flex-end;
+            height: 3.6em;
+            line-height: 1.2;
+        }
+
+        .mockup-zip-review-file .mockup-zip-review-comparison-item > span {
+            grid-column: 1 / -1;
+        }
+
+        .mockup-zip-review-comparison-item img,
+        .mockup-zip-review-comparison-empty {
+            width: 100%;
+            height: clamp(90px, 16vh, 140px);
+            box-sizing: border-box;
+            object-fit: contain;
+            background: #fff;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 7px;
+        }
+
+        .mockup-zip-review-comparison-empty {
+            display: grid;
+            place-items: center;
+            padding: 8px;
+            color: #64748b;
+            text-align: center;
+            text-transform: none;
+        }
+
         .mockup-zip-review-file select {
+            grid-column: 1 / -1;
             width: 100%;
             max-width: 100%;
         }
 
         .mockup-zip-review-file span {
+            grid-column: 1 / -1;
             overflow-wrap: anywhere;
+        }
+
+        .mockup-zip-review-color .mockup-zip-review-file .mockup-zip-replace-control {
+            display: flex;
+            grid-column: 1 / -1;
+            align-items: center;
+            justify-self: start;
+            gap: 6px;
+            color: #a9bddb;
+            font-size: 11px;
+            line-height: 1.2;
+        }
+
+        .mockup-zip-review-file .mockup-zip-replace-control input {
+            flex: 0 0 auto;
+            margin: 0;
         }
 
         .mockup-zip-review-warning {
@@ -396,6 +466,10 @@
 </div>
 
 <div id="colors-wrapper"
+     data-draft-collection="colors"
+     data-draft-row=".color-row"
+     data-draft-add="#add-color-btn"
+     data-draft-remove=".remove-row-btn"
      data-predefined-colors='@json($predefinedColorNames)'
      data-color-keys='@json(config("dtfta.common_colors", []))'>
     @foreach($colorRows as $index => $row)

@@ -27,12 +27,25 @@
                     data: @json($previewData),
                     initialProductId: @json($initialProductId),
                     initialPrintAreaId: @json($initialPrintAreaId),
-                    initialColor: @json($initialColor)
+                    initialColor: @json($initialColor),
+                    draftKey: @json('designer-' . auth()->id() . '-' . request()->getQueryString())
                 });
+                var persistedDuringUnload = false;
                 window.addEventListener('beforeunload', function (e) {
-                    if (preview.canvas && preview.isDirty()) {
+                    if (preview.canvas && preview.isDirty() && !preview.navigationConfirmed) {
+                        preview.persistDesignerDraft();
+                        persistedDuringUnload = true;
                         e.preventDefault();
                         e.returnValue = '';
+                    }
+                });
+                window.addEventListener('focus', function () {
+                    if (!persistedDuringUnload || !preview.isDirty()) return;
+                    try {
+                        localStorage.removeItem(preview.draftStorageKey());
+                        persistedDuringUnload = false;
+                    } catch (error) {
+                        preview.setMsg('Could not clear the cancelled navigation draft: ' + error.message, 'err');
                     }
                 });
             }

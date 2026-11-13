@@ -275,7 +275,9 @@
     <div class="chart-card product-edit-card">
         <h3 style="margin-bottom: 14px;">Edit Product #{{ $product->id }}</h3>
 
-        <form method="POST" action="{{ route('crm.products.update', $product->id) }}" enctype="multipart/form-data">
+        <form method="POST" action="{{ route('crm.products.update', $product->id) }}" enctype="multipart/form-data"
+              data-recoverable-draft
+              data-draft-key="product-edit-{{ auth()->id() }}-{{ $product->id }}">
             @csrf
 
             <div class="filters-section">
@@ -389,7 +391,11 @@
 
                 <div class="filter-group" style="width: 100%;">
                     <label>Sizes</label>
-                    <div id="sizes-wrapper">
+                    <div id="sizes-wrapper"
+                         data-draft-collection="sizes"
+                         data-draft-row=".size-row"
+                         data-draft-add="#add-size-btn"
+                         data-draft-remove=".remove-row-btn">
                         @foreach(($oldSizes ?: ['']) as $size)
                             <div class="dynamic-row size-row" style="display: flex; gap: 10px; margin-bottom: 10px;">
                                 <input
