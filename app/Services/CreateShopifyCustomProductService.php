@@ -317,6 +317,29 @@ class CreateShopifyCustomProductService
     ): array {
         $normalizedArtworkUrls = $this->normalizeArtworkUrlsPayload($request->input('artworkUrls', []));
         $legacyArtworkSource = collect($normalizedArtworkUrls);
+        $storedArtworkBySource = [];
+        $storeSource = function (string $source, ?string $placement, int $index) use (
+            &$storedArtworkBySource,
+            $shopId,
+            $product
+        ): string {
+            if (!$this->isDataUrl($source)) {
+                return $source;
+            }
+
+            $cacheKey = hash('sha256', $source . "\0" . (string) $placement);
+            if (!isset($storedArtworkBySource[$cacheKey])) {
+                $storedArtworkBySource[$cacheKey] = $this->storeArtworkFile(
+                    $source,
+                    $shopId,
+                    $product->id,
+                    $placement,
+                    $index
+                );
+            }
+
+            return $storedArtworkBySource[$cacheKey];
+        };
 
         // Log::info('Create Shopify product artwork payload received', [
         //     'shop_id' => $shopId,
@@ -325,7 +348,7 @@ class CreateShopifyCustomProductService
         // ]);
 
         $fallbackArtworks = $legacyArtworkSource
-            ->map(function ($item, $index) use ($printAreas, $shopId, $product) {
+            ->map(function ($item, $index) use ($printAreas, $shopId, $product, $storeSource) {
                 $resolvedPlacement = data_get($item, 'placement') ?: ($printAreas[$index]['placement'] ?? null);
                 $sourceValue = (string) data_get($item, 'source', '');
                 $verifiedLibraryArtworkId = $this->verifyShopArtworkBelongsToShop(
@@ -338,22 +361,10 @@ class CreateShopifyCustomProductService
                     data_get($item, 'layers_meta')
                 );
 
-                $storedUrl = $this->storeArtworkFile(
-                    $sourceValue,
-                    $shopId,
-                    $product->id,
-                    $resolvedPlacement,
-                    $index
-                );
+                $storedUrl = $storeSource($sourceValue, $resolvedPlacement, $index);
                 $customArtworkSource = (string) data_get($item, 'custom_artwork_source', '');
                 $storedCustomUrl = $this->isArtworkSourceValue($customArtworkSource)
-                    ? $this->storeArtworkFile(
-                        $customArtworkSource,
-                        $shopId,
-                        $product->id,
-                        $resolvedPlacement,
-                        $index + 10000
-                    )
+                    ? $storeSource($customArtworkSource, $resolvedPlacement, $index + 10000)
                     : null;
 
                 $meta = [
@@ -782,27 +793,34 @@ class CreateShopifyCustomProductService
 
         $inventoryAssignmentResults = [];
         if (!empty($shop->location_id) && !empty($shopifyVariantIds)) {
-            foreach ($shopifyVariantIds as $shopifyVariantId) {
-                $inventoryResult = $this->shopifyService->assignVariantToInventoryLocation(
-                    (int) $shopId,
-                    (string) $shopifyVariantId,
-                    (string) $shop->location_id
+            $mappedVariantIds = array_fill_keys(
+                array_map('strval', $shopifyVariantIds),
+                true
+            );
+            $inventoryVariants = array_values(array_filter(
+                $shopifyVariants,
+                fn ($variant) => isset($mappedVariantIds[(string) data_get($variant, 'id', '')])
+            ));
+
+            if (count($inventoryVariants) !== count($shopifyVariantIds)) {
+                throw new \RuntimeException(
+                    'Could not resolve every Shopify inventory item for the created variants.'
                 );
-
-                $inventoryAssignmentResults[] = [
-                    'variant_id' => $shopifyVariantId,
-                    'success' => $inventoryResult['success'] ?? false,
-                    'message' => $inventoryResult['message'] ?? null,
-                    'data' => $inventoryResult['data'] ?? null,
-                    'errors' => $inventoryResult['errors'] ?? [],
-                ];
-
-                if (!($inventoryResult['success'] ?? false)) {
-                    throw new \RuntimeException(
-                        $inventoryResult['message'] ?? 'Failed to assign variant to inventory location.'
-                    );
-                }
             }
+
+            $inventoryResult = $this->shopifyService->assignVariantsToInventoryLocation(
+                (int) $shopId,
+                $inventoryVariants,
+                (string) $shop->location_id
+            );
+
+            if (!($inventoryResult['success'] ?? false)) {
+                throw new \RuntimeException(
+                    $inventoryResult['message'] ?? 'Failed to assign variants to inventory location.'
+                );
+            }
+
+            $inventoryAssignmentResults = data_get($inventoryResult, 'data.assignments', []);
         }
 
         return [
@@ -816,6 +834,13 @@ class CreateShopifyCustomProductService
     {
         $fromBulkCreate = is_array($fromBulkCreate) ? $fromBulkCreate : [];
         $shopifyVariants = $fromBulkCreate;
+
+        if (
+            empty($shopifyProductId) ||
+            ($expectedVariantCount > 0 && count($fromBulkCreate) >= $expectedVariantCount)
+        ) {
+            return $shopifyVariants;
+        }
 
         if (!empty($shopifyProductId)) {
             $variantsFetchResult = $this->shopifyService->getProductVariantsByProductId(
@@ -984,12 +1009,56 @@ class CreateShopifyCustomProductService
         //     'variant_media_map' => $variantMediaMap,
         // ]);
 
-        $variantMediaAssignments = [];
-
+        $variantMediaInputs = [];
         foreach ($variantMediaMap as $shopifyVariantId => $mediaIds) {
             $uniqueMediaIds = array_values(array_unique($mediaIds));
             $singleMediaIdForVariant = !empty($uniqueMediaIds) ? [$uniqueMediaIds[0]] : [];
+            if ($singleMediaIdForVariant === []) {
+                continue;
+            }
+            $variantMediaInputs[] = [
+                'variantId' => (string) $shopifyVariantId,
+                'mediaIds' => $singleMediaIdForVariant,
+            ];
+        }
 
+        if ($variantMediaInputs === []) {
+            return [];
+        }
+
+        $batchResult = $this->shopifyService->attachMediaToProductVariants(
+            (int) $shopId,
+            (string) $shopifyProductId,
+            $variantMediaInputs
+        );
+
+        if ($batchResult['success'] ?? false) {
+            return array_map(
+                fn ($entry) => [
+                    'variant_id' => $entry['variantId'],
+                    'media_ids' => $entry['mediaIds'],
+                    'success' => true,
+                    'message' => $batchResult['message'] ?? null,
+                    'errors' => [],
+                    'data' => $batchResult['data'] ?? null,
+                ],
+                $variantMediaInputs
+            );
+        }
+
+        $batchErrorText = strtolower((string) ($batchResult['message'] ?? ''));
+        if (!str_contains($batchErrorText, 'non-ready media')) {
+            throw new \RuntimeException(
+                $batchResult['message'] ?? 'Failed to link media to Shopify variants.'
+            );
+        }
+
+        // Fall back to per-variant retries while Shopify finishes processing media.
+        usleep(900000);
+        $variantMediaAssignments = [];
+        foreach ($variantMediaInputs as $entry) {
+            $shopifyVariantId = $entry['variantId'];
+            $singleMediaIdForVariant = $entry['mediaIds'];
             $attachToVariant = null;
             $maxAttempts = 3;
 

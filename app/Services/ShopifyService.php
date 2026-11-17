@@ -3720,7 +3720,7 @@ class ShopifyService
             product {
             id
             title
-            media(first: 20) {
+            media(first: 250) {
                 nodes {
                 id
                 alt
@@ -4426,6 +4426,138 @@ class ShopifyService
         }
     }
 
+    public function attachMediaToProductVariants(
+        int $shopId,
+        string $productId,
+        array $variantMedia
+    ): array {
+        try {
+            $productGid = str_starts_with($productId, 'gid://')
+                ? $productId
+                : "gid://shopify/Product/{$productId}";
+            $inputs = [];
+
+            foreach ($variantMedia as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+
+                $variantId = trim((string) ($entry['variantId'] ?? ''));
+                if ($variantId === '') {
+                    continue;
+                }
+
+                $variantGid = str_starts_with($variantId, 'gid://')
+                    ? $variantId
+                    : "gid://shopify/ProductVariant/{$variantId}";
+                $mediaIds = array_values(array_filter(array_map(function ($mediaId) {
+                    $value = trim((string) $mediaId);
+                    if ($value === '') {
+                        return null;
+                    }
+
+                    return str_starts_with($value, 'gid://')
+                        ? $value
+                        : "gid://shopify/MediaImage/{$value}";
+                }, $entry['mediaIds'] ?? [])));
+
+                if ($mediaIds !== []) {
+                    $inputs[] = [
+                        'variantId' => $variantGid,
+                        'mediaIds' => $mediaIds,
+                    ];
+                }
+            }
+
+            if ($inputs === []) {
+                return [
+                    'success' => false,
+                    'status' => 422,
+                    'message' => 'At least one valid variant-media mapping is required',
+                    'data' => null,
+                    'errors' => [],
+                ];
+            }
+
+            $mutation = <<<'GRAPHQL'
+            mutation ProductVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+                productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+                    product {
+                        id
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }
+            GRAPHQL;
+
+            foreach (array_chunk($inputs, 100) as $batch) {
+                $result = $this->graphqlRequest($shopId, $mutation, [
+                    'productId' => $productGid,
+                    'variantMedia' => $batch,
+                ]);
+
+                if (!($result['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'status' => $result['status'] ?? 500,
+                        'message' => $result['message'] ?? 'GraphQL request failed',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+
+                $payload = data_get($result, 'data.productVariantAppendMedia');
+                if (!$payload) {
+                    return [
+                        'success' => false,
+                        'status' => 500,
+                        'message' => 'Missing productVariantAppendMedia payload in Shopify response',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+
+                if (!empty($payload['userErrors'])) {
+                    return [
+                        'success' => false,
+                        'status' => 422,
+                        'message' => $payload['userErrors'][0]['message'] ?? 'Failed to attach media to variants',
+                        'data' => $payload,
+                        'errors' => $payload['userErrors'],
+                    ];
+                }
+            }
+
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Media attached to variants successfully',
+                'data' => [
+                    'product_id' => $productGid,
+                    'variant_media_count' => count($inputs),
+                ],
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('attachMediaToProductVariants exception', [
+                'shop_id' => $shopId,
+                'product_id' => $productId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
     public function getProductVariantsByProductId(int $shopId, string $productId): array
     {
         try {
@@ -4520,6 +4652,263 @@ class ShopifyService
      * - gid://shopify/Location/456
      * - 456
      */
+    public function assignVariantsToInventoryLocation(
+        int $shopId,
+        array $variants,
+        string $locationId
+    ): array {
+        try {
+            $locationValue = trim($locationId);
+            $locationGid = str_starts_with($locationValue, 'gid://')
+                ? $locationValue
+                : "gid://shopify/Location/{$locationValue}";
+            $normalizedVariants = [];
+
+            foreach ($variants as $variant) {
+                $variantId = trim((string) data_get($variant, 'id', ''));
+                $inventoryItemId = trim((string) data_get($variant, 'inventoryItem.id', ''));
+                if ($variantId === '' || $inventoryItemId === '') {
+                    return [
+                        'success' => false,
+                        'status' => 422,
+                        'message' => 'A Shopify variant is missing its variant or inventory item ID',
+                        'data' => null,
+                        'errors' => [],
+                    ];
+                }
+
+                $normalizedVariants[] = [
+                    'variantId' => str_starts_with($variantId, 'gid://')
+                        ? $variantId
+                        : "gid://shopify/ProductVariant/{$variantId}",
+                    'inventoryItemId' => str_starts_with($inventoryItemId, 'gid://')
+                        ? $inventoryItemId
+                        : "gid://shopify/InventoryItem/{$inventoryItemId}",
+                ];
+            }
+
+            if ($normalizedVariants === []) {
+                return [
+                    'success' => true,
+                    'status' => 200,
+                    'message' => 'No variants required inventory assignment',
+                    'data' => ['assignments' => []],
+                    'errors' => [],
+                ];
+            }
+
+            $locationsByInventoryItem = [];
+            foreach (array_chunk($normalizedVariants, 10) as $batch) {
+                $variableDefinitions = [];
+                $variables = [];
+                $fields = [];
+
+                foreach ($batch as $index => $variant) {
+                    $variableName = "variantId{$index}";
+                    $variableDefinitions[] = "\${$variableName}: ID!";
+                    $variables[$variableName] = $variant['variantId'];
+                    $fields[] = "variant{$index}: productVariant(id: \${$variableName}) { inventoryItem { id inventoryLevels(first: 50) { edges { node { id location { id } } } } } }";
+                }
+
+                $query = 'query GetInventoryLevelsForVariants('
+                    . implode(', ', $variableDefinitions)
+                    . ") {\n"
+                    . implode("\n", $fields)
+                    . "\n}";
+
+                $result = $this->graphqlRequest($shopId, $query, $variables);
+                if (!($result['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'status' => $result['status'] ?? 500,
+                        'message' => $result['message'] ?? 'Failed to read variant inventory levels',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+
+                foreach ($batch as $index => $variant) {
+                    $inventoryItem = data_get($result, "data.variant{$index}.inventoryItem");
+                    if (!$inventoryItem) {
+                        return [
+                            'success' => false,
+                            'status' => 422,
+                            'message' => 'Inventory item not found for a Shopify variant',
+                            'data' => $result['data'] ?? null,
+                            'errors' => [],
+                        ];
+                    }
+
+                    $levels = data_get($inventoryItem, 'inventoryLevels.edges', []);
+                    $locationsByInventoryItem[$variant['inventoryItemId']] = collect($levels)
+                        ->map(fn ($edge) => [
+                            'inventoryLevelId' => trim((string) data_get($edge, 'node.id', '')),
+                            'locationId' => trim((string) data_get($edge, 'node.location.id', '')),
+                        ])
+                        ->filter(fn ($level) => $level['inventoryLevelId'] !== '' && $level['locationId'] !== '')
+                        ->values()
+                        ->all();
+                }
+            }
+
+            foreach (array_chunk($normalizedVariants, 50) as $batch) {
+                $variableDefinitions = ['$locationId: ID!'];
+                $variables = ['locationId' => $locationGid];
+                $fields = [];
+
+                foreach ($batch as $index => $variant) {
+                    $variableName = "inventoryItemId{$index}";
+                    $variableDefinitions[] = "\${$variableName}: ID!";
+                    $variables[$variableName] = $variant['inventoryItemId'];
+                    $fields[] = "activation{$index}: inventoryActivate(inventoryItemId: \${$variableName}, locationId: \$locationId) { inventoryLevel { id } userErrors { field message } }";
+                }
+
+                $mutation = 'mutation ActivateVariantsAtLocation('
+                    . implode(', ', $variableDefinitions)
+                    . ") {\n"
+                    . implode("\n", $fields)
+                    . "\n}";
+
+                $result = $this->graphqlRequest($shopId, $mutation, $variables);
+                if (!($result['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'status' => $result['status'] ?? 500,
+                        'message' => $result['message'] ?? 'Failed to activate variants at inventory location',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+
+                foreach ($batch as $index => $_variant) {
+                    $payload = data_get($result, "data.activation{$index}");
+                    if (!$payload) {
+                        return [
+                            'success' => false,
+                            'status' => 500,
+                            'message' => 'Missing inventory activation payload from Shopify',
+                            'data' => $result['data'] ?? null,
+                            'errors' => [],
+                        ];
+                    }
+
+                    if (!empty($payload['userErrors'])) {
+                        return [
+                            'success' => false,
+                            'status' => 422,
+                            'message' => $payload['userErrors'][0]['message'] ?? 'Failed to assign inventory location',
+                            'data' => $payload,
+                            'errors' => $payload['userErrors'],
+                        ];
+                    }
+                }
+            }
+
+            $deactivations = [];
+            $deactivatedByVariant = [];
+            foreach ($normalizedVariants as $variant) {
+                foreach ($locationsByInventoryItem[$variant['inventoryItemId']] ?? [] as $level) {
+                    if ($level['locationId'] === $locationGid) {
+                        continue;
+                    }
+
+                    $deactivations[] = [
+                        'inventoryLevelId' => $level['inventoryLevelId'],
+                    ];
+                    $deactivatedByVariant[$variant['variantId']][] = $level['locationId'];
+                }
+            }
+
+            foreach (array_chunk($deactivations, 50) as $batch) {
+                $variableDefinitions = [];
+                $variables = [];
+                $fields = [];
+
+                foreach ($batch as $index => $level) {
+                    $variableName = "inventoryLevelId{$index}";
+                    $variableDefinitions[] = "\${$variableName}: ID!";
+                    $variables[$variableName] = $level['inventoryLevelId'];
+                    $fields[] = "deactivation{$index}: inventoryDeactivate(inventoryLevelId: \${$variableName}) { userErrors { field message } }";
+                }
+
+                $mutation = 'mutation DeactivateOtherInventoryLevels('
+                    . implode(', ', $variableDefinitions)
+                    . ") {\n"
+                    . implode("\n", $fields)
+                    . "\n}";
+
+                $result = $this->graphqlRequest($shopId, $mutation, $variables);
+                if (!($result['success'] ?? false)) {
+                    return [
+                        'success' => false,
+                        'status' => $result['status'] ?? 500,
+                        'message' => $result['message'] ?? 'Failed to deactivate other inventory locations',
+                        'data' => $result['data'] ?? null,
+                        'errors' => $result['errors'] ?? [],
+                    ];
+                }
+
+                foreach ($batch as $index => $_level) {
+                    $payload = data_get($result, "data.deactivation{$index}");
+                    if (!$payload) {
+                        return [
+                            'success' => false,
+                            'status' => 500,
+                            'message' => 'Missing inventory deactivation payload from Shopify',
+                            'data' => $result['data'] ?? null,
+                            'errors' => [],
+                        ];
+                    }
+
+                    if (!empty($payload['userErrors'])) {
+                        return [
+                            'success' => false,
+                            'status' => 422,
+                            'message' => $payload['userErrors'][0]['message'] ?? 'Failed to deactivate another location',
+                            'data' => $payload,
+                            'errors' => $payload['userErrors'],
+                        ];
+                    }
+                }
+            }
+
+            $assignments = array_map(
+                fn ($variant) => [
+                    'variant_id' => $variant['variantId'],
+                    'inventory_item_id' => $variant['inventoryItemId'],
+                    'location_id' => $locationGid,
+                    'deactivated_locations' => array_values(array_unique(
+                        $deactivatedByVariant[$variant['variantId']] ?? []
+                    )),
+                    'success' => true,
+                ],
+                $normalizedVariants
+            );
+
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Variants assigned to inventory location successfully',
+                'data' => ['assignments' => $assignments],
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('assignVariantsToInventoryLocation exception', [
+                'shop_id' => $shopId,
+                'location_id' => $locationId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
     public function assignVariantToInventoryLocation(
         int $shopId,
         string $variantId,
