@@ -14,12 +14,13 @@ use Tests\TestCase;
 
 class CreateShopifyCustomProductPriceTest extends TestCase
 {
-    public function test_retail_price_only_overrides_the_selected_color_and_size(): void
+    public function test_retail_price_overrides_all_colors_for_the_selected_size_only(): void
     {
         $variants = collect([
             $this->variant(1, 'Black', 'S', '12.00'),
             $this->variant(2, 'Black', 'M', '13.00'),
             $this->variant(3, 'White', 'M', '14.00'),
+            $this->variant(4, 'White', 'S', '15.00'),
         ]);
         $context = $this->buildPayloadContext([
             'selectedColor' => 'black',
@@ -32,10 +33,11 @@ class CreateShopifyCustomProductPriceTest extends TestCase
 
         $this->assertSame('12.00', (string) $pricesByVariant[1]);
         $this->assertSame('24.99', $pricesByVariant[2]);
-        $this->assertSame('14.00', (string) $pricesByVariant[3]);
+        $this->assertSame('24.99', $pricesByVariant[3]);
+        $this->assertSame('15.00', (string) $pricesByVariant[4]);
     }
 
-    public function test_retail_price_rejects_a_color_and_size_not_in_the_product(): void
+    public function test_retail_price_rejects_a_size_not_in_the_product(): void
     {
         $this->expectException(ValidationException::class);
 

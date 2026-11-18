@@ -145,8 +145,7 @@ class ProductController extends Controller
             ->with([
                 'variants' => function ($q) {
                     $q->where('is_active', true)
-                        ->orderBy('color')
-                        ->orderBy('size');
+                        ->orderBy('id');
                 },
                 'printAreas' => function ($q) {
                     $q->where('is_active', true)

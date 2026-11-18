@@ -146,7 +146,7 @@ class CreateShopifyCustomProductService
             'productId' => ['nullable', 'integer', 'exists:products,id'],
             'productKey' => ['nullable', 'string', 'max:255'],
             'title' => ['nullable', 'string', 'max:255'],
-            'selectedColor' => ['required_with:retailPrice', 'nullable', 'string', 'max:100'],
+            'selectedColor' => ['nullable', 'string', 'max:100'],
             'selectedSize' => ['required_with:retailPrice', 'nullable', 'string', 'max:32'],
             'retailPrice' => ['required_with:selectedSize', 'nullable', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
             'printPlan' => ['nullable'],
@@ -191,8 +191,7 @@ class CreateShopifyCustomProductService
             },
             'variants' => function ($q) {
                 $q->where('is_active', true)
-                    ->orderBy('color')
-                    ->orderBy('size');
+                    ->orderBy('id');
             },
         ])
             ->when(!empty($validated['productId']), function ($q) use ($validated) {
@@ -241,17 +240,13 @@ class CreateShopifyCustomProductService
         ]));
 
         $selectedRetailPrice = $this->resolveSelectedRetailPrice($validated, $productVariants);
-        $selectedColor = $validated['selectedColor'] ?? null;
         $selectedSize = $validated['selectedSize'] ?? null;
         $variants = $productVariants->map(function ($variant) use (
             $product,
             $selectedRetailPrice,
-            $selectedColor,
             $selectedSize
         ) {
             $isSelected = $selectedRetailPrice !== null
-                && $this->normalizeVariantColor((string) $variant->color)
-                    === $this->normalizeVariantColor((string) $selectedColor)
                 && strtolower(trim((string) $variant->size)) === strtolower(trim((string) $selectedSize));
 
             return [
@@ -331,25 +326,18 @@ class CreateShopifyCustomProductService
             return null;
         }
 
-        $selectedColor = $this->normalizeVariantColor((string) ($validated['selectedColor'] ?? ''));
         $selectedSize = strtolower(trim((string) ($validated['selectedSize'] ?? '')));
-        $matches = $productVariants->filter(function ($variant) use ($selectedColor, $selectedSize) {
-            return $this->normalizeVariantColor((string) $variant->color) === $selectedColor
-                && strtolower(trim((string) $variant->size)) === $selectedSize;
+        $matches = $productVariants->filter(function ($variant) use ($selectedSize) {
+            return strtolower(trim((string) $variant->size)) === $selectedSize;
         });
 
-        if ($matches->count() !== 1) {
+        if ($matches->isEmpty()) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'selectedSize' => ['The selected color and size do not match an active product variant.'],
+                'selectedSize' => ['The selected size does not match an active product variant.'],
             ]);
         }
 
         return number_format((float) $validated['retailPrice'], 2, '.', '');
-    }
-
-    private function normalizeVariantColor(string $color): string
-    {
-        return preg_replace('/[^a-z0-9]/', '', strtolower(trim($color))) ?? '';
     }
 
     private function resolveArtworkPayloads(
