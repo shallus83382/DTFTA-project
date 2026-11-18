@@ -148,6 +148,9 @@ class CreateShopifyCustomProductService
             'selectedColor' => ['nullable', 'string', 'max:100'],
             'selectedSize' => ['required_with:retailPrice', 'nullable', 'string', 'max:32'],
             'retailPrice' => ['required_with:selectedSize', 'nullable', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
+            'variantPrices' => ['sometimes', 'array', 'min:1'],
+            'variantPrices.*.sku' => ['required', 'string', 'max:255'],
+            'variantPrices.*.price' => ['required', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
             'printPlan' => ['nullable'],
             'artworkUrls' => ['nullable', 'array'],
             'artworkUrls.*' => ['nullable'],
@@ -238,21 +241,31 @@ class CreateShopifyCustomProductService
             ] : null,
         ]));
 
-        $selectedRetailPrice = $this->resolveSelectedRetailPrice($validated, $productVariants);
+        $variantRetailPrices = $this->resolveVariantRetailPrices($validated, $productVariants);
+        $selectedRetailPrice = $variantRetailPrices === null
+            ? $this->resolveSelectedRetailPrice($validated, $productVariants)
+            : null;
         $selectedSize = $validated['selectedSize'] ?? null;
         $variants = $productVariants->map(function ($variant) use (
             $product,
+            $variantRetailPrices,
             $selectedRetailPrice,
             $selectedSize
         ) {
-            $isSelected = $selectedRetailPrice !== null
+            $skuKey = strtoupper(trim((string) $variant->sku));
+            $hasVariantPrice = $variantRetailPrices !== null
+                && array_key_exists($skuKey, $variantRetailPrices);
+            $isLegacySelected = $variantRetailPrices === null
+                && $selectedRetailPrice !== null
                 && strtolower(trim((string) $variant->size)) === strtolower(trim((string) $selectedSize));
 
             return [
                 'db_variant_id' => $variant->id,
-                'price' => $isSelected
-                    ? $selectedRetailPrice
-                    : ($variant->price ?? $product->price ?? 1),
+                'price' => $hasVariantPrice
+                    ? $variantRetailPrices[$skuKey]
+                    : ($isLegacySelected
+                        ? $selectedRetailPrice
+                        : ($variant->price ?? $product->price ?? 1)),
                 'compareAtPrice' => $variant->compare_at_price,
                 'sku' => $variant->sku,
                 'barcode' => $variant->barcode,
@@ -326,6 +339,44 @@ class CreateShopifyCustomProductService
                 'print_plan' => $validated['printPlan'] ?? null,
             ],
         ];
+    }
+
+    private function resolveVariantRetailPrices(array $validated, Collection $productVariants): ?array
+    {
+        if (! array_key_exists('variantPrices', $validated) || $validated['variantPrices'] === null) {
+            return null;
+        }
+
+        $pricesBySku = [];
+        $activeSkus = $productVariants
+            ->map(fn ($variant) => strtoupper(trim((string) $variant->sku)))
+            ->values()
+            ->all();
+        if (in_array('', $activeSkus, true) || count(array_unique($activeSkus)) !== count($activeSkus)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'variantPrices' => ['Active product variants must have unique SKUs to apply retail prices.'],
+            ]);
+        }
+        $activeSkuLookup = array_fill_keys($activeSkus, true);
+
+        foreach ($validated['variantPrices'] as $entry) {
+            $sku = strtoupper(trim((string) ($entry['sku'] ?? '')));
+            if ($sku === '' || ! isset($activeSkuLookup[$sku]) || array_key_exists($sku, $pricesBySku)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'variantPrices' => ['Variant prices must reference each active product variant exactly once.'],
+                ]);
+            }
+
+            $pricesBySku[$sku] = number_format((float) $entry['price'], 2, '.', '');
+        }
+
+        if (count($pricesBySku) !== count($activeSkus)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'variantPrices' => ['A retail price is required for every active product variant.'],
+            ]);
+        }
+
+        return $pricesBySku;
     }
 
     private function resolveSelectedRetailPrice(array $validated, Collection $productVariants): ?string
