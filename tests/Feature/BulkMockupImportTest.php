@@ -97,7 +97,7 @@ class BulkMockupImportTest extends TestCase
             'images' => [],
             'colors' => ['Test Purple'],
             'color_hex' => ['#663399'],
-            'sizes' => ['S', 'M'],
+            'sizes' => ['M', 'S'],
             'color_right_sleeve' => [
                 UploadedFile::fake()->createWithContent('Test_Purple_Right_Sleeve.png', $pixel),
             ],
@@ -105,6 +105,16 @@ class BulkMockupImportTest extends TestCase
 
         $editResponse->assertRedirect(route('crm.products'));
         $product->refresh();
+        $this->assertSame(['M', 'S'], $product->size_order);
+        $this->get(route('crm.products.edit', $product->id))
+            ->assertOk()
+            ->assertSeeInOrder([
+                'id="sizes-wrapper"',
+                'name="sizes[]"',
+                'value="M"',
+                'name="sizes[]"',
+                'value="S"',
+            ]);
         $this->assertSame('#663399', $product->color_mockups['test-purple']['hex']);
         $this->assertSame(
             $pixel,

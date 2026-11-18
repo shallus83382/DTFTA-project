@@ -48,10 +48,27 @@ class DtftaProductResource extends JsonResource
         }, collect());
 
         $sizes = $this->whenLoaded('variants', function () {
-            return $this->variants
+            $variantSizes = $this->variants
                 ->pluck('size')
                 ->filter()
                 ->unique()
+                ->values();
+
+            $orderedSizes = collect($this->size_order ?? [])
+                ->map(fn ($size) => trim((string) $size))
+                ->filter()
+                ->unique(fn ($size) => mb_strtolower($size))
+                ->filter(fn ($size) => $variantSizes->contains(
+                    fn ($variantSize) => strcasecmp((string) $variantSize, $size) === 0
+                ))
+                ->values();
+
+            $orderedKeys = $orderedSizes->map(fn ($size) => mb_strtolower($size));
+
+            return $orderedSizes
+                ->concat($variantSizes->reject(
+                    fn ($size) => $orderedKeys->contains(mb_strtolower((string) $size))
+                ))
                 ->values();
         }, collect());
 

@@ -21,11 +21,13 @@ class Product extends Model
         'price',
         'images',
         'color_mockups',
+        'size_order',
     ];
 
     protected $casts = [
         'images' => 'array',
         'color_mockups' => 'array',
+        'size_order' => 'array',
         'price' => 'decimal:2',
     ];
 

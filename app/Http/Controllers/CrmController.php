@@ -1047,7 +1047,10 @@ class CrmController extends Controller
     public function editProduct(string $productId): View
     {
         $data = $this->prepareViewData();
-        $data['product'] = Product::with(['variants', 'printAreas'])->findOrFail($productId);
+        $data['product'] = Product::with([
+            'variants' => fn ($query) => $query->orderBy('id'),
+            'printAreas',
+        ])->findOrFail($productId);
         $data['printAreas'] = PrintArea::where('is_active', true)
             ->orderBy('display_order')
             ->orderBy('title')
@@ -1055,7 +1058,12 @@ class CrmController extends Controller
     
         $data['productStatusOptions'] = $this->getProductStatusOptions();
         $data['selectedColors'] = $data['product']->variants->pluck('color')->unique()->values();
-        $data['selectedSizes'] = $data['product']->variants->pluck('size')->unique()->values();
+        $savedSizeOrder = collect($data['product']->size_order)
+            ->filter()
+            ->values();
+        $data['selectedSizes'] = $savedSizeOrder->isNotEmpty()
+            ? $savedSizeOrder
+            : $data['product']->variants->pluck('size')->unique()->values();
         $data['colorRows'] = $this->prepareColorRowsForForm($data['product'], old('colors'));
     
         return view('crm.products-edit', $data);
@@ -1084,7 +1092,9 @@ class CrmController extends Controller
         $data['importProductData'] = null;
 
         if ($request->filled('product_id')) {
-            $product = Product::with('variants')->find($request->input('product_id'));
+            $product = Product::with([
+                'variants' => fn ($query) => $query->orderBy('id'),
+            ])->find($request->input('product_id'));
             if ($product) {
                 $data['selectedProduct'] = $product;
                 $mockups = is_array($product->color_mockups) ? $product->color_mockups : [];
@@ -1112,7 +1122,10 @@ class CrmController extends Controller
                     'id' => $product->id,
                     'title' => $product->title,
                     'price' => $product->price,
-                    'sizes' => $product->variants->pluck('size')->filter()->unique()->values(),
+                    'sizes' => collect($product->size_order ?: $product->variants->pluck('size'))
+                        ->filter()
+                        ->unique(fn ($size) => mb_strtolower((string) $size))
+                        ->values(),
                     'colors' => $colorsByKey->map(function ($names, $key) use ($mockupsByColorKey, $variantColorsByKey) {
                         $name = (string) $names->first();
                         $entry = $mockupsByColorKey[$key] ?? [];
@@ -1302,7 +1315,10 @@ class CrmController extends Controller
 
                 $product->update(['color_mockups' => $mockups]);
 
-                $sizes = $product->variants->pluck('size')->filter()->unique()->values();
+                $sizes = collect($product->size_order ?: $product->variants->pluck('size'))
+                    ->filter()
+                    ->unique(fn ($size) => mb_strtolower((string) $size))
+                    ->values();
                 foreach ($newColors as $color) {
                     foreach ($sizes as $size) {
                         $product->variants()->create([
@@ -1408,6 +1424,7 @@ class CrmController extends Controller
                 ->filter()
                 ->unique(fn ($size) => mb_strtolower($size))
                 ->values();
+            $product->update(['size_order' => $sizes->all()]);
 
             foreach ($colors as $color) {
                 foreach ($sizes as $size) {
@@ -1544,6 +1561,7 @@ class CrmController extends Controller
                 ->filter()
                 ->unique(fn ($size) => mb_strtolower($size))
                 ->values();
+            $product->update(['size_order' => $sizes->all()]);
 
             $desiredCombinations = [];
 
