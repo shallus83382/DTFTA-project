@@ -146,6 +146,9 @@ class CreateShopifyCustomProductService
             'productId' => ['nullable', 'integer', 'exists:products,id'],
             'productKey' => ['nullable', 'string', 'max:255'],
             'title' => ['nullable', 'string', 'max:255'],
+            'selectedColor' => ['required_with:retailPrice', 'nullable', 'string', 'max:100'],
+            'selectedSize' => ['required_with:retailPrice', 'nullable', 'string', 'max:32'],
+            'retailPrice' => ['required_with:selectedSize', 'nullable', 'numeric', 'min:0', 'max:999999.99', 'decimal:0,2'],
             'printPlan' => ['nullable'],
             'artworkUrls' => ['nullable', 'array'],
             'artworkUrls.*' => ['nullable'],
@@ -237,10 +240,25 @@ class CreateShopifyCustomProductService
             ] : null,
         ]));
 
-        $variants = $productVariants->map(function ($variant) use ($product) {
+        $selectedRetailPrice = $this->resolveSelectedRetailPrice($validated, $productVariants);
+        $selectedColor = $validated['selectedColor'] ?? null;
+        $selectedSize = $validated['selectedSize'] ?? null;
+        $variants = $productVariants->map(function ($variant) use (
+            $product,
+            $selectedRetailPrice,
+            $selectedColor,
+            $selectedSize
+        ) {
+            $isSelected = $selectedRetailPrice !== null
+                && $this->normalizeVariantColor((string) $variant->color)
+                    === $this->normalizeVariantColor((string) $selectedColor)
+                && strtolower(trim((string) $variant->size)) === strtolower(trim((string) $selectedSize));
+
             return [
                 'db_variant_id' => $variant->id,
-                'price' => $variant->price ?? $product->price ?? 1,
+                'price' => $isSelected
+                    ? $selectedRetailPrice
+                    : ($variant->price ?? $product->price ?? 1),
                 'compareAtPrice' => $variant->compare_at_price,
                 'sku' => $variant->sku,
                 'barcode' => $variant->barcode,
@@ -305,6 +323,33 @@ class CreateShopifyCustomProductService
                 'print_plan' => $validated['printPlan'] ?? null,
             ],
         ];
+    }
+
+    private function resolveSelectedRetailPrice(array $validated, Collection $productVariants): ?string
+    {
+        if (!array_key_exists('retailPrice', $validated) || $validated['retailPrice'] === null) {
+            return null;
+        }
+
+        $selectedColor = $this->normalizeVariantColor((string) ($validated['selectedColor'] ?? ''));
+        $selectedSize = strtolower(trim((string) ($validated['selectedSize'] ?? '')));
+        $matches = $productVariants->filter(function ($variant) use ($selectedColor, $selectedSize) {
+            return $this->normalizeVariantColor((string) $variant->color) === $selectedColor
+                && strtolower(trim((string) $variant->size)) === $selectedSize;
+        });
+
+        if ($matches->count() !== 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'selectedSize' => ['The selected color and size do not match an active product variant.'],
+            ]);
+        }
+
+        return number_format((float) $validated['retailPrice'], 2, '.', '');
+    }
+
+    private function normalizeVariantColor(string $color): string
+    {
+        return preg_replace('/[^a-z0-9]/', '', strtolower(trim($color))) ?? '';
     }
 
     private function resolveArtworkPayloads(
