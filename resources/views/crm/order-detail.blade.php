@@ -101,6 +101,8 @@
                                                 ?? 'N/A';
                                             $size = $props['_dtfta_garment_size'] ?? 'N/A';
                                             $printPlan = $props['_dtfta_print_plan'] ?? 'N/A';
+                                            $adminProductId = $props['_dtfta_admin_product_id'] ?? null;
+                                            $originalProductName = $props['_dtfta_original_product_name'] ?? null;
 
                                             $layerArtworks = is_array($customDetail['layer_artworks'] ?? null) ? $customDetail['layer_artworks'] : [];
                                             $useLayerArtworks = $layerArtworks !== [];
@@ -158,6 +160,12 @@
                                                 <span style="color: #94a3b8;">Qty: {{ $item->quantity ?? 1 }}</span>
                                             </summary>
                                             <div style="display: grid; gap: 6px; font-size: 13px; padding: 0 12px 12px; border-top: 1px solid rgba(148, 163, 184, 0.15);">
+                                                @if (filled($originalProductName))
+                                                    <div><span style="color: #94a3b8;">Original Product:</span> <b>{{ $originalProductName }}</b></div>
+                                                @endif
+                                                @if (filled($adminProductId))
+                                                    <div><span style="color: #94a3b8;">Admin Product ID:</span> <b>{{ $adminProductId }}</b></div>
+                                                @endif
                                                 <div><span style="color: #94a3b8;">DTFA Type:</span> <b>{{ $dtftaType }}</b></div>
                                                 <div><span style="color: #94a3b8;">Color:</span> <b>{{ $color }}</b></div>
                                                 <div><span style="color: #94a3b8;">Size:</span> <b>{{ $size }}</b></div>

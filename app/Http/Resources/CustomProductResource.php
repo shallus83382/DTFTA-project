@@ -18,6 +18,7 @@ class CustomProductResource extends JsonResource
             'print_plan' => $this->print_plan,
             'base_product' => [
                 'id' => $product?->id,
+                'original_product_name' => $product?->title,
                 'brand' => $product?->brand,
                 'style' => $product?->model_code,
             ],
