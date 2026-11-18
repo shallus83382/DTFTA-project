@@ -164,7 +164,7 @@
                                                     <div><span style="color: #94a3b8;">Original Product:</span> <b>{{ $originalProductName }}</b></div>
                                                 @endif
                                                 @if (filled($adminProductId))
-                                                    <div><span style="color: #94a3b8;">Admin Product ID:</span> <b>{{ $adminProductId }}</b></div>
+                                                    <div><span style="color: #94a3b8;">Product ID:</span> <b>{{ $adminProductId }}</b></div>
                                                 @endif
                                                 <div><span style="color: #94a3b8;">DTFA Type:</span> <b>{{ $dtftaType }}</b></div>
                                                 <div><span style="color: #94a3b8;">Color:</span> <b>{{ $color }}</b></div>
@@ -180,7 +180,10 @@
                                                                     $placementLabel = strtoupper(str_replace('_', ' ', trim((string) ($row['placement'] ?? ''))));
                                                                     $layerTitle = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? 'Layer'));
                                                                     $cardTitle = ($placementLabel !== '' ? $placementLabel . ' — ' : '') . ($layerTitle !== '' ? $layerTitle : 'Layer');
-                                                                    $resolvedUrl = trim((string) ($row['artwork_url'] ?? ''));
+                                                                    $placementKey = preg_replace('/[^a-z0-9]+/', '_', strtolower(trim((string) ($row['placement'] ?? ''))));
+                                                                    $placementKey = trim((string) $placementKey, '_');
+                                                                    $artworkPropertyKey = '_dtfta_artwork_' . $placementKey . '_url';
+                                                                    $resolvedUrl = trim((string) ($props[$artworkPropertyKey] ?? $row['artwork_url'] ?? ''));
                                                                     $artworkId = trim((string) ($row['artwork_id'] ?? ''));
                                                                     $position = trim((string) ($layer['label'] ?? $layer['layer_id'] ?? ''));
                                                                     if ($position === '') {
