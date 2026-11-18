@@ -332,6 +332,10 @@ document.addEventListener('DOMContentLoaded', function () {
     function bindRemoveButtons() {
         colorsWrapper.querySelectorAll('.color-row .remove-row-btn').forEach(function (button) {
             button.onclick = function () {
+                if (!window.confirm('Are you sure you want to remove this color variation?')) {
+                    return;
+                }
+
                 const row = this.closest('.color-row');
                 const parent = row.parentElement;
 
