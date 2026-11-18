@@ -16,8 +16,7 @@ class CreateShopifyCustomProductService
 {
     public function __construct(
         private ShopifyService $shopifyService
-    ) {
-    }
+    ) {}
 
     public function handle(Request $request, int $shopId)
     {
@@ -29,12 +28,12 @@ class CreateShopifyCustomProductService
             }
 
             $product = $this->findProductForShopifyCreate($validated);
-            if (!$product) {
+            if (! $product) {
                 return $this->errorResponse('Product not found in database.', 404);
             }
 
             $shop = Shop::find($shopId);
-            if (!$shop) {
+            if (! $shop) {
                 return $this->errorResponse('Shop not found.', 404);
             }
 
@@ -51,7 +50,7 @@ class CreateShopifyCustomProductService
 
             $shopifyCreateResult = $this->shopifyService->createCustomProductWithPrintAreas($shopId, $payload);
 
-            if (!($shopifyCreateResult['success'] ?? false)) {
+            if (! ($shopifyCreateResult['success'] ?? false)) {
                 // Log::warning('Create Shopify product failed', [
                 //     'shop_id' => $shopId,
                 //     'product_id' => $product->id,
@@ -194,10 +193,10 @@ class CreateShopifyCustomProductService
                     ->orderBy('id');
             },
         ])
-            ->when(!empty($validated['productId']), function ($q) use ($validated) {
+            ->when(! empty($validated['productId']), function ($q) use ($validated) {
                 $q->where('id', $validated['productId']);
             })
-            ->when(empty($validated['productId']) && !empty($validated['productKey']), function ($q) use ($validated) {
+            ->when(empty($validated['productId']) && ! empty($validated['productKey']), function ($q) use ($validated) {
                 $q->where(function ($sub) use ($validated) {
                     $sub->where('sku', $validated['productKey'])
                         ->orWhere('model_code', $validated['productKey'])
@@ -229,11 +228,11 @@ class CreateShopifyCustomProductService
         $sizes = $productVariants->pluck('size')->filter()->unique()->values()->all();
 
         $options = array_values(array_filter([
-            !empty($colors) ? [
+            ! empty($colors) ? [
                 'name' => 'Color',
                 'values' => $colors,
             ] : null,
-            !empty($sizes) ? [
+            ! empty($sizes) ? [
                 'name' => 'Size',
                 'values' => $sizes,
             ] : null,
@@ -296,7 +295,16 @@ class CreateShopifyCustomProductService
             ->unique(function ($artwork) {
                 $url = strtolower(trim((string) ($artwork['artwork_url'] ?? $artwork['url'] ?? '')));
                 $sourceCode = trim((string) data_get($artwork, 'meta.source_code', ''));
-                return $url !== '' ? 'url:' . $url : 'source:' . md5($sourceCode);
+
+                return $url !== '' ? 'url:'.$url : 'source:'.md5($sourceCode);
+            })
+            ->map(function ($artwork) {
+                $source = trim((string) ($artwork['artwork_url'] ?? $artwork['url'] ?? ''));
+                if ($source !== '') {
+                    $artwork['title'] = $this->shopifyArtworkMediaAlt($source);
+                }
+
+                return $artwork;
             })
             ->values()
             ->all();
@@ -322,7 +330,7 @@ class CreateShopifyCustomProductService
 
     private function resolveSelectedRetailPrice(array $validated, Collection $productVariants): ?string
     {
-        if (!array_key_exists('retailPrice', $validated) || $validated['retailPrice'] === null) {
+        if (! array_key_exists('retailPrice', $validated) || $validated['retailPrice'] === null) {
             return null;
         }
 
@@ -338,6 +346,11 @@ class CreateShopifyCustomProductService
         }
 
         return number_format((float) $validated['retailPrice'], 2, '.', '');
+    }
+
+    private function shopifyArtworkMediaAlt(string $source): string
+    {
+        return 'DTFTA artwork '.substr(hash('sha256', strtolower(trim($source))), 0, 32);
     }
 
     private function resolveArtworkPayloads(
@@ -356,12 +369,12 @@ class CreateShopifyCustomProductService
             $shopId,
             $product
         ): string {
-            if (!$this->isDataUrl($source)) {
+            if (! $this->isDataUrl($source)) {
                 return $source;
             }
 
-            $cacheKey = hash('sha256', $source . "\0" . (string) $placement);
-            if (!isset($storedArtworkBySource[$cacheKey])) {
+            $cacheKey = hash('sha256', $source."\0".(string) $placement);
+            if (! isset($storedArtworkBySource[$cacheKey])) {
                 $storedArtworkBySource[$cacheKey] = $this->storeArtworkFile(
                     $source,
                     $shopId,
@@ -381,7 +394,7 @@ class CreateShopifyCustomProductService
         // ]);
 
         $fallbackArtworks = $legacyArtworkSource
-            ->map(function ($item, $index) use ($printAreas, $shopId, $product, $storeSource) {
+            ->map(function ($item, $index) use ($printAreas, $shopId, $storeSource) {
                 $resolvedPlacement = data_get($item, 'placement') ?: ($printAreas[$index]['placement'] ?? null);
                 $sourceValue = (string) data_get($item, 'source', '');
                 $verifiedLibraryArtworkId = $this->verifyShopArtworkBelongsToShop(
@@ -423,7 +436,7 @@ class CreateShopifyCustomProductService
                     'variant_color_name' => null,
                     'variant_size' => null,
                     'placement' => $resolvedPlacement,
-                    'title' => 'Artwork ' . ($index + 1),
+                    'title' => 'Artwork '.($index + 1),
                     'artwork_url' => $storedUrl,
                     'meta' => $meta,
                 ];
@@ -486,7 +499,7 @@ class CreateShopifyCustomProductService
                         'variant_color_code' => $colorToken,
                         'variant_color_name' => $variant->color,
                         'variant_size' => $variant->size,
-                        'title' => trim(($variant->color ?: $colorToken) . ($variant->size ? ' ' . $variant->size : '') . ' ' . ($artworkItem['title'] ?? 'Artwork')),
+                        'title' => trim(($variant->color ?: $colorToken).($variant->size ? ' '.$variant->size : '').' '.($artworkItem['title'] ?? 'Artwork')),
                         'meta' => $meta,
                     ]);
                 });
@@ -532,12 +545,13 @@ class CreateShopifyCustomProductService
                 $colorMatch = collect($needleColors)->contains(function ($needleColor) use ($variantColor) {
                     return $this->colorValuesMatch($variantColor, $needleColor);
                 });
-                if (!$colorMatch) {
+                if (! $colorMatch) {
                     return false;
                 }
                 if ($variantSize === '') {
                     return true;
                 }
+
                 return strcasecmp((string) $variant->size, $variantSize) === 0;
             })->values();
 
@@ -552,6 +566,7 @@ class CreateShopifyCustomProductService
                 if ($dbSkuUpper === '') {
                     return false;
                 }
+
                 return $dbSkuUpper === $variantSku
                     || str_contains($dbSkuUpper, $variantSku)
                     || str_contains($variantSku, $dbSkuUpper);
@@ -620,12 +635,12 @@ class CreateShopifyCustomProductService
         $byColorSize = [];
 
         foreach ($customVariants as $customVariant) {
-            if (!empty($customVariant->product_variant_id)) {
+            if (! empty($customVariant->product_variant_id)) {
                 $byProductVariantId[(string) $customVariant->product_variant_id] = $customVariant;
             }
 
-            if (!empty($customVariant->sku)) {
-                $bySku['sku:' . strtoupper(trim((string) $customVariant->sku))] = $customVariant;
+            if (! empty($customVariant->sku)) {
+                $bySku['sku:'.strtoupper(trim((string) $customVariant->sku))] = $customVariant;
             }
 
             $optionValues = collect($customVariant->option_values ?? []);
@@ -636,7 +651,7 @@ class CreateShopifyCustomProductService
                 $optionValues->first(fn ($opt) => strtolower((string) ($opt['optionName'] ?? '')) === 'size')
             )['name'] ?? ''));
 
-            $byColorSize[$colorOption . '|' . $sizeOption] = $customVariant;
+            $byColorSize[$colorOption.'|'.$sizeOption] = $customVariant;
         }
 
         return [
@@ -695,15 +710,15 @@ class CreateShopifyCustomProductService
 
     private function resolveLinkedCustomVariant(array $artwork, array $indexes): ?object
     {
-        if (!empty($artwork['product_variant_id'])) {
+        if (! empty($artwork['product_variant_id'])) {
             $key = (string) $artwork['product_variant_id'];
             if (isset($indexes['by_product_variant_id'][$key])) {
                 return $indexes['by_product_variant_id'][$key];
             }
         }
 
-        if (!empty($artwork['variant_sku'])) {
-            $skuKey = 'sku:' . strtoupper(trim((string) $artwork['variant_sku']));
+        if (! empty($artwork['variant_sku'])) {
+            $skuKey = 'sku:'.strtoupper(trim((string) $artwork['variant_sku']));
             if (isset($indexes['by_sku'][$skuKey])) {
                 return $indexes['by_sku'][$skuKey];
             }
@@ -714,6 +729,7 @@ class CreateShopifyCustomProductService
                 if ($dbSku === '') {
                     return false;
                 }
+
                 return $dbSku === $needleSku
                     || str_contains($dbSku, $needleSku)
                     || str_contains($needleSku, $dbSku);
@@ -733,7 +749,7 @@ class CreateShopifyCustomProductService
         $needleSize = strtoupper(trim((string) ($artwork['variant_size'] ?? data_get($meta, 'size', ''))));
 
         if ($needleColor !== '') {
-            $key = $needleColor . '|' . $needleSize;
+            $key = $needleColor.'|'.$needleSize;
             if (isset($indexes['by_color_size'][$key])) {
                 return $indexes['by_color_size'][$key];
             }
@@ -747,7 +763,7 @@ class CreateShopifyCustomProductService
                     $optionValues->first(fn ($opt) => strtolower((string) ($opt['optionName'] ?? '')) === 'size')
                 )['name'] ?? ''));
 
-                if ($needleColor === '' || !$this->colorValuesMatch($colorOption, $needleColor)) {
+                if ($needleColor === '' || ! $this->colorValuesMatch($colorOption, $needleColor)) {
                     return false;
                 }
 
@@ -771,14 +787,14 @@ class CreateShopifyCustomProductService
             'shopify_product_id' => $shopifyProductId,
         ]);
 
-        if (!empty($shopifyProductId)) {
+        if (! empty($shopifyProductId)) {
             $templateMetafieldResult = $this->shopifyService->setDtftaTemplateIdMetafield(
                 (int) $shopId,
                 (string) $shopifyProductId,
                 (int) $customProduct->id
             );
 
-            if (!($templateMetafieldResult['success'] ?? false)) {
+            if (! ($templateMetafieldResult['success'] ?? false)) {
                 throw new \RuntimeException(
                     $templateMetafieldResult['message'] ?? 'Failed to set DTFTA template id metafield.'
                 );
@@ -810,14 +826,14 @@ class CreateShopifyCustomProductService
         );
 
         $deliveryProfileResult = null;
-        if (!empty($shop->shipping_profile_id) && !empty($shopifyVariantIds)) {
+        if (! empty($shop->shipping_profile_id) && ! empty($shopifyVariantIds)) {
             $deliveryProfileResult = $this->shopifyService->assignVariantsToDeliveryProfile(
                 (int) $shopId,
                 (string) $shop->shipping_profile_id,
                 $shopifyVariantIds
             );
 
-            if (!($deliveryProfileResult['success'] ?? false)) {
+            if (! ($deliveryProfileResult['success'] ?? false)) {
                 throw new \RuntimeException(
                     $deliveryProfileResult['message'] ?? 'Failed to assign variants to delivery profile.'
                 );
@@ -825,7 +841,7 @@ class CreateShopifyCustomProductService
         }
 
         $inventoryAssignmentResults = [];
-        if (!empty($shop->location_id) && !empty($shopifyVariantIds)) {
+        if (! empty($shop->location_id) && ! empty($shopifyVariantIds)) {
             $mappedVariantIds = array_fill_keys(
                 array_map('strval', $shopifyVariantIds),
                 true
@@ -847,7 +863,7 @@ class CreateShopifyCustomProductService
                 (string) $shop->location_id
             );
 
-            if (!($inventoryResult['success'] ?? false)) {
+            if (! ($inventoryResult['success'] ?? false)) {
                 throw new \RuntimeException(
                     $inventoryResult['message'] ?? 'Failed to assign variants to inventory location.'
                 );
@@ -875,7 +891,7 @@ class CreateShopifyCustomProductService
             return $shopifyVariants;
         }
 
-        if (!empty($shopifyProductId)) {
+        if (! empty($shopifyProductId)) {
             $variantsFetchResult = $this->shopifyService->getProductVariantsByProductId(
                 (int) $shopId,
                 (string) $shopifyProductId
@@ -883,7 +899,7 @@ class CreateShopifyCustomProductService
 
             if ($variantsFetchResult['success'] ?? false) {
                 $fetched = data_get($variantsFetchResult, 'data.variants', []);
-                if (!is_array($fetched)) {
+                if (! is_array($fetched)) {
                     $fetched = [];
                 }
 
@@ -935,7 +951,7 @@ class CreateShopifyCustomProductService
 
         foreach ($shopifyVariants as $shopifyVariant) {
             $shopifyVariantId = data_get($shopifyVariant, 'id');
-            if (!$shopifyVariantId) {
+            if (! $shopifyVariantId) {
                 continue;
             }
 
@@ -949,18 +965,19 @@ class CreateShopifyCustomProductService
                     if (in_array((int) $customVariant->id, $mappedCustomVariantIds, true)) {
                         return false;
                     }
+
                     return strtoupper(trim((string) $customVariant->sku)) === $normalizedSku;
                 });
             }
 
-            if (!$matchedCustomVariant) {
+            if (! $matchedCustomVariant) {
                 $matchedCustomVariant = $this->matchCustomVariantByShopifySelectedOptions(
                     $customVariants->reject(fn ($variant) => in_array((int) $variant->id, $mappedCustomVariantIds, true)),
                     $shopifyVariant
                 );
             }
 
-            if (!$matchedCustomVariant) {
+            if (! $matchedCustomVariant) {
                 continue;
             }
 
@@ -993,7 +1010,7 @@ class CreateShopifyCustomProductService
             $mediaUrl = trim((string) data_get($mediaNode, 'image.url', ''));
             $mediaAlt = trim((string) data_get($mediaNode, 'alt', ''));
 
-            if (!$mediaId) {
+            if (! $mediaId) {
                 continue;
             }
 
@@ -1002,7 +1019,7 @@ class CreateShopifyCustomProductService
             }
 
             if ($mediaAlt !== '') {
-                $mediaByUrl['alt:' . strtolower($mediaAlt)] = $mediaId;
+                $mediaByUrl['alt:'.strtolower($mediaAlt)] = $mediaId;
             }
         }
 
@@ -1018,11 +1035,18 @@ class CreateShopifyCustomProductService
                 $shopifyMediaId = null;
                 if ($artworkUrl !== '' && isset($mediaByUrl[strtolower($artworkUrl)])) {
                     $shopifyMediaId = $mediaByUrl[strtolower($artworkUrl)];
-                } elseif ($title !== '' && isset($mediaByUrl['alt:' . strtolower($title)])) {
-                    $shopifyMediaId = $mediaByUrl['alt:' . strtolower($title)];
+                } elseif (
+                    $artworkUrl !== ''
+                    && isset($mediaByUrl['alt:'.strtolower($this->shopifyArtworkMediaAlt($artworkUrl))])
+                ) {
+                    $shopifyMediaId = $mediaByUrl[
+                        'alt:'.strtolower($this->shopifyArtworkMediaAlt($artworkUrl))
+                    ];
+                } elseif ($title !== '' && isset($mediaByUrl['alt:'.strtolower($title)])) {
+                    $shopifyMediaId = $mediaByUrl['alt:'.strtolower($title)];
                 }
 
-                if (!$shopifyMediaId || empty($meta['shopify_variant_id'])) {
+                if (! $shopifyMediaId || empty($meta['shopify_variant_id'])) {
                     return;
                 }
 
@@ -1045,13 +1069,12 @@ class CreateShopifyCustomProductService
         $variantMediaInputs = [];
         foreach ($variantMediaMap as $shopifyVariantId => $mediaIds) {
             $uniqueMediaIds = array_values(array_unique($mediaIds));
-            $singleMediaIdForVariant = !empty($uniqueMediaIds) ? [$uniqueMediaIds[0]] : [];
-            if ($singleMediaIdForVariant === []) {
+            if ($uniqueMediaIds === []) {
                 continue;
             }
             $variantMediaInputs[] = [
                 'variantId' => (string) $shopifyVariantId,
-                'mediaIds' => $singleMediaIdForVariant,
+                'mediaIds' => $uniqueMediaIds,
             ];
         }
 
@@ -1080,7 +1103,7 @@ class CreateShopifyCustomProductService
         }
 
         $batchErrorText = strtolower((string) ($batchResult['message'] ?? ''));
-        if (!str_contains($batchErrorText, 'non-ready media')) {
+        if (! str_contains($batchErrorText, 'non-ready media')) {
             throw new \RuntimeException(
                 $batchResult['message'] ?? 'Failed to link media to Shopify variants.'
             );
@@ -1091,7 +1114,7 @@ class CreateShopifyCustomProductService
         $variantMediaAssignments = [];
         foreach ($variantMediaInputs as $entry) {
             $shopifyVariantId = $entry['variantId'];
-            $singleMediaIdForVariant = $entry['mediaIds'];
+            $mediaIdsForVariant = $entry['mediaIds'];
             $attachToVariant = null;
             $maxAttempts = 3;
 
@@ -1100,7 +1123,7 @@ class CreateShopifyCustomProductService
                     (int) $shopId,
                     (string) $shopifyProductId,
                     (string) $shopifyVariantId,
-                    $singleMediaIdForVariant
+                    $mediaIdsForVariant
                 );
 
                 if ($attachToVariant['success'] ?? false) {
@@ -1109,7 +1132,7 @@ class CreateShopifyCustomProductService
 
                 $errorText = strtolower((string) ($attachToVariant['message'] ?? ''));
                 $isNonReadyMediaError = str_contains($errorText, 'non-ready media');
-                if (!$isNonReadyMediaError || $attempt === $maxAttempts) {
+                if (! $isNonReadyMediaError || $attempt === $maxAttempts) {
                     break;
                 }
 
@@ -1119,7 +1142,7 @@ class CreateShopifyCustomProductService
 
             $variantMediaAssignments[] = [
                 'variant_id' => $shopifyVariantId,
-                'media_ids' => $singleMediaIdForVariant,
+                'media_ids' => $mediaIdsForVariant,
                 'success' => $attachToVariant['success'] ?? false,
                 'message' => $attachToVariant['message'] ?? null,
                 'errors' => $attachToVariant['errors'] ?? [],
@@ -1137,7 +1160,7 @@ class CreateShopifyCustomProductService
             //     'errors' => $attachToVariant['errors'] ?? [],
             // ]);
 
-            if (!($attachToVariant['success'] ?? false)) {
+            if (! ($attachToVariant['success'] ?? false)) {
                 $errorText = strtolower((string) ($attachToVariant['message'] ?? ''));
                 if (str_contains($errorText, 'non-ready media')) {
                     // Log::warning('Skipping variant-media attach due to non-ready media after retries', [
@@ -1183,7 +1206,7 @@ class CreateShopifyCustomProductService
      |
      */
 
-     private function storeArtworkFile(
+    private function storeArtworkFile(
         string $source,
         int $shopId,
         int $productId,
@@ -1193,16 +1216,16 @@ class CreateShopifyCustomProductService
         if ($this->isDataUrl($source)) {
             return $this->storeBase64Artwork($source, $shopId, $productId, $placement, $index);
         }
-    
+
         // Already a normal URL, keep as is
         return $source;
     }
-    
+
     private function isDataUrl(string $value): bool
     {
         return str_starts_with($value, 'data:');
     }
-    
+
     private function storeBase64Artwork(
         string $dataUrl,
         int $shopId,
@@ -1210,29 +1233,29 @@ class CreateShopifyCustomProductService
         ?string $placement,
         int $index
     ): string {
-        if (!preg_match('/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/', $dataUrl, $matches)) {
+        if (! preg_match('/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/', $dataUrl, $matches)) {
             throw new \Exception('Invalid base64 artwork format.');
         }
-    
+
         $mimeType = strtolower($matches[1]);
         $base64Data = $matches[2];
-    
+
         $extension = $this->mimeTypeToExtension($mimeType);
-    
-        if (!$extension) {
-            throw new \Exception('Unsupported artwork mime type: ' . $mimeType);
+
+        if (! $extension) {
+            throw new \Exception('Unsupported artwork mime type: '.$mimeType);
         }
-    
+
         $binaryData = base64_decode($base64Data, true);
-    
+
         if ($binaryData === false) {
             throw new \Exception('Failed to decode base64 artwork.');
         }
-    
+
         $safePlacement = $placement
             ? preg_replace('/[^a-z0-9_-]+/i', '-', strtolower($placement))
             : 'artwork';
-    
+
         $fileName = sprintf(
             '%s_%s_%s.%s',
             now()->format('YmdHis'),
@@ -1240,19 +1263,20 @@ class CreateShopifyCustomProductService
             $index + 1,
             $extension
         );
-    
+
         $path = "artworks/shop_{$shopId}/product_{$productId}/{$fileName}";
-    
-        if(config('filesystems.default') === 's3') {
+
+        if (config('filesystems.default') === 's3') {
             Storage::disk('s3')->put($path, $binaryData);
+
             return Storage::disk('s3')->url($path);
         }
 
         Storage::disk('local')->put($path, $binaryData);
-    
+
         return Storage::disk('local')->url($path);
     }
-    
+
     private function mimeTypeToExtension(string $mimeType): ?string
     {
         return match ($mimeType) {
@@ -1335,7 +1359,7 @@ class CreateShopifyCustomProductService
 
     private function normalizeArtworkUrlsPayload(mixed $artworkUrls): array
     {
-        if (!is_array($artworkUrls)) {
+        if (! is_array($artworkUrls)) {
             return [];
         }
 
@@ -1363,6 +1387,7 @@ class CreateShopifyCustomProductService
                         'library_artwork_id' => trim((string) data_get($value, 'libraryArtworkId', '')),
                         'layers_meta' => $this->normalizeLayersMetaPayload(data_get($value, 'layersMeta')),
                     ];
+
                     return;
                 }
 
@@ -1373,15 +1398,16 @@ class CreateShopifyCustomProductService
                     }
                     $walker($child, $nextPath);
                 }
+
                 return;
             }
 
-            if (!is_string($value)) {
+            if (! is_string($value)) {
                 return;
             }
 
             $source = trim($value);
-            if (!$this->isArtworkSourceValue($source)) {
+            if (! $this->isArtworkSourceValue($source)) {
                 return;
             }
 
@@ -1577,6 +1603,7 @@ class CreateShopifyCustomProductService
         }
 
         $normalized = preg_replace('/[^a-z0-9_-]+/i', '-', $normalized);
+
         return $normalized !== '' ? $normalized : null;
     }
 
@@ -1588,6 +1615,7 @@ class CreateShopifyCustomProductService
         }
 
         $normalized = preg_replace('/[^a-z0-9]+/i', '', $normalized) ?: '';
+
         return $normalized !== '' ? $normalized : null;
     }
 
@@ -1635,16 +1663,16 @@ class CreateShopifyCustomProductService
             'wht', 'white',
             'gry', 'gray', 'grey',
             'grn', 'green',
-        
+
             // Added colors
-            'clay','antique_gold', 'banana_cream',
-            'blue_jean','bone','cardinal','classic_orange','cool_blue','cream','dark_chocolate',
-            'desert_pink','forest_green','gold','graphite_black','heather_gray','heavy_metal',
-            'indigo','kelly_green','light_blue','light_grey','light_olive',
-            'light_pink','maroon','mauve','midnight_navy','military_green',
-            'natural','oatmeal','oxblood','periblue','purple_rush',
-            'royal','royal_pine','sand','shiitake','stonewash_denim',
-            'tahiti_blue','tan','teal','turquoise','watermelon','hot_pink'
+            'clay', 'antique_gold', 'banana_cream',
+            'blue_jean', 'bone', 'cardinal', 'classic_orange', 'cool_blue', 'cream', 'dark_chocolate',
+            'desert_pink', 'forest_green', 'gold', 'graphite_black', 'heather_gray', 'heavy_metal',
+            'indigo', 'kelly_green', 'light_blue', 'light_grey', 'light_olive',
+            'light_pink', 'maroon', 'mauve', 'midnight_navy', 'military_green',
+            'natural', 'oatmeal', 'oxblood', 'periblue', 'purple_rush',
+            'royal', 'royal_pine', 'sand', 'shiitake', 'stonewash_denim',
+            'tahiti_blue', 'tan', 'teal', 'turquoise', 'watermelon', 'hot_pink',
         ];
 
         foreach ($segments as $segment) {
