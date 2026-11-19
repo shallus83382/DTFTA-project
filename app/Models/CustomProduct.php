@@ -26,8 +26,7 @@ class CustomProduct extends Model
         'tags' => 'array',
         'options' => 'array',
         'print_areas' => 'array',
-        // Plain plans such as "FRONT:12x16|BACK:12x16" must be stored as JSON.
-        'print_plan' => 'json',
+        'print_plan' => 'string',
     ];
 
     public function variants()
