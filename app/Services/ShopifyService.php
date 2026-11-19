@@ -4461,10 +4461,11 @@ class ShopifyService
                         : "gid://shopify/MediaImage/{$value}";
                 }, $entry['mediaIds'] ?? [])));
 
-                if ($mediaIds !== []) {
-                    $inputs[] = [
+                // Shopify accepts only one media id on each variantMedia input.
+                foreach ($mediaIds as $index => $mediaId) {
+                    $inputs[$index][] = [
                         'variantId' => $variantGid,
-                        'mediaIds' => $mediaIds,
+                        'mediaIds' => [$mediaId],
                     ];
                 }
             }
@@ -4493,41 +4494,45 @@ class ShopifyService
             }
             GRAPHQL;
 
-            foreach (array_chunk($inputs, 100) as $batch) {
-                $result = $this->graphqlRequest($shopId, $mutation, [
-                    'productId' => $productGid,
-                    'variantMedia' => $batch,
-                ]);
+            $attachedCount = 0;
+            foreach ($inputs as $pass) {
+                foreach (array_chunk($pass, 100) as $batch) {
+                    $attachedCount += count($batch);
+                    $result = $this->graphqlRequest($shopId, $mutation, [
+                        'productId' => $productGid,
+                        'variantMedia' => $batch,
+                    ]);
 
-                if (!($result['success'] ?? false)) {
-                    return [
-                        'success' => false,
-                        'status' => $result['status'] ?? 500,
-                        'message' => $result['message'] ?? 'GraphQL request failed',
-                        'data' => $result['data'] ?? null,
-                        'errors' => $result['errors'] ?? [],
-                    ];
-                }
+                    if (!($result['success'] ?? false)) {
+                        return [
+                            'success' => false,
+                            'status' => $result['status'] ?? 500,
+                            'message' => $result['message'] ?? 'GraphQL request failed',
+                            'data' => $result['data'] ?? null,
+                            'errors' => $result['errors'] ?? [],
+                        ];
+                    }
 
-                $payload = data_get($result, 'data.productVariantAppendMedia');
-                if (!$payload) {
-                    return [
-                        'success' => false,
-                        'status' => 500,
-                        'message' => 'Missing productVariantAppendMedia payload in Shopify response',
-                        'data' => $result['data'] ?? null,
-                        'errors' => $result['errors'] ?? [],
-                    ];
-                }
+                    $payload = data_get($result, 'data.productVariantAppendMedia');
+                    if (!$payload) {
+                        return [
+                            'success' => false,
+                            'status' => 500,
+                            'message' => 'Missing productVariantAppendMedia payload in Shopify response',
+                            'data' => $result['data'] ?? null,
+                            'errors' => $result['errors'] ?? [],
+                        ];
+                    }
 
-                if (!empty($payload['userErrors'])) {
-                    return [
-                        'success' => false,
-                        'status' => 422,
-                        'message' => $payload['userErrors'][0]['message'] ?? 'Failed to attach media to variants',
-                        'data' => $payload,
-                        'errors' => $payload['userErrors'],
-                    ];
+                    if (!empty($payload['userErrors'])) {
+                        return [
+                            'success' => false,
+                            'status' => 422,
+                            'message' => $payload['userErrors'][0]['message'] ?? 'Failed to attach media to variants',
+                            'data' => $payload,
+                            'errors' => $payload['userErrors'],
+                        ];
+                    }
                 }
             }
 
@@ -4537,7 +4542,7 @@ class ShopifyService
                 'message' => 'Media attached to variants successfully',
                 'data' => [
                     'product_id' => $productGid,
-                    'variant_media_count' => count($inputs),
+                    'variant_media_count' => $attachedCount,
                 ],
                 'errors' => [],
             ];

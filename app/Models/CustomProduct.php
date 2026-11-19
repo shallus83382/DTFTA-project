@@ -26,7 +26,9 @@ class CustomProduct extends Model
         'tags' => 'array',
         'options' => 'array',
         'print_areas' => 'array',
-        'print_plan' => 'string',
+        // Column is JSON. The plan is a pipe string such as FRONT:50x90|BACK:50x90,
+        // so it must be encoded as a JSON string instead of inserted as raw text.
+        'print_plan' => 'json',
     ];
 
     public function variants()

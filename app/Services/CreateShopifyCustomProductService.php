@@ -131,10 +131,12 @@ class CreateShopifyCustomProductService
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            $fullError = $e->getMessage()."\n".$e::class.' in '.$e->getFile().':'.$e->getLine();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Something went wrong while creating product in Shopify.',
-                'error' => $e->getMessage(),
+                'message' => $fullError,
+                'error' => $fullError,
             ], 500);
         }
     }
@@ -308,8 +310,16 @@ class CreateShopifyCustomProductService
             ->unique(function ($artwork) {
                 $url = strtolower(trim((string) ($artwork['artwork_url'] ?? $artwork['url'] ?? '')));
                 $sourceCode = trim((string) data_get($artwork, 'meta.source_code', ''));
+                $placement = strtolower(trim((string) ($artwork['placement'] ?? '')));
+                $color = strtolower(trim((string) (
+                    $artwork['variant_color_code']
+                    ?? $artwork['variant_color_name']
+                    ?? ''
+                )));
+                $imageKey = $url !== '' ? 'url:'.$url : 'source:'.md5($sourceCode);
 
-                return $url !== '' ? 'url:'.$url : 'source:'.md5($sourceCode);
+                // One gallery image per color and print area (front, back, sleeve).
+                return $placement.'|'.$color.'|'.$imageKey;
             })
             ->map(function ($artwork) {
                 $source = trim((string) ($artwork['artwork_url'] ?? $artwork['url'] ?? ''));
@@ -444,8 +454,9 @@ class CreateShopifyCustomProductService
         //     'artwork_urls_count' => $legacyArtworkSource->count(),
         // ]);
 
+        $storedPrintByPlacement = [];
         $fallbackArtworks = $legacyArtworkSource
-            ->map(function ($item, $index) use ($printAreas, $shopId, $storeSource) {
+            ->map(function ($item, $index) use ($printAreas, $shopId, $storeSource, &$storedPrintByPlacement) {
                 $resolvedPlacement = data_get($item, 'placement') ?: ($printAreas[$index]['placement'] ?? null);
                 $sourceValue = (string) data_get($item, 'source', '');
                 $verifiedLibraryArtworkId = $this->verifyShopArtworkBelongsToShop(
@@ -460,9 +471,17 @@ class CreateShopifyCustomProductService
 
                 $storedUrl = $storeSource($sourceValue, $resolvedPlacement, $index);
                 $customArtworkSource = (string) data_get($item, 'custom_artwork_source', '');
-                $storedCustomUrl = $this->isArtworkSourceValue($customArtworkSource)
-                    ? $storeSource($customArtworkSource, $resolvedPlacement, $index + 10000)
-                    : null;
+                $placementKey = strtolower(trim((string) $resolvedPlacement));
+                if ($this->isArtworkSourceValue($customArtworkSource)) {
+                    $storedCustomUrl = $storeSource($customArtworkSource, $resolvedPlacement, $index + 10000);
+                    if ($placementKey !== '') {
+                        $storedPrintByPlacement[$placementKey] = $storedCustomUrl;
+                    }
+                } else {
+                    $storedCustomUrl = $placementKey !== ''
+                        ? ($storedPrintByPlacement[$placementKey] ?? null)
+                        : null;
+                }
 
                 $meta = [
                     'source_code' => $storedUrl,
@@ -1106,7 +1125,10 @@ class CreateShopifyCustomProductService
 
                 $variantId = (string) $meta['shopify_variant_id'];
                 $variantMediaMap[$variantId] = $variantMediaMap[$variantId] ?? [];
-                $variantMediaMap[$variantId][] = $shopifyMediaId;
+                $variantMediaMap[$variantId][] = [
+                    'id' => $shopifyMediaId,
+                    'placement' => strtolower(trim((string) ($artwork->placement ?? ''))),
+                ];
             });
 
         // Log::info('Prepared Shopify variant-media map', [
@@ -1118,14 +1140,14 @@ class CreateShopifyCustomProductService
         // ]);
 
         $variantMediaInputs = [];
-        foreach ($variantMediaMap as $shopifyVariantId => $mediaIds) {
-            $uniqueMediaIds = array_values(array_unique($mediaIds));
-            if ($uniqueMediaIds === []) {
+        foreach ($variantMediaMap as $shopifyVariantId => $mediaItems) {
+            $mediaId = $this->chooseVariantFeaturedMediaId($mediaItems);
+            if ($mediaId === null) {
                 continue;
             }
             $variantMediaInputs[] = [
                 'variantId' => (string) $shopifyVariantId,
-                'mediaIds' => $uniqueMediaIds,
+                'mediaIds' => [$mediaId],
             ];
         }
 
@@ -1154,7 +1176,10 @@ class CreateShopifyCustomProductService
         }
 
         $batchErrorText = strtolower((string) ($batchResult['message'] ?? ''));
-        if (! str_contains($batchErrorText, 'non-ready media')) {
+        if (
+            ! str_contains($batchErrorText, 'non-ready media')
+            && ! str_contains($batchErrorText, 'already has attached media')
+        ) {
             throw new \RuntimeException(
                 $batchResult['message'] ?? 'Failed to link media to Shopify variants.'
             );
@@ -1213,6 +1238,9 @@ class CreateShopifyCustomProductService
 
             if (! ($attachToVariant['success'] ?? false)) {
                 $errorText = strtolower((string) ($attachToVariant['message'] ?? ''));
+                if (str_contains($errorText, 'already has attached media')) {
+                    continue;
+                }
                 if (str_contains($errorText, 'non-ready media')) {
                     // Log::warning('Skipping variant-media attach due to non-ready media after retries', [
                     //     'shop_id' => $shopId,
@@ -1231,6 +1259,32 @@ class CreateShopifyCustomProductService
         }
 
         return $variantMediaAssignments;
+    }
+
+    /**
+     * A Shopify variant can show one featured image. Prefer the front mockup
+     * when the same color also has back or sleeve artwork.
+     *
+     * @param  array<int, array{id?: string, placement?: string}>  $mediaItems
+     */
+    private function chooseVariantFeaturedMediaId(array $mediaItems): ?string
+    {
+        $unique = [];
+        foreach ($mediaItems as $item) {
+            $id = trim((string) ($item['id'] ?? ''));
+            if ($id === '' || isset($unique[$id])) {
+                continue;
+            }
+            $unique[$id] = strtolower(trim((string) ($item['placement'] ?? '')));
+        }
+
+        foreach ($unique as $id => $placement) {
+            if ($placement === 'front') {
+                return $id;
+            }
+        }
+
+        return array_key_first($unique) !== null ? (string) array_key_first($unique) : null;
     }
 
     private function errorResponse(string $message, int $status = 422, array $extra = [])
@@ -1354,10 +1408,6 @@ class CreateShopifyCustomProductService
         }
 
         if ($leftNorm === $rightNorm) {
-            return true;
-        }
-
-        if (str_starts_with($leftNorm, $rightNorm) || str_starts_with($rightNorm, $leftNorm)) {
             return true;
         }
 
