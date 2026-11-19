@@ -124,16 +124,22 @@ class CreateShopifyCustomProductService
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Throwable $e) {
-            DB::rollBack();
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
             Log::error('Create Shopify product exception', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            $message = $e instanceof \InvalidArgumentException || $e instanceof \RuntimeException
+                ? $e->getMessage()
+                : 'Something went wrong while creating product in Shopify.';
+
             return response()->json([
                 'success' => false,
-                'message' => 'Something went wrong while creating product in Shopify.',
+                'message' => $message,
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -1277,6 +1283,40 @@ class CreateShopifyCustomProductService
         return str_starts_with($value, 'data:');
     }
 
+    /**
+     * Split a data-image URL without a capturing regex.
+     * Multi-placement mockups are large, and wrapped base64 includes newlines.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function splitDataImageUrl(string $dataUrl): array
+    {
+        if (! str_starts_with($dataUrl, 'data:image/')) {
+            throw new \InvalidArgumentException('Invalid base64 artwork format.');
+        }
+
+        $comma = strpos($dataUrl, ',');
+        if ($comma === false) {
+            throw new \InvalidArgumentException('Invalid base64 artwork format.');
+        }
+
+        $header = substr($dataUrl, 5, $comma - 5);
+        $parts = array_map('strtolower', explode(';', $header));
+        $mimeType = $parts[0];
+        $isBase64 = in_array('base64', array_slice($parts, 1), true);
+
+        if ($mimeType === '' || ! $isBase64) {
+            throw new \InvalidArgumentException('Invalid base64 artwork format.');
+        }
+
+        $payload = preg_replace('/\s+/', '', substr($dataUrl, $comma + 1)) ?? '';
+        if ($payload === '') {
+            throw new \InvalidArgumentException('Invalid base64 artwork format.');
+        }
+
+        return [$mimeType, $payload];
+    }
+
     private function storeBase64Artwork(
         string $dataUrl,
         int $shopId,
@@ -1284,23 +1324,18 @@ class CreateShopifyCustomProductService
         ?string $placement,
         int $index
     ): string {
-        if (! preg_match('/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/', $dataUrl, $matches)) {
-            throw new \Exception('Invalid base64 artwork format.');
-        }
-
-        $mimeType = strtolower($matches[1]);
-        $base64Data = $matches[2];
+        [$mimeType, $base64Data] = $this->splitDataImageUrl($dataUrl);
 
         $extension = $this->mimeTypeToExtension($mimeType);
 
         if (! $extension) {
-            throw new \Exception('Unsupported artwork mime type: '.$mimeType);
+            throw new \InvalidArgumentException('Unsupported artwork mime type: '.$mimeType);
         }
 
         $binaryData = base64_decode($base64Data, true);
 
         if ($binaryData === false) {
-            throw new \Exception('Failed to decode base64 artwork.');
+            throw new \InvalidArgumentException('Failed to decode base64 artwork.');
         }
 
         $safePlacement = $placement
