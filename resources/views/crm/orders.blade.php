@@ -190,9 +190,31 @@
     }
 
     #boardView.orders-board-view .lead-company,
-    #boardView.orders-board-view .lead-time {
+    #boardView.orders-board-view .lead-time,
+    #boardView.orders-board-view .lead-shop {
         font-size: 10px;
         color: #8ea0bd;
+    }
+
+    #boardView.orders-board-view .lead-customer,
+    #boardView.orders-board-view .lead-shop {
+        line-height: 1.3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+
+    #boardView.orders-board-view .lead-field-label {
+        font-weight: 600;
+        color: #8ea0bd;
+        margin-right: 4px;
+    }
+
+    #boardView.orders-board-view .lead-customer {
+        font-size: 11px;
+        font-weight: 600;
+        color: #e2e8f0;
     }
 
     #boardView.orders-board-view .lead-description {
@@ -408,7 +430,7 @@
         <!-- Search / Controls -->
         <div class="filters-section">
             <div class="lead-filters-left">
-                <input type="text" id="boardSearchInput" class="lead-search-input" placeholder="Search by job ID or order number">
+                <input type="text" id="boardSearchInput" class="lead-search-input" placeholder="Search by job, order, customer, or shop">
                 <button class="btn-secondary" id="boardFilterBtn" type="button">Filter</button>
             </div>
             <div class="lead-filters-right">
@@ -447,6 +469,8 @@
                              data-order-id="{{ $job->order_id }}"
                              data-current-status="pending"
                              data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-customer="{{ strtolower($job->order->customer_name ?? '') }}"
+                             data-shop-name="{{ strtolower($job->shop?->displayName() ?? '') }}"
                              data-job-type="{{ strtolower($job->job_type ?? '') }}"
                              data-created-date="{{ $job->created_at->format('Y-m-d') }}"
                              onclick="navigateToOrder(event, {{ $job->order_id }})"
@@ -456,7 +480,8 @@
                                     <div class="lead-avatar avatar-blue">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
                                     <div>
                                         <div class="lead-name">Job #{{ $job->id }}</div>
-                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
+                                        <div class="lead-customer"><span class="lead-field-label">Customer name:</span> {{ $job->order->customer_name ?: 'No customer name' }}</div>
+                                        <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
                                 <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
@@ -487,6 +512,8 @@
                              data-order-id="{{ $job->order_id }}"
                              data-current-status="artwork_needed"
                              data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-customer="{{ strtolower($job->order->customer_name ?? '') }}"
+                             data-shop-name="{{ strtolower($job->shop?->displayName() ?? '') }}"
                              data-job-type="{{ strtolower($job->job_type ?? '') }}"
                              data-created-date="{{ $job->created_at->format('Y-m-d') }}"
                              onclick="navigateToOrder(event, {{ $job->order_id }})"
@@ -496,7 +523,8 @@
                                     <div class="lead-avatar avatar-orange">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
                                     <div>
                                         <div class="lead-name">Job #{{ $job->id }}</div>
-                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
+                                        <div class="lead-customer"><span class="lead-field-label">Customer name:</span> {{ $job->order->customer_name ?: 'No customer name' }}</div>
+                                        <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
                                 <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
@@ -527,6 +555,8 @@
                              data-order-id="{{ $job->order_id }}"
                              data-current-status="in_production"
                              data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-customer="{{ strtolower($job->order->customer_name ?? '') }}"
+                             data-shop-name="{{ strtolower($job->shop?->displayName() ?? '') }}"
                              data-job-type="{{ strtolower($job->job_type ?? '') }}"
                              data-created-date="{{ $job->created_at->format('Y-m-d') }}"
                              onclick="navigateToOrder(event, {{ $job->order_id }})"
@@ -536,7 +566,8 @@
                                     <div class="lead-avatar avatar-purple">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
                                     <div>
                                         <div class="lead-name">Job #{{ $job->id }}</div>
-                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
+                                        <div class="lead-customer"><span class="lead-field-label">Customer name:</span> {{ $job->order->customer_name ?: 'No customer name' }}</div>
+                                        <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
                                 <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
@@ -567,6 +598,8 @@
                              data-order-id="{{ $job->order_id }}"
                              data-current-status="shipped"
                              data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-customer="{{ strtolower($job->order->customer_name ?? '') }}"
+                             data-shop-name="{{ strtolower($job->shop?->displayName() ?? '') }}"
                              data-job-type="{{ strtolower($job->job_type ?? '') }}"
                              data-created-date="{{ $job->created_at->format('Y-m-d') }}"
                              onclick="navigateToOrder(event, {{ $job->order_id }})"
@@ -576,7 +609,8 @@
                                     <div class="lead-avatar avatar-green">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
                                     <div>
                                         <div class="lead-name">Job #{{ $job->id }}</div>
-                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
+                                        <div class="lead-customer"><span class="lead-field-label">Customer name:</span> {{ $job->order->customer_name ?: 'No customer name' }}</div>
+                                        <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
                                 <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
@@ -607,6 +641,8 @@
                              data-order-id="{{ $job->order_id }}"
                              data-current-status="cancelled"
                              data-store="{{ strtolower($job->shop->shop_domain ?? 'unknown') }}"
+                             data-customer="{{ strtolower($job->order->customer_name ?? '') }}"
+                             data-shop-name="{{ strtolower($job->shop?->displayName() ?? '') }}"
                              data-job-type="{{ strtolower($job->job_type ?? '') }}"
                              data-created-date="{{ $job->created_at->format('Y-m-d') }}"
                              onclick="navigateToOrder(event, {{ $job->order_id }})"
@@ -616,7 +652,8 @@
                                     <div class="lead-avatar avatar-red">{{ substr($job->shop->shop_domain ?? 'N/A', 0, 1) }}</div>
                                     <div>
                                         <div class="lead-name">Job #{{ $job->id }}</div>
-                                        <div class="lead-company">{{ $job->shop->shop_domain ?? 'Unknown' }}</div>
+                                        <div class="lead-customer"><span class="lead-field-label">Customer name:</span> {{ $job->order->customer_name ?: 'No customer name' }}</div>
+                                        <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
                                 <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
@@ -682,7 +719,8 @@
                 <thead>
                     <tr>
                         <th>Job ID</th>
-                        <th>Store Name</th>
+                        <th>Shop</th>
+                        <th>Customer name</th>
                         <th>Order ID</th>
                         <th>Status</th>
                         <th>Created At</th>
@@ -718,15 +756,16 @@
                             data-created-date="{{ $job->created_at->format('Y-m-d') }}"
                         >
                             <td>#{{ $job->id }}</td>
-                            <td>{{ $job->shop->shop_domain ?? 'N/A' }}</td>
+                            <td>{{ $job->shop?->displayName() ?? 'N/A' }}</td>
+                            <td>{{ $job->order->customer_name ?: 'N/A' }}</td>
                             <td>#{{ $job->order_id ?? 'N/A' }}</td>
-                            <td><span class="status-badge status-{{ $jobStatusClass }}">{{ $jobStatusLabel }}</span></td>
+                            <td class="job-status-cell"><span class="status-badge status-{{ $jobStatusClass }}">{{ $jobStatusLabel }}</span></td>
                             <td>{{ $job->created_at->format('Y-m-d H:i') }}</td>
                             <td><a href="{{ route('crm.order-detail', $job->order_id) }}" class="btn-link">View</a></td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 20px; color: #999;">No jobs found</td>
+                            <td colspan="7" style="text-align: center; padding: 20px; color: #999;">No jobs found</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -960,7 +999,7 @@
             const row = document.querySelector(`#jobsTableBody tr[data-job-id="${jobId}"]`);
             if (!row) return;
 
-            const statusCell = row.querySelector('td:nth-child(5)');
+            const statusCell = row.querySelector('.job-status-cell');
             if (statusCell) {
                 const displayStatus = getStatusDisplayName(newStatus);
                 const className = getStatusClassName(newStatus);
@@ -1028,9 +1067,15 @@
             cards.forEach(card => {
                 const jobId = (card.dataset.jobId || '').toLowerCase();
                 const orderId = (card.dataset.orderId || '').toLowerCase();
+                const customer = (card.dataset.customer || '').toLowerCase();
+                const shopName = (card.dataset.shopName || '').toLowerCase();
                 const cardStatus = normalizeFilterStatus(card.dataset.currentStatus || '');
 
-                const matchesSearch = !searchTerm || jobId.includes(searchTerm) || orderId.includes(searchTerm);
+                const matchesSearch = !searchTerm
+                    || jobId.includes(searchTerm)
+                    || orderId.includes(searchTerm)
+                    || customer.includes(searchTerm)
+                    || shopName.includes(searchTerm);
                 const matchesStatus = !selectedStatus || cardStatus === selectedStatus;
 
                 card.style.display = (matchesSearch && matchesStatus) ? '' : 'none';

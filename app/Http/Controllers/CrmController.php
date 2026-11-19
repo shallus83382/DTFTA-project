@@ -620,7 +620,7 @@ class CrmController extends Controller
             ->get();
 
         $exceptionJobs = (clone $jobsQuery)
-            ->with(['shop', 'order'])
+            ->with(['shop.partnerProfile', 'order'])
             ->whereIn('status', ['failed', 'exception', 'cancelled'])
             ->orderBy('created_at', 'desc')
             ->paginate(10, ['*'], 'exceptions_page')
@@ -783,7 +783,7 @@ class CrmController extends Controller
         }
     
         $jobsForBoard = Job::query()
-            ->with(['shop', 'order'])
+            ->with(['shop.partnerProfile', 'order'])
             ->whereIn('status', $allowedStatuses)
             ->orderByDesc('created_at')
             ->get();
@@ -808,7 +808,7 @@ class CrmController extends Controller
         $data['jobsByStatus'] = $jobsByStatus;
     
         $data['allJobs'] = Job::query()
-            ->with(['shop', 'order'])
+            ->with(['shop.partnerProfile', 'order'])
             ->whereIn('status', $allowedStatuses)
             ->orderByDesc('created_at')
             ->paginate(15);

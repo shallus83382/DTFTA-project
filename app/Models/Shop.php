@@ -56,6 +56,23 @@ class Shop extends Model
         return $this->hasOne(PartnerProfile::class);
     }
 
+    public function displayName(): string
+    {
+        $brand = trim((string) ($this->partnerProfile->brand_name ?? ''));
+        if ($brand !== '') {
+            return $brand;
+        }
+
+        $name = trim((string) ($this->name ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        $domain = trim((string) ($this->shop_domain ?? ''));
+
+        return $domain !== '' ? $domain : 'Unknown shop';
+    }
+
     public function orders()
     {
         return $this->hasMany(Order::class);
