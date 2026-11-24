@@ -31,83 +31,91 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const wrapper = document.getElementById(@json($componentId));
-    const categorySelect = document.getElementById(@json($componentId . '-category'));
-    const assetSection = document.getElementById(@json($componentId . '-asset-section'));
-    const assetList = document.getElementById(@json($componentId . '-asset-list'));
-    const assetKeyInput = document.getElementById(@json($componentId . '-asset-key'));
+(function() {
+    const componentId = @json($componentId);
     const selectedCategory = @json($selectedCategory);
     const selectedAssetKey = @json($selectedAssetKey);
+    const baseUrl = @json(url('asset-categories'));
 
-    function renderAssets(assets) {
-        assetList.innerHTML = '';
-        assetSection.style.display = 'block';
+    function initAssetSelector() {
+        const wrapper = document.getElementById(componentId);
+        if (!wrapper) return;
 
-        Object.keys(assets).forEach(function (key) {
-            const asset = assets[key];
+        const categorySelect = document.getElementById(componentId + '-category');
+        const assetSection = document.getElementById(componentId + '-asset-section');
+        const assetList = document.getElementById(componentId + '-asset-list');
+        const assetKeyInput = document.getElementById(componentId + '-asset-key');
 
-            const card = document.createElement('div');
-            card.classList.add('asset-card');
-            card.dataset.key = key;
+        function renderAssets(assets) {
+            assetList.innerHTML = '';
+            assetSection.style.display = 'block';
 
-            if (selectedAssetKey && selectedAssetKey === key && categorySelect.value === selectedCategory) {
-                card.classList.add('active');
-                assetKeyInput.value = key;
-            }
+            Object.keys(assets || {}).forEach(function (key) {
+                const asset = assets[key];
+                const card = document.createElement('div');
+                card.classList.add('asset-card');
+                card.dataset.key = key;
 
-            // card.innerHTML = `
-            //     <img src="${asset.thumbnail_url}" alt="${asset.name}" class="asset-card-image">
-            //     <div class="asset-card-name">${asset.name}</div>
-            //     <div class="asset-card-key">${key}</div>
-            // `;
-
-             card.innerHTML = `
-                <img src="${asset.thumbnail_url}" alt="${asset.name}" class="asset-card-image">
-                <div class="asset-card-name">${asset.name}</div>
-            `;
-            card.addEventListener('click', function () {
-                document.querySelectorAll('#{{ $componentId }}-asset-list > div').forEach(function (el) {
-                    el.classList.remove('active');
-                });
-
-                card.classList.add('active');
-                assetKeyInput.value = key;
-            });
-
-            assetList.appendChild(card);
-        });
-    }
-
-    function loadAssets(category) {
-        assetList.innerHTML = '';
-        assetSection.style.display = 'none';
-        assetKeyInput.value = '';
-
-        if (!category) {
-            return;
-        }
-
-        fetch(`/asset-categories/${category}/assets`)
-            .then(response => response.json())
-            .then(data => {
-                if (!data.success) {
-                    return;
+                if (assetKeyInput.value === key || (selectedAssetKey && selectedAssetKey === key && categorySelect.value === selectedCategory)) {
+                    card.classList.add('active');
+                    assetKeyInput.value = key;
                 }
 
-                renderAssets(data.assets);
-            })
-            .catch(error => {
-                console.error('Error loading assets:', error);
+                card.innerHTML = `
+                    <img src="${asset.thumbnail_url}" alt="${asset.name}" class="asset-card-image">
+                    <div class="asset-card-name">${asset.name}</div>
+                `;
+
+                card.addEventListener('click', function () {
+                    const allCards = assetList.querySelectorAll('.asset-card');
+                    allCards.forEach(function (el) { el.classList.remove('active'); });
+
+                    card.classList.add('active');
+                    assetKeyInput.value = key;
+                });
+
+                assetList.appendChild(card);
             });
+        }
+
+        function loadAssets(category) {
+            assetList.innerHTML = '';
+            assetSection.style.display = 'none';
+            assetKeyInput.value = '';
+
+            if (!category) {
+                return;
+            }
+
+            fetch(`${baseUrl}/${encodeURIComponent(category)}/assets`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        return;
+                    }
+                    renderAssets(data.assets);
+                })
+                .catch(error => {
+                    console.error('Error loading assets:', error);
+                });
+        }
+
+        categorySelect.addEventListener('change', function () {
+            loadAssets(this.value);
+        });
+
+        if (categorySelect.value) {
+            loadAssets(categorySelect.value);
+        } else if (selectedCategory) {
+            categorySelect.value = selectedCategory;
+            loadAssets(selectedCategory);
+        }
     }
 
-    categorySelect.addEventListener('change', function () {
-        loadAssets(this.value);
-    });
-
-    if (selectedCategory) {
-        loadAssets(selectedCategory);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAssetSelector);
+    } else {
+        initAssetSelector();
     }
-});
+})();
 </script>

@@ -168,8 +168,17 @@
                         <td>#{{ $product->id }}</td>
 
                         <td>
-                            @if($productImages)
-                            <x-selected-asset :category="$productImages['category'] ?? null" :asset-key="$productImages['asset_key'] ?? null" />
+                            @php
+                                $showcaseThumb = $productImages['showcase_image_url'] ?? null;
+                                if (!$showcaseThumb && !empty($productImages['showcase_image_path'])) {
+                                    $disk = config('filesystems.default', 'public');
+                                    $showcaseThumb = \Illuminate\Support\Facades\Storage::disk($disk)->url($productImages['showcase_image_path']);
+                                }
+                            @endphp
+                            @if($showcaseThumb)
+                                <img src="{{ $showcaseThumb }}" alt="{{ $product->title }}" style="width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid #e5e7eb;">
+                            @elseif(!empty($productImages['asset_key']))
+                                <x-selected-asset :category="$productImages['category'] ?? null" :asset-key="$productImages['asset_key'] ?? null" />
                             @else
                                 -
                             @endif

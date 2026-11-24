@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class DtftaProductResource extends JsonResource
@@ -121,6 +122,19 @@ class DtftaProductResource extends JsonResource
         $fallbackImage = !empty($blank['image']) ? asset($blank['image']) : null;
         $finalImages = !empty($images) ? $images : ($fallbackImage ? [$fallbackImage] : []);
 
+        $showcaseImage = null;
+        if (is_array($this->images)) {
+            $showcaseImage = $this->images['showcase_image_url'] ?? null;
+            if (!$showcaseImage && !empty($this->images['showcase_image_path'])) {
+                $disk = config('filesystems.default', 'public');
+                $showcaseImage = Storage::disk($disk)->url($this->images['showcase_image_path']);
+            }
+        } elseif (is_string($this->images) && !empty($this->images)) {
+            $showcaseImage = $this->images;
+        }
+
+        $resolvedImage = $showcaseImage ?: ($this->images['asset_key'] ?? $fallbackImage);
+
         return [
             'id' => $this->id,
             'productKey' => strtolower($brandCode['code'] . '-' . $this->model_code),
@@ -130,12 +144,8 @@ class DtftaProductResource extends JsonResource
             'brand' => $brandCode['name'] ?? null,
             'style' => $blank['style'] ?? $this->model_code,
             'model' => $blank['model'] ?? $this->model_code,
-            // 'image' => url(Storage::url($images[0])) ?? asset($fallbackImage),
-            // 'images' => collect($finalImages)
-            //     ->map(fn ($path) => asset('storage/' . ltrim($path, '/')))
-            //     ->values()
-            //     ->all(),
-            'image' => $this->images['asset_key'],
+            'image' => $resolvedImage,
+            'images' => $showcaseImage ? [$showcaseImage] : (!empty($images) ? $images : ($fallbackImage ? [$fallbackImage] : [])),
             'description' => $this->description,
             'status' => $this->status,
             'price' => $this->price,

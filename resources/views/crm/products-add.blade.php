@@ -324,7 +324,47 @@
                     >{{ old('description') }}</textarea>
                 </div>
 
-                <div class="filter-group" style="width: 100%;">
+                <div class="filter-group" style="width: 100%; margin-top: 15px; padding: 18px; background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px;">
+                    <label style="font-weight: 600; font-size: 14px; margin-bottom: 6px; display: block; color: var(--text-primary, #ffffff);">
+                        Catalog Showcase Image (Shopify App Card)
+                    </label>
+                    <p style="font-size: 13px; color: var(--text-muted, #94a3b8); margin-bottom: 14px;">
+                        Upload a custom image or enter an image URL to replace the default product card image displayed in the Shopify merchant store.
+                    </p>
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start;">
+                        <div style="flex: 1; min-width: 240px;">
+                            <label for="showcase_image_file" style="font-size: 12px; font-weight: 500; color: var(--text-secondary, #cbd5e1); margin-bottom: 6px; display: block;">Upload Image File (PNG, JPG, WEBP)</label>
+                            <input
+                                type="file"
+                                id="showcase_image_file"
+                                name="showcase_image_file"
+                                accept="image/png,image/jpeg,image/webp,image/gif"
+                                class="filter-select"
+                                style="padding: 8px; color: var(--text-secondary, #cbd5e1);"
+                                onchange="previewShowcaseFile(this, 'add-showcase-preview')"
+                            >
+                        </div>
+                        <div style="flex: 1; min-width: 240px;">
+                            <label for="showcase_image_url" style="font-size: 12px; font-weight: 500; color: var(--text-secondary, #cbd5e1); margin-bottom: 6px; display: block;">Or Enter Image Direct URL</label>
+                            <input
+                                type="url"
+                                id="showcase_image_url"
+                                name="showcase_image_url"
+                                value="{{ old('showcase_image_url') }}"
+                                placeholder="https://example.com/product-image.jpg"
+                                class="filter-select"
+                                oninput="previewShowcaseUrl(this.value, 'add-showcase-preview')"
+                            >
+                        </div>
+                    </div>
+                    <div id="add-showcase-preview-container" style="display: none; margin-top: 14px;">
+                        <span style="font-size: 12px; font-weight: 500; color: var(--text-muted, #94a3b8); display: block; margin-bottom: 6px;">Image Preview:</span>
+                        <img id="add-showcase-preview" src="" alt="Preview" style="max-height: 120px; max-width: 140px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.3); background: #0f172a; object-fit: cover;">
+                    </div>
+                </div>
+
+                <div class="filter-group" style="width: 100%; margin-top: 12px;">
+                    <label style="font-weight: 600; font-size: 13px; color: var(--text-secondary, #cbd5e1); display: block; margin-bottom: 4px;">Default Canvas Asset Silhouette / Key</label>
                     <x-asset-selector category-input-name="images[category]" asset-input-name="images[asset_key]" />   
                 </div>
             </div>
@@ -498,6 +538,32 @@
 
             bindSizeRemoveButtons();
         });
+
+        function previewShowcaseFile(input, imgId) {
+            const previewContainer = document.getElementById(imgId + '-container');
+            const previewImg = document.getElementById(imgId);
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                };
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                previewContainer.style.display = 'none';
+            }
+        }
+
+        function previewShowcaseUrl(url, imgId) {
+            const previewContainer = document.getElementById(imgId + '-container');
+            const previewImg = document.getElementById(imgId);
+            if (url && url.trim().match(/^https?:\/\//i)) {
+                previewImg.src = url.trim();
+                previewContainer.style.display = 'block';
+            } else {
+                previewContainer.style.display = 'none';
+            }
+        }
     </script>
     @endpush
 @endsection

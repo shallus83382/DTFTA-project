@@ -178,11 +178,24 @@
 
     {{-- Product Images --}}
     <h4 style="margin-bottom:15px;">Product Images</h4>
-    @if(count($productImages))
+    @php
+        $showcaseViewImage = $productImages['showcase_image_url'] ?? null;
+        if (!$showcaseViewImage && !empty($productImages['showcase_image_path'])) {
+            $disk = config('filesystems.default', 'public');
+            $showcaseViewImage = \Illuminate\Support\Facades\Storage::disk($disk)->url($productImages['showcase_image_path']);
+        }
+    @endphp
+    @if($showcaseViewImage)
+        <div style="margin-bottom:20px;">
+            <p style="font-size:12px; color:#64748b; margin-bottom:6px;"><strong>Showcase / Catalog Card Image (Shopify App):</strong></p>
+            <img src="{{ $showcaseViewImage }}" alt="{{ $product->title }}" style="max-height:160px; max-width:200px; border-radius:8px; border:1px solid #e2e8f0; object-fit:cover;">
+        </div>
+    @endif
+    @if(!empty($productImages['asset_key']))
         <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:25px;">
           <x-selected-asset :category="$productImages['category'] ?? null" :asset-key="$productImages['asset_key'] ?? null" dimension="120px" />
         </div>
-    @else
+    @elseif(!$showcaseViewImage)
         <div style="margin-bottom:25px; color:#94a3b8;">No product images uploaded.</div>
     @endif
 

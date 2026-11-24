@@ -363,7 +363,66 @@
                     >{{ old('description', $product->description) }}</textarea>
                 </div>
 
-                <div class="filter-group" style="width: 100%;">
+                @php
+                    $currentShowcaseUrl = old('showcase_image_url', $product->images['showcase_image_url'] ?? null);
+                    if (!$currentShowcaseUrl && !empty($product->images['showcase_image_path'])) {
+                        $disk = config('filesystems.default', 'public');
+                        $currentShowcaseUrl = \Illuminate\Support\Facades\Storage::disk($disk)->url($product->images['showcase_image_path']);
+                    }
+                @endphp
+                <div class="filter-group" style="width: 100%; margin-top: 15px; padding: 18px; background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px;">
+                    <label style="font-weight: 600; font-size: 14px; margin-bottom: 6px; display: block; color: var(--text-primary, #ffffff);">
+                        Catalog Showcase Image (Shopify App Card)
+                    </label>
+                    <p style="font-size: 13px; color: var(--text-muted, #94a3b8); margin-bottom: 14px;">
+                        Upload a custom image or enter an image URL to replace the default product card image displayed in the Shopify merchant store.
+                    </p>
+                    @if($currentShowcaseUrl)
+                        <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 16px; padding: 12px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 8px;">
+                            <img src="{{ $currentShowcaseUrl }}" alt="Current Showcase Image" style="width: 64px; height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.3); background: #0f172a;">
+                            <div>
+                                <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary, #cbd5e1); display: block;">Active Showcase Image</span>
+                                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #f87171; margin-top: 6px; cursor: pointer;">
+                                    <input type="checkbox" name="remove_showcase_image" value="1" {{ old('remove_showcase_image') ? 'checked' : '' }}>
+                                    Remove this image and revert to default asset key
+                                </label>
+                            </div>
+                        </div>
+                    @endif
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start;">
+                        <div style="flex: 1; min-width: 240px;">
+                            <label for="showcase_image_file" style="font-size: 12px; font-weight: 500; color: var(--text-secondary, #cbd5e1); margin-bottom: 6px; display: block;">Replace with Image File (PNG, JPG, WEBP)</label>
+                            <input
+                                type="file"
+                                id="showcase_image_file"
+                                name="showcase_image_file"
+                                accept="image/png,image/jpeg,image/webp,image/gif"
+                                class="filter-select"
+                                style="padding: 8px; color: var(--text-secondary, #cbd5e1);"
+                                onchange="previewShowcaseFile(this, 'edit-showcase-preview')"
+                            >
+                        </div>
+                        <div style="flex: 1; min-width: 240px;">
+                            <label for="showcase_image_url" style="font-size: 12px; font-weight: 500; color: var(--text-secondary, #cbd5e1); margin-bottom: 6px; display: block;">Or Enter Direct Image URL</label>
+                            <input
+                                type="url"
+                                id="showcase_image_url"
+                                name="showcase_image_url"
+                                value="{{ old('showcase_image_url') }}"
+                                placeholder="https://example.com/product-image.jpg"
+                                class="filter-select"
+                                oninput="previewShowcaseUrl(this.value, 'edit-showcase-preview')"
+                            >
+                        </div>
+                    </div>
+                    <div id="edit-showcase-preview-container" style="display: none; margin-top: 14px;">
+                        <span style="font-size: 12px; font-weight: 500; color: var(--text-muted, #94a3b8); display: block; margin-bottom: 6px;">New Image Preview:</span>
+                        <img id="edit-showcase-preview" src="" alt="Preview" style="max-height: 120px; max-width: 140px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.3); background: #0f172a; object-fit: cover;">
+                    </div>
+                </div>
+
+                <div class="filter-group" style="width: 100%; margin-top: 12px;">
+                    <label style="font-weight: 600; font-size: 13px; color: var(--text-secondary, #cbd5e1); display: block; margin-bottom: 4px;">Default Canvas Asset Silhouette / Key</label>
                 <x-asset-selector
                         :selected-category="old('images[category]', $product->images['category'] ?? null)"
                         :selected-asset-key="old('images[asset_key]', $product->images['asset_key'] ?? null)"
@@ -587,6 +646,32 @@
 
             bindSizeRemoveButtons();
         });
+
+        function previewShowcaseFile(input, imgId) {
+            const previewContainer = document.getElementById(imgId + '-container');
+            const previewImg = document.getElementById(imgId);
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    previewContainer.style.display = 'block';
+                };
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                previewContainer.style.display = 'none';
+            }
+        }
+
+        function previewShowcaseUrl(url, imgId) {
+            const previewContainer = document.getElementById(imgId + '-container');
+            const previewImg = document.getElementById(imgId);
+            if (url && url.trim().match(/^https?:\/\//i)) {
+                previewImg.src = url.trim();
+                previewContainer.style.display = 'block';
+            } else {
+                previewContainer.style.display = 'none';
+            }
+        }
     </script>
     @endpush
 @endsection

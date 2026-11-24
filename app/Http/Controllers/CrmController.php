@@ -1374,7 +1374,9 @@ class CrmController extends Controller
     
             'images' => 'nullable|array',
             'images.*' => 'nullable|string|max:5120',
-    
+            'showcase_image_file' => 'nullable|image|max:10240',
+            'showcase_image_url' => 'nullable|url|max:1000',
+
             'colors' => 'required|array|min:1',
             'colors.*' => 'required|string|max:100',
     
@@ -1392,15 +1394,21 @@ class CrmController extends Controller
         $storedMockupPaths = [];
 
         $saveProduct = function () use ($request, $validated, &$product, &$storedMockupPaths) {
-            // $imagePaths = [];
+            $imagesData = is_array($validated['images'] ?? null) ? $validated['images'] : [];
 
-            // if ($request->hasFile('images')) {
-            //     foreach ((array) $request->file('images') as $file) {
-            //         if ($file) {
-            //             $imagePaths[] = $file->store('products/images', 'public');
-            //         }
-            //     }
-            // }
+            if ($request->hasFile('showcase_image_file')) {
+                $file = $request->file('showcase_image_file');
+                $disk = (string) config('filesystems.default', 'public');
+                $ext = $file->getClientOriginalExtension() ?: 'png';
+                $filename = 'showcase_' . time() . '_' . Str::lower(Str::random(8)) . '.' . $ext;
+                $path = $file->storeAs('products/showcase', $filename, $disk);
+                if ($path) {
+                    $imagesData['showcase_image_path'] = $path;
+                    $imagesData['showcase_image_url'] = Storage::disk($disk)->url($path);
+                }
+            } elseif ($request->filled('showcase_image_url')) {
+                $imagesData['showcase_image_url'] = trim((string) $request->input('showcase_image_url'));
+            }
 
             $product = Product::create([
                 'title' => $validated['title'],
@@ -1410,7 +1418,7 @@ class CrmController extends Controller
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
                 'price' => $validated['price'],
-                'images' => $validated['images'] ?: null,
+                'images' => !empty($imagesData) ? $imagesData : null,
             ]);
 
             $colors = collect($validated['colors'])
@@ -1485,8 +1493,10 @@ class CrmController extends Controller
     
             'images' => 'nullable|array',
             'images.*' => 'nullable|string|max:5120',
-          //  'remove_existing_images' => 'nullable|boolean',
-    
+            'showcase_image_file' => 'nullable|image|max:10240',
+            'showcase_image_url' => 'nullable|url|max:1000',
+            'remove_showcase_image' => 'nullable|boolean',
+
             'colors' => 'required|array|min:1',
             'colors.*' => 'required|string|max:100',
     
@@ -1519,25 +1529,44 @@ class CrmController extends Controller
                 ->findOrFail($productId);
             $previousMockups = is_array($product->color_mockups) ? $product->color_mockups : [];
 
-            // $existingImages = is_array($product->images) ? $product->images : [];
+            $existingImages = is_array($product->images) ? $product->images : [];
+            $imagesData = is_array($validated['images'] ?? null) ? $validated['images'] : [];
 
-            // if ($request->boolean('remove_existing_images')) {
-            //     foreach ($existingImages as $path) {
-            //         Storage::disk('public')->delete((string) $path);
-            //     }
-            //     $existingImages = [];
-            // }
-
-            // $newImagePaths = [];
-            // if ($request->hasFile('images')) {
-            //     foreach ((array) $request->file('images') as $file) {
-            //         if ($file) {
-            //             $newImagePaths[] = $file->store('products/images', 'public');
-            //         }
-            //     }
-            // }
-
-            // $finalImages = array_values(array_filter(array_merge($existingImages, $newImagePaths)));
+            if ($request->boolean('remove_showcase_image')) {
+                if (!empty($existingImages['showcase_image_path'])) {
+                    $disk = (string) config('filesystems.default', 'public');
+                    Storage::disk($disk)->delete($existingImages['showcase_image_path']);
+                }
+                unset($imagesData['showcase_image_url'], $imagesData['showcase_image_path']);
+            } elseif ($request->hasFile('showcase_image_file')) {
+                if (!empty($existingImages['showcase_image_path'])) {
+                    $disk = (string) config('filesystems.default', 'public');
+                    Storage::disk($disk)->delete($existingImages['showcase_image_path']);
+                }
+                $file = $request->file('showcase_image_file');
+                $disk = (string) config('filesystems.default', 'public');
+                $ext = $file->getClientOriginalExtension() ?: 'png';
+                $filename = 'showcase_' . time() . '_' . Str::lower(Str::random(8)) . '.' . $ext;
+                $path = $file->storeAs('products/showcase', $filename, $disk);
+                if ($path) {
+                    $imagesData['showcase_image_path'] = $path;
+                    $imagesData['showcase_image_url'] = Storage::disk($disk)->url($path);
+                }
+            } elseif ($request->filled('showcase_image_url')) {
+                if (!empty($existingImages['showcase_image_path'])) {
+                    $disk = (string) config('filesystems.default', 'public');
+                    Storage::disk($disk)->delete($existingImages['showcase_image_path']);
+                }
+                $imagesData['showcase_image_url'] = trim((string) $request->input('showcase_image_url'));
+                unset($imagesData['showcase_image_path']);
+            } else {
+                if (!empty($existingImages['showcase_image_url'])) {
+                    $imagesData['showcase_image_url'] = $existingImages['showcase_image_url'];
+                }
+                if (!empty($existingImages['showcase_image_path'])) {
+                    $imagesData['showcase_image_path'] = $existingImages['showcase_image_path'];
+                }
+            }
 
             $product->update([
                 'title' => $validated['title'],
@@ -1547,7 +1576,7 @@ class CrmController extends Controller
                 'description' => $validated['description'] ?? null,
                 'status' => $validated['status'],
                 'price' => $validated['price'],
-                'images' => $validated['images'] ?: null,
+                'images' => !empty($imagesData) ? $imagesData : null,
             ]);
 
             $colors = collect($validated['colors'])
