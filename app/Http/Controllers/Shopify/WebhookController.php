@@ -780,6 +780,8 @@ class WebhookController extends Controller
                 }
             }
         }
+
+        \App\Http\Controllers\CrmController::clearNotificationCache();
     }
 
     /**
@@ -801,6 +803,8 @@ class WebhookController extends Controller
                     : now(),
                 'payload' => $payload
             ]);
+
+        \App\Http\Controllers\CrmController::clearNotificationCache();
     }
 
     /**
@@ -815,6 +819,8 @@ class WebhookController extends Controller
         Order::where('shopify_order_id', $payload['id'])
             ->where('shop_id', $shopId)
             ->delete();
+
+        \App\Http\Controllers\CrmController::clearNotificationCache();
     }
 
     /**

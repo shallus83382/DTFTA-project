@@ -382,6 +382,7 @@ class CrmController extends Controller
                 $isRead = $readAt ? $createdAt->lte($readAt) : false;
                 return [
                     'id' => $item['id'],
+                    'entity_type' => $item['entity_type'] ?? (str_starts_with($item['id'] ?? '', 'order_') ? 'order' : (str_starts_with($item['id'] ?? '', 'job_') ? 'job' : 'shipment')),
                     'avatar' => $item['avatar'],
                     'title' => $item['title'],
                     'message' => $item['message'],
@@ -400,6 +401,29 @@ class CrmController extends Controller
             'notifications' => $items,
             'unread_count' => $this->computeUnreadCount($readAt),
         ];
+    }
+
+    /**
+     * Clear notification caches so new events are immediately visible to clients.
+     */
+    public static function clearNotificationCache(): void
+    {
+        try {
+            if (config('cache.default') === 'database') {
+                $prefix = config('cache.prefix', '');
+                DB::table('cache')
+                    ->where('key', 'like', $prefix . 'crm.notification%')
+                    ->orWhere('key', 'like', $prefix . 'crm.unread%')
+                    ->delete();
+            }
+        } catch (\Throwable $e) {
+            // Fail silently if DB table delete fails
+        }
+
+        Cache::forget('crm.notification_pool.20');
+        Cache::forget('crm.notification_pool.60');
+        Cache::forget('crm.notification_pool.120');
+        Cache::forget('crm.unread_count.all');
     }
     /**
      * Handle Shopify OAuth callback and exchange code for access token

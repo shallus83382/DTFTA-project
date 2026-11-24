@@ -21,6 +21,12 @@
             --warning-color: {{ $theme['warning_color'] ?? '#ed8936' }};
             --info-color: {{ $theme['info_color'] ?? '#3182ce' }};
         }
+
+        .crm-order-toast {
+            border: 1px solid rgba(59, 130, 246, 0.45) !important;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45) !important;
+            border-radius: 10px !important;
+        }
     </style>
     
     @stack('styles')
@@ -116,6 +122,17 @@
                 <div class="header-actions">
                     @yield('header-actions')
                     @if($features['notifications']['enabled'] ?? true)
+                    <button type="button" class="btn-icon" id="audioNotificationToggle" title="Audio Notifications: Enabled (Click to Mute)" aria-label="Toggle Audio Notifications" style="position:relative; margin-right:4px;">
+                        <svg id="audioIconOn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                        <svg id="audioIconOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none; vertical-align:middle; color:#ef4444;">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <line x1="23" y1="9" x2="17" y2="15"></line>
+                            <line x1="17" y1="9" x2="23" y2="15"></line>
+                        </svg>
+                    </button>
                     <div class="notification-dropdown">
                         <button type="button" class="btn-icon btn-icon-bell notification-trigger" aria-label="Notifications" aria-expanded="false" aria-haspopup="true">
                             <span class="notification-badge" id="notificationBadge">{{ $headerNotificationCount ?? 0 }}</span>
@@ -320,6 +337,177 @@
                 }
             }
 
+            // Web Audio API order notification chime
+            let audioCtx = null;
+            function getAudioContext() {
+                if (!audioCtx) {
+                    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContextClass) {
+                        audioCtx = new AudioContextClass();
+                    }
+                }
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                return audioCtx;
+            }
+
+            function unlockAudio() {
+                const ctx = getAudioContext();
+                if (ctx && ctx.state === 'suspended') {
+                    ctx.resume();
+                }
+                document.removeEventListener('click', unlockAudio);
+                document.removeEventListener('keydown', unlockAudio);
+                document.removeEventListener('touchstart', unlockAudio);
+            }
+            document.addEventListener('click', unlockAudio);
+            document.addEventListener('keydown', unlockAudio);
+            document.addEventListener('touchstart', unlockAudio);
+
+            function playOrderChime() {
+                const isEnabled = localStorage.getItem('crm_audio_notifications') !== 'false';
+                if (!isEnabled) return;
+
+                try {
+                    const ctx = getAudioContext();
+                    if (!ctx) return;
+                    if (ctx.state === 'suspended') {
+                        ctx.resume();
+                    }
+
+                    const now = ctx.currentTime;
+
+                    // Note 1: E5 (659.25 Hz)
+                    const osc1 = ctx.createOscillator();
+                    const gain1 = ctx.createGain();
+                    osc1.type = 'sine';
+                    osc1.frequency.setValueAtTime(659.25, now);
+                    gain1.gain.setValueAtTime(0.001, now);
+                    gain1.gain.exponentialRampToValueAtTime(0.25, now + 0.02);
+                    gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+                    osc1.connect(gain1);
+                    gain1.connect(ctx.destination);
+                    osc1.start(now);
+                    osc1.stop(now + 0.35);
+
+                    // Note 2: A5 (880.00 Hz) - upbeat notification bell
+                    const osc2 = ctx.createOscillator();
+                    const gain2 = ctx.createGain();
+                    osc2.type = 'sine';
+                    osc2.frequency.setValueAtTime(880, now + 0.12);
+                    gain2.gain.setValueAtTime(0.001, now + 0.12);
+                    gain2.gain.exponentialRampToValueAtTime(0.3, now + 0.14);
+                    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.85);
+                    osc2.connect(gain2);
+                    gain2.connect(ctx.destination);
+                    osc2.start(now + 0.12);
+                    osc2.stop(now + 0.85);
+                } catch (e) {
+                    console.warn('Audio chime playback failed:', e);
+                }
+            }
+
+            function updateAudioToggleUI() {
+                const isEnabled = localStorage.getItem('crm_audio_notifications') !== 'false';
+                const iconOn = document.getElementById('audioIconOn');
+                const iconOff = document.getElementById('audioIconOff');
+                const toggleBtn = document.getElementById('audioNotificationToggle');
+                if (iconOn && iconOff) {
+                    iconOn.style.display = isEnabled ? 'inline' : 'none';
+                    iconOff.style.display = isEnabled ? 'none' : 'inline';
+                }
+                if (toggleBtn) {
+                    toggleBtn.title = isEnabled ? 'Audio Notifications: Enabled (Click to Mute)' : 'Audio Notifications: Muted (Click to Unmute)';
+                }
+            }
+
+            const audioToggleBtn = document.getElementById('audioNotificationToggle');
+            if (audioToggleBtn) {
+                updateAudioToggleUI();
+                audioToggleBtn.addEventListener('click', function() {
+                    const currentlyEnabled = localStorage.getItem('crm_audio_notifications') !== 'false';
+                    const newState = !currentlyEnabled;
+                    localStorage.setItem('crm_audio_notifications', newState ? 'true' : 'false');
+                    updateAudioToggleUI();
+                    if (newState) {
+                        playOrderChime();
+                    }
+                });
+            }
+
+            function showOrderToast(item) {
+                const title = item.title || 'New Order Received!';
+                const message = item.message || 'A new order has been received.';
+                const url = item.url || '{{ route("crm.orders") }}';
+
+                if (window.Swal) {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: title,
+                        html: `<div style="font-size:12px; margin-top:4px; color:#cbd5e1; line-height:1.4;">${message}</div><div style="margin-top:8px;"><a href="${url}" style="display:inline-block; padding:4px 10px; background:#2563eb; color:#fff; border-radius:4px; text-decoration:none; font-size:11px; font-weight:600;">View Order</a></div>`,
+                        showConfirmButton: false,
+                        timer: 8000,
+                        timerProgressBar: true,
+                        background: '#0f172a',
+                        color: '#f8fafc',
+                        customClass: {
+                            popup: 'crm-order-toast'
+                        },
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer);
+                            toast.addEventListener('mouseleave', Swal.resumeTimer);
+                        }
+                    });
+                }
+            }
+
+            function showBatchOrdersToast(count) {
+                const url = '{{ route("crm.orders") }}';
+                if (window.Swal) {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: `${count} New Orders Received!`,
+                        html: `<div style="font-size:12px; margin-top:4px; color:#cbd5e1; line-height:1.4;">${count} new orders have just been placed.</div><div style="margin-top:8px;"><a href="${url}" style="display:inline-block; padding:4px 10px; background:#2563eb; color:#fff; border-radius:4px; text-decoration:none; font-size:11px; font-weight:600;">View Orders &rarr;</a></div>`,
+                        showConfirmButton: false,
+                        timer: 8000,
+                        timerProgressBar: true,
+                        background: '#0f172a',
+                        color: '#f8fafc',
+                        customClass: {
+                            popup: 'crm-order-toast'
+                        },
+                        didOpen: (toast) => {
+                            toast.addEventListener('mouseenter', Swal.stopTimer);
+                            toast.addEventListener('mouseleave', Swal.resumeTimer);
+                        }
+                    });
+                }
+            }
+
+            function getSeenNotificationIds() {
+                try {
+                    const raw = sessionStorage.getItem('crm_seen_notifications');
+                    return raw ? new Set(JSON.parse(raw)) : new Set();
+                } catch (e) {
+                    return new Set();
+                }
+            }
+
+            function saveSeenNotificationIds(set) {
+                try {
+                    const arr = Array.from(set).slice(-200);
+                    sessionStorage.setItem('crm_seen_notifications', JSON.stringify(arr));
+                } catch (e) {}
+            }
+
+            let seenNotificationIds = getSeenNotificationIds();
+            let isFirstPoll = seenNotificationIds.size === 0;
+
             async function refreshNotifications() {
                 try {
                     const response = await fetch('/crm/notifications/recent', {
@@ -333,8 +521,37 @@
                     if (!response.ok) return;
                     const payload = await response.json();
                     if (payload && payload.success) {
-                        renderNotifications(payload.notifications || []);
+                        const items = payload.notifications || [];
+                        renderNotifications(items);
                         updateNotificationCount(payload.unread_count || 0);
+
+                        if (isFirstPoll) {
+                            items.forEach(item => {
+                                if (item.id) seenNotificationIds.add(String(item.id));
+                            });
+                            saveSeenNotificationIds(seenNotificationIds);
+                            isFirstPoll = false;
+                        } else {
+                            let newUnreadItems = [];
+                            items.forEach(item => {
+                                const itemId = String(item.id || '');
+                                if (itemId && !seenNotificationIds.has(itemId)) {
+                                    seenNotificationIds.add(itemId);
+                                    if (!item.is_read) {
+                                        newUnreadItems.push(item);
+                                    }
+                                }
+                            });
+                            saveSeenNotificationIds(seenNotificationIds);
+
+                            if (newUnreadItems.length === 1) {
+                                playOrderChime();
+                                showOrderToast(newUnreadItems[0]);
+                            } else if (newUnreadItems.length > 1) {
+                                playOrderChime();
+                                showBatchOrdersToast(newUnreadItems.length);
+                            }
+                        }
                     }
                 } catch (error) {
                     console.error('Notification refresh failed', error);
@@ -362,7 +579,7 @@
             };
 
             refreshNotifications();
-            setInterval(refreshNotifications, 20000);
+            setInterval(refreshNotifications, 10000);
         });
     </script>
     <script src="{{ asset('js/recoverable-form-draft.js') }}?v={{ @filemtime(public_path('js/recoverable-form-draft.js')) ?: '1' }}"></script>
