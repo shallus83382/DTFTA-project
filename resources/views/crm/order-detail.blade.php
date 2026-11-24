@@ -526,6 +526,7 @@
                     </div>
                     @endforelse
                 </div>
+                @if(method_exists($activityLog, 'hasPages') && $activityLog->hasPages())
                 <div id="activityPagination" class="pagination" style="margin-top:12px;">
                     @if($activityLog->onFirstPage())
                         <button class="btn-pagination" disabled>Previous</button>
@@ -539,6 +540,7 @@
                         <button class="btn-pagination" disabled>Next</button>
                     @endif
                 </div>
+                @endif
 
             </div>
         </div>

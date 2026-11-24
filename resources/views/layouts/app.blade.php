@@ -437,9 +437,13 @@
             }
 
             function showOrderToast(item) {
-                const title = item.title || 'New Order Received!';
-                const message = item.message || 'A new order has been received.';
-                const url = item.url || '{{ route("crm.orders") }}';
+                const isJob = (item.entity_type === 'job' || (item.id && String(item.id).startsWith('job_')));
+                const isShipment = (item.entity_type === 'shipment' || (item.id && String(item.id).startsWith('shipment_')));
+                const title = item.title || (isJob ? 'Job Update' : isShipment ? 'Shipment Update' : 'New Order Received!');
+                const message = item.message || (isJob ? 'A job has been updated.' : isShipment ? 'A shipment has been updated.' : 'A new order has been received.');
+                const defaultUrl = isShipment ? '{{ route("crm.shipping") }}' : '{{ route("crm.orders") }}';
+                const url = item.url || defaultUrl;
+                const buttonText = isJob ? 'View Job' : isShipment ? 'View Shipment' : 'View Order';
 
                 if (window.Swal) {
                     Swal.fire({
@@ -447,7 +451,7 @@
                         position: 'top-end',
                         icon: 'success',
                         title: title,
-                        html: `<div style="font-size:12px; margin-top:4px; color:#cbd5e1; line-height:1.4;">${message}</div><div style="margin-top:8px;"><a href="${url}" style="display:inline-block; padding:4px 10px; background:#2563eb; color:#fff; border-radius:4px; text-decoration:none; font-size:11px; font-weight:600;">View Order</a></div>`,
+                        html: `<div style="font-size:12px; margin-top:4px; color:#cbd5e1; line-height:1.4;">${message}</div><div style="margin-top:8px;"><a href="${url}" style="display:inline-block; padding:4px 10px; background:#2563eb; color:#fff; border-radius:4px; text-decoration:none; font-size:11px; font-weight:600;">${buttonText}</a></div>`,
                         showConfirmButton: false,
                         timer: 8000,
                         timerProgressBar: true,
@@ -464,15 +468,48 @@
                 }
             }
 
-            function showBatchOrdersToast(count) {
-                const url = '{{ route("crm.orders") }}';
+            function showBatchNotificationsToast(items) {
+                const count = Array.isArray(items) ? items.length : Number(items || 0);
+                const itemList = Array.isArray(items) ? items : [];
+                const orderCount = itemList.filter(i => (i.entity_type === 'order' || (i.id && String(i.id).startsWith('order_')))).length;
+                const jobCount = itemList.filter(i => (i.entity_type === 'job' || (i.id && String(i.id).startsWith('job_')))).length;
+                const shipmentCount = itemList.filter(i => (i.entity_type === 'shipment' || (i.id && String(i.id).startsWith('shipment_')))).length;
+
+                let title = `${count} New Notifications`;
+                let subtitle = `${count} new notifications received.`;
+                let url = '{{ route("crm.notifications") }}';
+                let linkText = 'View Notifications &rarr;';
+
+                if (orderCount === count && count > 0) {
+                    title = `${count} New Order${count > 1 ? 's' : ''} Received!`;
+                    subtitle = `${count} new order${count > 1 ? 's have' : ' has'} just been placed.`;
+                    url = '{{ route("crm.orders") }}';
+                    linkText = 'View Orders &rarr;';
+                } else if (jobCount === count && count > 0) {
+                    title = `${count} New Job Update${count > 1 ? 's' : ''}`;
+                    subtitle = `${count} job update${count > 1 ? 's' : ''} received.`;
+                    url = '{{ route("crm.orders") }}';
+                    linkText = 'View Jobs &rarr;';
+                } else if (shipmentCount === count && count > 0) {
+                    title = `${count} Shipment Update${count > 1 ? 's' : ''}`;
+                    subtitle = `${count} shipment update${count > 1 ? 's' : ''} received.`;
+                    url = '{{ route("crm.shipping") }}';
+                    linkText = 'View Shipments &rarr;';
+                } else if (itemList.length > 0) {
+                    let parts = [];
+                    if (orderCount > 0) parts.push(`${orderCount} order${orderCount > 1 ? 's' : ''}`);
+                    if (jobCount > 0) parts.push(`${jobCount} job${jobCount > 1 ? 's' : ''}`);
+                    if (shipmentCount > 0) parts.push(`${shipmentCount} shipment${shipmentCount > 1 ? 's' : ''}`);
+                    subtitle = parts.join(', ') + ' received.';
+                }
+
                 if (window.Swal) {
                     Swal.fire({
                         toast: true,
                         position: 'top-end',
-                        icon: 'success',
-                        title: `${count} New Orders Received!`,
-                        html: `<div style="font-size:12px; margin-top:4px; color:#cbd5e1; line-height:1.4;">${count} new orders have just been placed.</div><div style="margin-top:8px;"><a href="${url}" style="display:inline-block; padding:4px 10px; background:#2563eb; color:#fff; border-radius:4px; text-decoration:none; font-size:11px; font-weight:600;">View Orders &rarr;</a></div>`,
+                        icon: 'info',
+                        title: title,
+                        html: `<div style="font-size:12px; margin-top:4px; color:#cbd5e1; line-height:1.4;">${subtitle}</div><div style="margin-top:8px;"><a href="${url}" style="display:inline-block; padding:4px 10px; background:#2563eb; color:#fff; border-radius:4px; text-decoration:none; font-size:11px; font-weight:600;">${linkText}</a></div>`,
                         showConfirmButton: false,
                         timer: 8000,
                         timerProgressBar: true,
@@ -549,7 +586,7 @@
                                 showOrderToast(newUnreadItems[0]);
                             } else if (newUnreadItems.length > 1) {
                                 playOrderChime();
-                                showBatchOrdersToast(newUnreadItems.length);
+                                showBatchNotificationsToast(newUnreadItems);
                             }
                         }
                     }

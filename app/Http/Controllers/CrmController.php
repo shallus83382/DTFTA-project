@@ -874,8 +874,8 @@ class CrmController extends Controller
             ->where('model_id', $jobId)
             ->with('user')
             ->orderBy('created_at', 'desc')
-            ->limit(10)
-            ->get();
+            ->paginate(10, ['*'], 'activity_page')
+            ->appends(request()->query());
 
         return view('crm.order-detail', $data);
     }
