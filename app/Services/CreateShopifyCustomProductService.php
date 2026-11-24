@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Shop;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -137,6 +138,369 @@ class CreateShopifyCustomProductService
                 'success' => false,
                 'message' => $fullError,
                 'error' => $fullError,
+            ], 500);
+        }
+    }
+
+    public function initProduct(Request $request, int $shopId)
+    {
+        try {
+            $validated = $this->validateCreateInShopifyRequest($request);
+
+            if (empty($validated['productId']) && empty($validated['productKey'])) {
+                return $this->errorResponse('Either productId or productKey is required.', 422);
+            }
+
+            $product = $this->findProductForShopifyCreate($validated);
+            if (! $product) {
+                return $this->errorResponse('Product not found in database.', 404);
+            }
+
+            $shop = Shop::find($shopId);
+            if (! $shop) {
+                return $this->errorResponse('Shop not found.', 404);
+            }
+
+            $productVariants = $product->variants->values();
+            $payloadContext = $this->buildShopifyPayloadContext(
+                $request,
+                $validated,
+                $product,
+                $shopId,
+                $productVariants
+            );
+
+            $payload = $payloadContext['payload'];
+
+            // 1. Create base product & upload media in Shopify
+            $baseResult = $this->shopifyService->createCustomProductBase($shopId, $payload);
+
+            if (! ($baseResult['success'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $baseResult['message'] ?? 'Failed to create base product in Shopify.',
+                    'errors' => $baseResult['errors'] ?? [],
+                    'data' => $baseResult['data'] ?? null,
+                ], $baseResult['status'] ?? 422);
+            }
+
+            $shopifyProduct = data_get($baseResult, 'data.product', []);
+            $shopifyProductId = data_get($shopifyProduct, 'id');
+            $shopifyMedia = data_get($baseResult, 'data.media', []);
+
+            DB::beginTransaction();
+
+            $customProduct = $this->createLocalCustomProduct(
+                $shopId,
+                $product,
+                $validated,
+                $payload
+            );
+
+            $customProduct->update([
+                'shopify_product_id' => $shopifyProductId,
+                'options' => $shopifyProduct['options'] ?? $payload['options'] ?? [],
+            ]);
+
+            $customVariants = $this->bulkInsertLocalCustomVariants(
+                $customProduct,
+                $payloadContext['variants']
+            );
+
+            $customVariantIndexes = $this->buildCustomVariantIndexes($customVariants);
+
+            $this->bulkInsertLocalArtworks(
+                $customProduct,
+                $payloadContext['artworks'],
+                $customVariantIndexes
+            );
+
+            // Set template ID metafield
+            if (! empty($shopifyProductId)) {
+                $templateMetafieldResult = $this->shopifyService->setDtftaTemplateIdMetafield(
+                    (int) $shopId,
+                    (string) $shopifyProductId,
+                    (int) $customProduct->id
+                );
+                if (! ($templateMetafieldResult['success'] ?? false)) {
+                    Log::warning('Failed to set DTFTA template id metafield on Shopify product.', [
+                        'shop_id' => $shopId,
+                        'shopify_product_id' => $shopifyProductId,
+                        'custom_product_id' => $customProduct->id,
+                        'error' => $templateMetafieldResult['message'] ?? 'Unknown error',
+                    ]);
+                }
+            }
+
+            DB::commit();
+
+            // Cache media nodes for later variant-media attach in batches
+            Cache::put("dtfta_custom_product_media_{$customProduct->id}", $shopifyMedia, now()->addHours(2));
+
+            $totalVariants = $customVariants->count();
+            $batchSize = 25;
+            $totalBatches = (int) ceil($totalVariants / $batchSize);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Base product created in Shopify.',
+                'data' => [
+                    'custom_product_id' => $customProduct->id,
+                    'shopify_product_id' => $shopifyProductId,
+                    'title' => $customProduct->title,
+                    'total_variants' => $totalVariants,
+                    'batch_size' => $batchSize,
+                    'total_batches' => $totalBatches,
+                ],
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('initProduct exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function publishVariantsBatch(Request $request, int $shopId)
+    {
+        try {
+            $customProductId = (int) $request->input('custom_product_id');
+            $batchIndex = max(0, (int) $request->input('batch_index', 0));
+            $batchSize = max(1, min(50, (int) $request->input('batch_size', 25)));
+
+            $customProduct = CustomProduct::where('id', $customProductId)
+                ->where('shop_id', $shopId)
+                ->first();
+
+            if (! $customProduct) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Custom product not found.',
+                ], 404);
+            }
+
+            $shopifyProductId = $customProduct->shopify_product_id;
+            if (empty($shopifyProductId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Custom product is missing a Shopify product ID.',
+                ], 422);
+            }
+
+            $customVariants = $customProduct->variants()
+                ->orderBy('id')
+                ->skip($batchIndex * $batchSize)
+                ->take($batchSize)
+                ->get();
+
+            if ($customVariants->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No variants to process in this batch.',
+                    'data' => [
+                        'batch_index' => $batchIndex,
+                        'processed_count' => 0,
+                        'total_variants' => $customProduct->variants()->count(),
+                    ],
+                ], 200);
+            }
+
+            $variantInputs = [];
+            foreach ($customVariants as $cv) {
+                $payload = json_decode((string) $cv->source_payload, true);
+                if (is_array($payload) && !empty($payload)) {
+                    $variantInputs[] = $payload;
+                } else {
+                    $variantInputs[] = [
+                        'price' => (string) $cv->price,
+                        'compareAtPrice' => $cv->compare_at_price ? (string) $cv->compare_at_price : null,
+                        'sku' => $cv->sku,
+                        'barcode' => $cv->barcode,
+                        'optionValues' => json_decode((string) $cv->option_values, true) ?: [],
+                    ];
+                }
+            }
+
+            $strategy = ($batchIndex === 0) ? 'REMOVE_STANDALONE_VARIANT' : 'DEFAULT';
+
+            $variantResult = $this->shopifyService->createShopifyVariants(
+                (int) $shopId,
+                (string) $shopifyProductId,
+                ['options' => $customProduct->options ?? []],
+                $variantInputs,
+                $strategy
+            );
+
+            if (! ($variantResult['success'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $variantResult['message'] ?? 'Failed to create variants batch in Shopify.',
+                    'errors' => $variantResult['errors'] ?? [],
+                    'data' => $variantResult['data'] ?? null,
+                ], $variantResult['status'] ?? 422);
+            }
+
+            $shopifyVariants = data_get($variantResult, 'data.variants', []);
+            $customArtworks = $customProduct->artworks()
+                ->whereIn('custom_product_variant_id', $customVariants->pluck('id'))
+                ->get();
+
+            $this->mapShopifyVariantsToLocalVariants(
+                $customVariants,
+                $customArtworks,
+                $shopifyVariants
+            );
+
+            // Attach media to this batch's variants
+            $shopifyMedia = Cache::get("dtfta_custom_product_media_{$customProduct->id}", []);
+            if (!empty($shopifyMedia)) {
+                $this->attachShopifyMediaToVariants(
+                    (int) $shopId,
+                    (string) $shopifyProductId,
+                    $customProduct,
+                    $customArtworks,
+                    $shopifyMedia
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Variants batch ' . ($batchIndex + 1) . ' processed.',
+                'data' => [
+                    'batch_index' => $batchIndex,
+                    'processed_count' => $customVariants->count(),
+                    'total_variants' => $customProduct->variants()->count(),
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            Log::error('publishVariantsBatch exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function publishFinalize(Request $request, int $shopId)
+    {
+        try {
+            $customProductId = (int) $request->input('custom_product_id');
+            $customProduct = CustomProduct::where('id', $customProductId)
+                ->where('shop_id', $shopId)
+                ->first();
+
+            if (! $customProduct) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Custom product not found.',
+                ], 404);
+            }
+
+            $shop = Shop::find($shopId);
+            if (! $shop) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Shop not found.',
+                ], 404);
+            }
+
+            $shopifyProductId = $customProduct->shopify_product_id;
+            $customVariants = $customProduct->variants()->whereNotNull('shopify_variant_id')->get();
+            $shopifyVariantIds = $customVariants->pluck('shopify_variant_id')->all();
+
+            $deliveryProfileResult = null;
+            if (! empty($shop->shipping_profile_id) && ! empty($shopifyVariantIds)) {
+                $deliveryProfileResult = $this->shopifyService->assignVariantsToDeliveryProfile(
+                    (int) $shopId,
+                    (string) $shop->shipping_profile_id,
+                    $shopifyVariantIds
+                );
+
+                if (! ($deliveryProfileResult['success'] ?? false)) {
+                    Log::warning('Shopify delivery profile assignment failed for custom product.', [
+                        'shop_id' => $shopId,
+                        'product_id' => $shopifyProductId,
+                        'shipping_profile_id' => $shop->shipping_profile_id,
+                        'variant_ids' => $shopifyVariantIds,
+                        'error' => $deliveryProfileResult['message'] ?? 'Failed to assign variants to delivery profile.',
+                    ]);
+                }
+            }
+
+            $inventoryAssignmentResults = [];
+            if (! empty($shop->location_id) && ! empty($shopifyVariantIds)) {
+                $fetchedVariants = $this->fetchMergedShopifyVariants(
+                    (int) $shopId,
+                    (string) $shopifyProductId,
+                    [],
+                    $customVariants->count()
+                );
+
+                $mappedVariantIds = array_fill_keys(
+                    array_map('strval', $shopifyVariantIds),
+                    true
+                );
+                $inventoryVariants = array_values(array_filter(
+                    $fetchedVariants,
+                    fn ($variant) => isset($mappedVariantIds[(string) data_get($variant, 'id', '')])
+                ));
+
+                if (!empty($inventoryVariants)) {
+                    $inventoryResult = $this->shopifyService->assignVariantsToInventoryLocation(
+                        (int) $shopId,
+                        $inventoryVariants,
+                        (string) $shop->location_id
+                    );
+
+                    if (! ($inventoryResult['success'] ?? false)) {
+                        Log::warning('Shopify inventory location assignment failed for custom product.', [
+                            'shop_id' => $shopId,
+                            'product_id' => $shopifyProductId,
+                            'location_id' => $shop->location_id,
+                            'error' => $inventoryResult['message'] ?? 'Failed to assign variants to inventory location.',
+                        ]);
+                    } else {
+                        $inventoryAssignmentResults = data_get($inventoryResult, 'data.assignments', []);
+                    }
+                }
+            }
+
+            // Cleanup media cache
+            Cache::forget("dtfta_custom_product_media_{$customProduct->id}");
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product created successfully in Shopify.',
+                'data' => [
+                    'custom_product_id' => $customProduct->id,
+                    'shopify_product_id' => $shopifyProductId,
+                    'delivery_profile_assignment' => $deliveryProfileResult,
+                    'inventory_location_assignments' => $inventoryAssignmentResults,
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            Log::error('publishFinalize exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
             ], 500);
         }
     }

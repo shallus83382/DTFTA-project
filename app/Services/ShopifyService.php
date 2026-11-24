@@ -3065,18 +3065,17 @@ class ShopifyService
      *   ],
      * ]
      */
-    public function createCustomProductWithPrintAreas(int $shopId, array $payload): array
+    public function createCustomProductBase(int $shopId, array $payload): array
     {
         try {
-
             $productCreateResult = $this->createShopifyProduct($shopId, $payload);
             if (!$productCreateResult['success']) {
                 return $productCreateResult;
             }
-    
+
             $product = $productCreateResult['data']['product'] ?? null;
             $productId = $product['id'] ?? null;
-    
+
             if (!$productId) {
                 return [
                     'success' => false,
@@ -3086,66 +3085,41 @@ class ShopifyService
                     'errors' => [],
                 ];
             }
-    
-            $createdVariants = [];
-    
-            if (!empty($payload['variants'])) {
-                $variantResult = $this->createShopifyVariants(
-                    $shopId,
-                    $productId,
-                    $product,
-                    $payload['variants']
-                );
-    
-                if (!$variantResult['success']) {
-                    return $variantResult;
-                }
-    
-                $createdVariants = $variantResult['data']['variants'] ?? [];
-                $product = $variantResult['data']['product'] ?? $product;
-            }
-    
+
             $artworkUrls = [];
             $mediaResultData = [];
-    
+
             if (!empty($payload['artwork']) && is_array($payload['artwork'])) {
                 $normalized = $this->normalizeArtworkBatchForShopify($payload['artwork']);
-    
+
                 if (!$normalized['success']) {
                     return $normalized;
                 }
-    
+
                 $resolved = $this->resolveArtworkSourcesForShopify(
                     $shopId,
                     $normalized['data']['artwork']
                 );
-    
+
                 if (!$resolved['success']) {
                     return $resolved;
                 }
-    
+
                 $artworkUrls = $resolved['data']['artwork'] ?? [];
-    
+
                 $attachResult = $this->attachArtworkAsProductMedia(
                     $shopId,
                     $productId,
                     $resolved['data']['media'] ?? []
                 );
-    
+
                 if (!$attachResult['success']) {
                     return $attachResult;
                 }
-    
+
                 $mediaResultData = $attachResult['data']['media'] ?? [];
                 $product = $attachResult['data']['product'] ?? $product;
             }
-    
-            // $metafieldResult = $this->setCustomProductMetafields($shopId, $productId, [
-            //     'print_areas' => $payload['print_areas'] ?? [],
-            //     'artwork' => $artworkUrls,
-            //     'print_plan' => $payload['print_plan'] ?? null,
-            //     'line_item_meta' => $payload['line_item_meta'] ?? [],
-            // ]);
 
             $metafieldResult = $this->setCustomProductMetafields($shopId, $productId, [
                 'print_areas' => [],
@@ -3153,11 +3127,68 @@ class ShopifyService
                 'print_plan' => [],
                 'line_item_meta' => $payload['line_item_meta'] ?? [],
             ]);
-    
+
             if (!$metafieldResult['success']) {
                 return $metafieldResult;
             }
-    
+
+            return [
+                'success' => true,
+                'status' => 200,
+                'message' => 'Base custom product created successfully',
+                'data' => [
+                    'product' => $product,
+                    'artwork' => $artworkUrls,
+                    'media' => $mediaResultData,
+                    'metafields' => $metafieldResult['data']['metafields'] ?? [],
+                ],
+                'errors' => [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Shopify createCustomProductBase error', [
+                'shop_id' => $shopId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'status' => 500,
+                'message' => $e->getMessage(),
+                'data' => null,
+                'errors' => [],
+            ];
+        }
+    }
+
+    public function createCustomProductWithPrintAreas(int $shopId, array $payload): array
+    {
+        try {
+            $baseResult = $this->createCustomProductBase($shopId, $payload);
+            if (!$baseResult['success']) {
+                return $baseResult;
+            }
+
+            $product = $baseResult['data']['product'] ?? null;
+            $productId = $product['id'] ?? null;
+            $createdVariants = [];
+
+            if (!empty($payload['variants'])) {
+                $variantResult = $this->createShopifyVariants(
+                    $shopId,
+                    $productId,
+                    $product,
+                    $payload['variants']
+                );
+
+                if (!$variantResult['success']) {
+                    return $variantResult;
+                }
+
+                $createdVariants = $variantResult['data']['variants'] ?? [];
+                $product = $variantResult['data']['product'] ?? $product;
+            }
+
             return [
                 'success' => true,
                 'status' => 200,
@@ -3165,9 +3196,9 @@ class ShopifyService
                 'data' => [
                     'product' => $product,
                     'variants' => $createdVariants,
-                    'artwork' => $artworkUrls,
-                    'media' => $mediaResultData,
-                    'metafields' => $metafieldResult['data']['metafields'] ?? [],
+                    'artwork' => $baseResult['data']['artwork'] ?? [],
+                    'media' => $baseResult['data']['media'] ?? [],
+                    'metafields' => $baseResult['data']['metafields'] ?? [],
                 ],
                 'errors' => [],
             ];
@@ -3178,7 +3209,7 @@ class ShopifyService
                 'trace' => $e->getTraceAsString(),
                 'payload' => json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
             ]);
-    
+
             return [
                 'success' => false,
                 'status' => 500,
@@ -3285,7 +3316,7 @@ class ShopifyService
         ];
     }
     
-    private function createShopifyVariants(int $shopId, string $productId, array $product, array $variants): array
+    public function createShopifyVariants(int $shopId, string $productId, array $product, array $variants, string $strategy = 'REMOVE_STANDALONE_VARIANT'): array
     {
         $optionIdMap = [];
     
@@ -3353,11 +3384,11 @@ class ShopifyService
         // ]);
     
             $mutation = <<<'GQL'
-        mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+        mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!, $strategy: ProductVariantsBulkCreateStrategy) {
         productVariantsBulkCreate(
             productId: $productId,
             variants: $variants,
-            strategy: REMOVE_STANDALONE_VARIANT
+            strategy: $strategy
         ) {
             product {
             id
@@ -3391,6 +3422,7 @@ class ShopifyService
         $result = $this->graphqlRequest($shopId, $mutation, [
             'productId' => $productId,
             'variants' => $variantInputs,
+            'strategy' => $strategy,
         ]);
     
     

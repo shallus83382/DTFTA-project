@@ -41,6 +41,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/products/get', [ProductController::class, 'signedIndex']);
     Route::get('/products/get/{id}', [ProductController::class, 'signedShow']);
     Route::post('/products/create-in-shopify-signed', [ProductController::class, 'createInShopifySigned']);
+    Route::post('/products/publish/init', [ProductController::class, 'publishInitSigned']);
+    Route::post('/products/publish/variants-batch', [ProductController::class, 'publishVariantsBatchSigned']);
+    Route::post('/products/publish/finalize', [ProductController::class, 'publishFinalizeSigned']);
     Route::get('/custom-products/{customProduct}', [ProductController::class, 'customProduct']);
     Route::get('/artworks/list', [ArtworkController::class, 'list']);
     Route::post('/artworks/upload', [ArtworkController::class, 'upload']);
