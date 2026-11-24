@@ -319,16 +319,23 @@ class CreateShopifyCustomProductService
 
             $variantInputs = [];
             foreach ($customVariants as $cv) {
-                $payload = json_decode((string) $cv->source_payload, true);
+                $payload = is_array($cv->source_payload)
+                    ? $cv->source_payload
+                    : (is_string($cv->source_payload) ? json_decode($cv->source_payload, true) : null);
+
                 if (is_array($payload) && !empty($payload)) {
                     $variantInputs[] = $payload;
                 } else {
+                    $optionValues = is_array($cv->option_values)
+                        ? $cv->option_values
+                        : (is_string($cv->option_values) ? json_decode($cv->option_values, true) : []);
+
                     $variantInputs[] = [
                         'price' => (string) $cv->price,
                         'compareAtPrice' => $cv->compare_at_price ? (string) $cv->compare_at_price : null,
                         'sku' => $cv->sku,
                         'barcode' => $cv->barcode,
-                        'optionValues' => json_decode((string) $cv->option_values, true) ?: [],
+                        'optionValues' => $optionValues ?: [],
                     ];
                 }
             }
