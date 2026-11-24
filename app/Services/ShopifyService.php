@@ -3118,7 +3118,9 @@ class ShopifyService
                 }
 
                 $mediaResultData = $attachResult['data']['media'] ?? [];
-                $product = $attachResult['data']['product'] ?? $product;
+                if (!empty($attachResult['data']['product'])) {
+                    $product = array_merge($product ?? [], array_filter($attachResult['data']['product']));
+                }
             }
 
             $metafieldResult = $this->setCustomProductMetafields($shopId, $productId, [
@@ -3220,6 +3222,23 @@ class ShopifyService
         }
     }
     
+    private function formatShopifyUserErrors(array $userErrors, string $defaultPrefix = 'Shopify error'): string
+    {
+        if (empty($userErrors)) {
+            return $defaultPrefix;
+        }
+
+        $details = collect($userErrors)
+            ->map(function ($err) {
+                $field = is_array($err['field'] ?? null) ? implode('.', $err['field']) : ($err['field'] ?? '');
+                $msg = $err['message'] ?? 'Unknown error';
+                return $field ? "{$field}: {$msg}" : $msg;
+            })
+            ->implode('; ');
+
+        return $defaultPrefix . ': ' . $details;
+    }
+
     private function createShopifyProduct(int $shopId, array $payload): array
     {
             $mutation = <<<'GQL'
@@ -3296,10 +3315,17 @@ class ShopifyService
         $userErrors = $payloadData['userErrors'] ?? [];
     
         if (!empty($userErrors)) {
+            $msg = $this->formatShopifyUserErrors($userErrors, 'Shopify productCreate error');
+            Log::error('Shopify productCreate userErrors', [
+                'shop_id' => $shopId,
+                'errors' => $userErrors,
+                'product_input' => $productInput,
+            ]);
+
             return [
                 'success' => false,
                 'status' => 422,
-                'message' => 'Shopify productCreate returned user errors',
+                'message' => $msg,
                 'data' => $payloadData,
                 'errors' => $userErrors,
             ];
@@ -3318,38 +3344,36 @@ class ShopifyService
     
     public function createShopifyVariants(int $shopId, string $productId, array $product, array $variants, string $strategy = 'REMOVE_STANDALONE_VARIANT'): array
     {
-        $optionIdMap = [];
-    
+        $optionMap = [];
+
         foreach (($product['options'] ?? []) as $option) {
-            $optionName = (string) ($option['name'] ?? '');
-            $optionId = (string) ($option['id'] ?? '');
-    
-            if ($optionName === '' || $optionId === '') {
+            $optionName = trim((string) ($option['name'] ?? ''));
+            $optionId = trim((string) ($option['id'] ?? ''));
+
+            if ($optionName === '') {
                 continue;
             }
-    
-            foreach (($option['optionValues'] ?? []) as $value) {
-                $valueName = (string) ($value['name'] ?? '');
-                if ($valueName !== '') {
-                    $optionIdMap[$optionName][$valueName] = $optionId;
-                }
-            }
+
+            $optionMap[strtolower($optionName)] = [
+                'name' => $optionName,
+                'id' => $optionId !== '' ? $optionId : null,
+            ];
         }
-    
-        $variantInputs = collect($variants)->map(function ($variant) use ($optionIdMap) {
+
+        $variantInputs = collect($variants)->map(function ($variant) use ($optionMap) {
             $trackInventory = array_key_exists('trackInventory', $variant)
                 ? (bool) $variant['trackInventory']
                 : false; // default: do not track inventory
-    
+
             $allowBackorder = array_key_exists('allowBackorder', $variant)
                 ? (bool) $variant['allowBackorder']
                 : true; // default: allow selling when out of stock
-    
+
             $inventoryItem = array_filter([
                 'sku' => $variant['sku'] ?? null,
                 'tracked' => $trackInventory,
             ], fn ($value) => $value !== null && $value !== '');
-    
+
             return array_filter([
                 'price' => isset($variant['price']) ? (string) $variant['price'] : null,
                 'compareAtPrice' => isset($variant['compareAtPrice']) ? (string) $variant['compareAtPrice'] : null,
@@ -3357,19 +3381,31 @@ class ShopifyService
                 'inventoryItem' => !empty($inventoryItem) ? $inventoryItem : null,
                 'inventoryPolicy' => $allowBackorder ? 'CONTINUE' : 'DENY',
                 'optionValues' => collect($variant['optionValues'] ?? [])
-                    ->map(function ($optionValue) use ($optionIdMap) {
-                        $optionName = (string) ($optionValue['optionName'] ?? '');
-                        $valueName = (string) ($optionValue['name'] ?? '');
-                        $optionId = $optionIdMap[$optionName][$valueName] ?? null;
-    
-                        if (!$optionId || $valueName === '') {
+                    ->map(function ($optionValue) use ($optionMap) {
+                        $rawOptionName = trim((string) ($optionValue['optionName'] ?? ''));
+                        $valueName = trim((string) ($optionValue['name'] ?? ''));
+
+                        if ($valueName === '') {
                             return null;
                         }
-    
-                        return [
-                            'optionId' => $optionId,
-                            'name' => $valueName,
-                        ];
+
+                        $matched = $optionMap[strtolower($rawOptionName)] ?? null;
+                        $finalOptionName = $matched['name'] ?? $rawOptionName;
+                        $optionId = $matched['id'] ?? null;
+
+                        if ($optionId) {
+                            return [
+                                'optionId' => $optionId,
+                                'name' => $valueName,
+                            ];
+                        } elseif ($finalOptionName !== '') {
+                            return [
+                                'optionName' => $finalOptionName,
+                                'name' => $valueName,
+                            ];
+                        }
+
+                        return null;
                     })
                     ->filter()
                     ->values()
@@ -3434,10 +3470,25 @@ class ShopifyService
         $userErrors = $payloadData['userErrors'] ?? [];
     
         if (!empty($userErrors)) {
+            $errorDetails = collect($userErrors)
+                ->map(function ($err) {
+                    $field = is_array($err['field'] ?? null) ? implode('.', $err['field']) : ($err['field'] ?? '');
+                    $msg = $err['message'] ?? 'Unknown error';
+                    return $field ? "{$field}: {$msg}" : $msg;
+                })
+                ->implode('; ');
+
+            Log::error('Shopify productVariantsBulkCreate userErrors', [
+                'shop_id' => $shopId,
+                'product_id' => $productId,
+                'errors' => $userErrors,
+                'variant_inputs' => $variantInputs,
+            ]);
+
             return [
                 'success' => false,
                 'status' => 422,
-                'message' => 'Shopify productVariantsBulkCreate returned user errors',
+                'message' => 'Shopify variant creation error: ' . $errorDetails,
                 'data' => $payloadData,
                 'errors' => $userErrors,
             ];
@@ -3617,17 +3668,24 @@ class ShopifyService
         $stagedErrors = $stagedPayload['userErrors'] ?? [];
     
         if (!empty($stagedErrors)) {
+            $msg = $this->formatShopifyUserErrors($stagedErrors, 'Shopify stagedUploadsCreate error');
+            Log::error('Shopify stagedUploadsCreate userErrors', [
+                'shop_id' => $shopId,
+                'filename' => $filename,
+                'errors' => $stagedErrors,
+            ]);
+
             return [
                 'success' => false,
                 'status' => 422,
-                'message' => 'Shopify stagedUploadsCreate returned user errors',
+                'message' => $msg,
                 'data' => $stagedPayload,
                 'errors' => $stagedErrors,
             ];
         }
-    
+
         $target = $stagedPayload['stagedTargets'][0] ?? null;
-    
+
         if (!$target || empty($target['url']) || empty($target['resourceUrl'])) {
             return [
                 'success' => false,
@@ -3637,25 +3695,32 @@ class ShopifyService
                 'errors' => [],
             ];
         }
-    
+
         $formFields = [];
         foreach (($target['parameters'] ?? []) as $param) {
             $formFields[$param['name']] = $param['value'];
         }
-    
+
         $uploadResponse = Http::timeout(120)
             ->withoutVerifying()
             ->attach('file', $binary, $filename, [
                 'Content-Type' => $mimeType,
             ])
             ->post($target['url'], $formFields);
-    
+
         if (!$uploadResponse->successful()) {
-    
+            $status = $uploadResponse->status();
+            $body = substr(trim((string) $uploadResponse->body()), 0, 300);
+            Log::error('Shopify staged upload failed', [
+                'status' => $status,
+                'body' => $body,
+                'target' => $target,
+            ]);
+
             return [
                 'success' => false,
-                'status' => $uploadResponse->status(),
-                'message' => 'Failed to upload image to Shopify staged target',
+                'status' => $status,
+                'message' => "Failed to upload image to Shopify staged target (HTTP {$status}): {$body}",
                 'data' => [
                     'body' => $uploadResponse->body(),
                     'target' => $target,
@@ -3775,6 +3840,14 @@ class ShopifyService
             product {
             id
             title
+            options {
+                id
+                name
+                optionValues {
+                    id
+                    name
+                }
+            }
             media(first: 250) {
                 nodes {
                 id
@@ -3813,10 +3886,17 @@ class ShopifyService
         $userErrors = $payloadData['userErrors'] ?? [];
     
         if (!empty($userErrors)) {
+            $msg = $this->formatShopifyUserErrors($userErrors, 'Shopify productUpdate (media attach) error');
+            Log::error('Shopify productUpdate media userErrors', [
+                'shop_id' => $shopId,
+                'product_id' => $productId,
+                'errors' => $userErrors,
+            ]);
+
             return [
                 'success' => false,
                 'status' => 422,
-                'message' => 'Shopify productUpdate returned user errors',
+                'message' => $msg,
                 'data' => $payloadData,
                 'errors' => $userErrors,
             ];
@@ -3926,10 +4006,17 @@ class ShopifyService
         $userErrors = $payloadData['userErrors'] ?? [];
     
         if (!empty($userErrors)) {
+            $msg = $this->formatShopifyUserErrors($userErrors, 'Shopify metafieldsSet error');
+            Log::error('Shopify metafieldsSet userErrors', [
+                'shop_id' => $shopId,
+                'product_id' => $productId,
+                'errors' => $userErrors,
+            ]);
+
             return [
                 'success' => false,
                 'status' => 422,
-                'message' => 'Shopify metafieldsSet returned user errors',
+                'message' => $msg,
                 'data' => $payloadData,
                 'errors' => $userErrors,
             ];
