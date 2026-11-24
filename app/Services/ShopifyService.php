@@ -154,12 +154,35 @@ class ShopifyService
 
             $hasErrors = !empty($data['errors']);
 
+            $message = 'ok';
+            if (!$response->successful() || $hasErrors) {
+                if (!empty($data['errors'])) {
+                    if (is_array($data['errors'])) {
+                        $errorMessages = [];
+                        foreach ($data['errors'] as $error) {
+                            if (is_array($error) && !empty($error['message'])) {
+                                $errorMessages[] = $error['message'];
+                            } elseif (is_string($error)) {
+                                $errorMessages[] = $error;
+                            }
+                        }
+                        $message = !empty($errorMessages)
+                            ? implode('; ', $errorMessages)
+                            : 'Shopify GraphQL request failed with errors';
+                    } else {
+                        $message = (string) $data['errors'];
+                    }
+                } else {
+                    $message = 'Shopify GraphQL HTTP error ' . $response->status() . ': ' . ($response->body() ?: 'unknown error');
+                }
+            }
+
             return [
                 'success' => $response->successful() && !$hasErrors,
                 'status' => $response->status(),
                 'data' => $data['data'] ?? null,
                 'errors' => $data['errors'] ?? [],
-                'message' => $response->successful() && !$hasErrors ? 'ok' : 'Shopify GraphQL request failed',
+                'message' => $message,
             ];
         } catch (\Throwable $e) {
 

@@ -865,9 +865,12 @@ class CreateShopifyCustomProductService
             );
 
             if (! ($templateMetafieldResult['success'] ?? false)) {
-                throw new \RuntimeException(
-                    $templateMetafieldResult['message'] ?? 'Failed to set DTFTA template id metafield.'
-                );
+                Log::warning('Failed to set DTFTA template id metafield on Shopify product.', [
+                    'shop_id' => $shopId,
+                    'shopify_product_id' => $shopifyProductId,
+                    'custom_product_id' => $customProduct->id,
+                    'error' => $templateMetafieldResult['message'] ?? 'Failed to set DTFTA template id metafield.',
+                ]);
             }
         }
 
@@ -904,9 +907,13 @@ class CreateShopifyCustomProductService
             );
 
             if (! ($deliveryProfileResult['success'] ?? false)) {
-                throw new \RuntimeException(
-                    $deliveryProfileResult['message'] ?? 'Failed to assign variants to delivery profile.'
-                );
+                Log::warning('Shopify delivery profile assignment failed for custom product.', [
+                    'shop_id' => $shopId,
+                    'product_id' => $shopifyProductId,
+                    'shipping_profile_id' => $shop->shipping_profile_id,
+                    'variant_ids' => $shopifyVariantIds,
+                    'error' => $deliveryProfileResult['message'] ?? 'Failed to assign variants to delivery profile.',
+                ]);
             }
         }
 
@@ -922,24 +929,30 @@ class CreateShopifyCustomProductService
             ));
 
             if (count($inventoryVariants) !== count($shopifyVariantIds)) {
-                throw new \RuntimeException(
-                    'Could not resolve every Shopify inventory item for the created variants.'
+                Log::warning('Could not resolve every Shopify inventory item for the created variants.', [
+                    'shop_id' => $shopId,
+                    'product_id' => $shopifyProductId,
+                    'total_variant_ids' => count($shopifyVariantIds),
+                    'resolved_inventory_variants' => count($inventoryVariants),
+                ]);
+            } else {
+                $inventoryResult = $this->shopifyService->assignVariantsToInventoryLocation(
+                    (int) $shopId,
+                    $inventoryVariants,
+                    (string) $shop->location_id
                 );
+
+                if (! ($inventoryResult['success'] ?? false)) {
+                    Log::warning('Shopify inventory location assignment failed for custom product.', [
+                        'shop_id' => $shopId,
+                        'product_id' => $shopifyProductId,
+                        'location_id' => $shop->location_id,
+                        'error' => $inventoryResult['message'] ?? 'Failed to assign variants to inventory location.',
+                    ]);
+                } else {
+                    $inventoryAssignmentResults = data_get($inventoryResult, 'data.assignments', []);
+                }
             }
-
-            $inventoryResult = $this->shopifyService->assignVariantsToInventoryLocation(
-                (int) $shopId,
-                $inventoryVariants,
-                (string) $shop->location_id
-            );
-
-            if (! ($inventoryResult['success'] ?? false)) {
-                throw new \RuntimeException(
-                    $inventoryResult['message'] ?? 'Failed to assign variants to inventory location.'
-                );
-            }
-
-            $inventoryAssignmentResults = data_get($inventoryResult, 'data.assignments', []);
         }
 
         return [
@@ -1180,9 +1193,11 @@ class CreateShopifyCustomProductService
             ! str_contains($batchErrorText, 'non-ready media')
             && ! str_contains($batchErrorText, 'already has attached media')
         ) {
-            throw new \RuntimeException(
-                $batchResult['message'] ?? 'Failed to link media to Shopify variants.'
-            );
+            Log::warning('Batch variant media attach failed in Shopify', [
+                'shop_id' => $shopId,
+                'shopify_product_id' => $shopifyProductId,
+                'error' => $batchResult['message'] ?? 'Failed to link media to Shopify variants.',
+            ]);
         }
 
         // Fall back to per-variant retries while Shopify finishes processing media.
@@ -1252,9 +1267,13 @@ class CreateShopifyCustomProductService
                     continue;
                 }
 
-                throw new \RuntimeException(
-                    $attachToVariant['message'] ?? 'Failed to link media to Shopify variants.'
-                );
+                Log::warning('Failed to link media to Shopify variant', [
+                    'shop_id' => $shopId,
+                    'shopify_product_id' => $shopifyProductId,
+                    'shopify_variant_id' => $shopifyVariantId,
+                    'error' => $attachToVariant['message'] ?? 'Failed to link media to Shopify variants.',
+                ]);
+                continue;
             }
         }
 
