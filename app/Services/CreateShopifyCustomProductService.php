@@ -308,6 +308,7 @@ class CreateShopifyCustomProductService
 
             $mediaInputs = [];
             $uploadedArtworks = [];
+            $uploadErrors = [];
 
             foreach ($mockups as $item) {
                 $dataUrl = trim((string) ($item['data_url'] ?? ''));
@@ -329,12 +330,14 @@ class CreateShopifyCustomProductService
                 );
 
                 if (! ($uploadResult['success'] ?? false)) {
+                    $errText = $uploadResult['message'] ?? 'Unknown error';
+                    $uploadErrors[] = "{$color}: {$errText}";
                     Log::warning('uploadMediaBatch: failed to upload mockup to Shopify staged target', [
                         'shop_id' => $shopId,
                         'product_id' => $shopifyProductId,
                         'color' => $color,
                         'placement' => $placement,
-                        'error' => $uploadResult['message'] ?? 'Unknown error',
+                        'error' => $errText,
                     ]);
                     continue;
                 }
@@ -355,6 +358,13 @@ class CreateShopifyCustomProductService
                 }
             }
 
+            if (! empty($mockups) && empty($mediaInputs)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to upload mockups to Shopify staged targets: ' . implode('; ', $uploadErrors),
+                ], 422);
+            }
+
             if (! empty($mediaInputs)) {
                 $attachResult = $this->shopifyService->attachArtworkAsProductMedia(
                     $shopId,
@@ -365,7 +375,7 @@ class CreateShopifyCustomProductService
                 if ($attachResult['success'] ?? false) {
                     $newNodes = $attachResult['data']['media'] ?? [];
                     $cachedMedia = Cache::get("dtfta_custom_product_media_{$customProduct->id}", []);
-                    $mergedMedia = array_merge($cachedMedia, $newNodes);
+                    $mergedMedia = collect(array_merge($cachedMedia, $newNodes))->unique('id')->values()->all();
                     Cache::put("dtfta_custom_product_media_{$customProduct->id}", $mergedMedia, now()->addHours(2));
 
                     // Link to local custom_product_artworks
@@ -390,10 +400,6 @@ class CreateShopifyCustomProductService
                                     'placement' => $uaPlacement,
                                 ],
                                 [
-                                    'product_variant_id' => $mv->product_variant_id,
-                                    'variant_sku' => $mv->sku,
-                                    'variant_color_name' => $uaColor,
-                                    'variant_color_code' => $uaColor,
                                     'title' => $ua['title'],
                                     'artwork_url' => $ua['resource_url'],
                                     'meta' => [
@@ -404,6 +410,11 @@ class CreateShopifyCustomProductService
                             );
                         }
                     }
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $attachResult['message'] ?? 'Failed to attach media in Shopify.',
+                    ], 422);
                 }
             }
 
@@ -526,6 +537,12 @@ class CreateShopifyCustomProductService
 
             // Attach media to this batch's variants
             $shopifyMedia = Cache::get("dtfta_custom_product_media_{$customProduct->id}", []);
+            if (empty($shopifyMedia) && !empty($shopifyProductId)) {
+                $shopifyMedia = $this->shopifyService->getProductMedia((int) $shopId, (string) $shopifyProductId);
+                if (!empty($shopifyMedia)) {
+                    Cache::put("dtfta_custom_product_media_{$customProduct->id}", $shopifyMedia, now()->addHours(2));
+                }
+            }
             if (!empty($shopifyMedia)) {
                 $this->attachShopifyMediaToVariants(
                     (int) $shopId,
@@ -1654,11 +1671,18 @@ class CreateShopifyCustomProductService
                     $shopifyMediaId = $mediaByUrl['alt:'.strtolower($title)];
                 }
 
-                if (! $shopifyMediaId || empty($meta['shopify_variant_id'])) {
+                $variantId = (string) (
+                    $meta['shopify_variant_id']
+                    ?? \App\Models\CustomProductVariant::where('id', $artwork->custom_product_variant_id)->value('shopify_variant_id')
+                    ?? ''
+                );
+
+                if (! $shopifyMediaId || empty($variantId)) {
                     return;
                 }
 
                 $meta['shopify_media_id'] = $shopifyMediaId;
+                $meta['shopify_variant_id'] = $variantId;
                 $artwork->update(['meta' => $meta]);
 
                 $variantId = (string) $meta['shopify_variant_id'];

@@ -3598,7 +3598,7 @@ class ShopifyService
         ];
     }
     
-    private function uploadArtworkToShopify(
+    public function uploadArtworkToShopify(
             int $shopId,
             string $base64Image,
             string $filename = 'artwork.png',
@@ -3822,7 +3822,7 @@ class ShopifyService
         ];
     }
     
-    private function attachArtworkAsProductMedia(int $shopId, string $productId, array $media): array
+    public function attachArtworkAsProductMedia(int $shopId, string $productId, array $media): array
     {
         if (empty($media)) {
             return [
@@ -4781,6 +4781,50 @@ class ShopifyService
                 'data' => null,
                 'errors' => [],
             ];
+        }
+    }
+
+    public function getProductMedia(int $shopId, string $productId): array
+    {
+        try {
+            $productGid = str_starts_with($productId, 'gid://')
+                ? $productId
+                : "gid://shopify/Product/{$productId}";
+
+            $query = <<<'GRAPHQL'
+            query GetProductMedia($id: ID!) {
+                product(id: $id) {
+                    id
+                    media(first: 250) {
+                        nodes {
+                            id
+                            alt
+                            mediaContentType
+                            status
+                            ... on MediaImage {
+                                image {
+                                    url
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            GRAPHQL;
+
+            $result = $this->graphqlRequest($shopId, $query, ['id' => $productGid]);
+            if (! ($result['success'] ?? false)) {
+                return [];
+            }
+
+            return data_get($result, 'data.product.media.nodes', []);
+        } catch (\Throwable $e) {
+            Log::warning('getProductMedia exception', [
+                'shop_id' => $shopId,
+                'product_id' => $productId,
+                'error' => $e->getMessage(),
+            ]);
+            return [];
         }
     }
 
