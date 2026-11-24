@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Artwork;
 use App\Models\CustomProduct;
+use App\Models\CustomProductArtwork;
 use App\Models\Product;
 use App\Models\Shop;
 use Illuminate\Http\Request;
@@ -266,6 +267,159 @@ class CreateShopifyCustomProductService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function uploadMediaBatch(Request $request, int $shopId)
+    {
+        try {
+            $customProductId = (int) $request->input('custom_product_id');
+            $mockups = $request->input('mockups', []);
+
+            $customProduct = CustomProduct::where('id', $customProductId)
+                ->where('shop_id', $shopId)
+                ->first();
+
+            if (! $customProduct) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Custom product not found.',
+                ], 404);
+            }
+
+            $shopifyProductId = $customProduct->shopify_product_id;
+            if (empty($shopifyProductId)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Shopify product ID missing.',
+                ], 422);
+            }
+
+            if (empty($mockups) || ! is_array($mockups)) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'No mockups to process in this batch.',
+                ], 200);
+            }
+
+            $mediaInputs = [];
+            $uploadedArtworks = [];
+
+            foreach ($mockups as $item) {
+                $dataUrl = trim((string) ($item['data_url'] ?? ''));
+                $placement = strtolower(trim((string) ($item['placement'] ?? 'front')));
+                $color = trim((string) ($item['color'] ?? ''));
+
+                if ($dataUrl === '' || $color === '') {
+                    continue;
+                }
+
+                $title = trim("{$color} {$placement} artwork");
+                $filename = preg_replace('/[^a-z0-9_-]+/i', '_', strtolower("{$color}_{$placement}")) . '.jpg';
+
+                $uploadResult = $this->shopifyService->uploadArtworkToShopify(
+                    $shopId,
+                    $dataUrl,
+                    $filename,
+                    $title
+                );
+
+                if (! ($uploadResult['success'] ?? false)) {
+                    Log::warning('uploadMediaBatch: failed to upload mockup to Shopify staged target', [
+                        'shop_id' => $shopId,
+                        'product_id' => $shopifyProductId,
+                        'color' => $color,
+                        'placement' => $placement,
+                        'error' => $uploadResult['message'] ?? 'Unknown error',
+                    ]);
+                    continue;
+                }
+
+                $resourceUrl = (string) data_get($uploadResult, 'data.resourceUrl', '');
+                if ($resourceUrl !== '') {
+                    $mediaInputs[] = [
+                        'originalSource' => $resourceUrl,
+                        'mediaContentType' => 'IMAGE',
+                        'alt' => $title,
+                    ];
+                    $uploadedArtworks[] = [
+                        'color' => $color,
+                        'placement' => $placement,
+                        'title' => $title,
+                        'resource_url' => $resourceUrl,
+                    ];
+                }
+            }
+
+            if (! empty($mediaInputs)) {
+                $attachResult = $this->shopifyService->attachArtworkAsProductMedia(
+                    $shopId,
+                    $shopifyProductId,
+                    $mediaInputs
+                );
+
+                if ($attachResult['success'] ?? false) {
+                    $newNodes = $attachResult['data']['media'] ?? [];
+                    $cachedMedia = Cache::get("dtfta_custom_product_media_{$customProduct->id}", []);
+                    $mergedMedia = array_merge($cachedMedia, $newNodes);
+                    Cache::put("dtfta_custom_product_media_{$customProduct->id}", $mergedMedia, now()->addHours(2));
+
+                    // Link to local custom_product_artworks
+                    $customVariants = $customProduct->variants()->get();
+                    foreach ($uploadedArtworks as $ua) {
+                        $uaColor = $ua['color'];
+                        $uaPlacement = $ua['placement'];
+                        $matchingVariants = $customVariants->filter(function ($cv) use ($uaColor) {
+                            $rawOptionValues = is_array($cv->option_values)
+                                ? $cv->option_values
+                                : (is_string($cv->option_values) ? json_decode($cv->option_values, true) : []);
+                            $optionValues = collect($rawOptionValues ?? []);
+                            $cvColor = (string) optional($optionValues->first(fn ($o) => strcasecmp((string) ($o['optionName'] ?? ''), 'Color') === 0))['name'] ?? '';
+                            return $this->colorValuesMatch($cvColor, $uaColor);
+                        });
+
+                        foreach ($matchingVariants as $mv) {
+                            CustomProductArtwork::updateOrCreate(
+                                [
+                                    'custom_product_id' => $customProduct->id,
+                                    'custom_product_variant_id' => $mv->id,
+                                    'placement' => $uaPlacement,
+                                ],
+                                [
+                                    'product_variant_id' => $mv->product_variant_id,
+                                    'variant_sku' => $mv->sku,
+                                    'variant_color_name' => $uaColor,
+                                    'variant_color_code' => $uaColor,
+                                    'title' => $ua['title'],
+                                    'artwork_url' => $ua['resource_url'],
+                                    'meta' => [
+                                        'source' => 'progressive_media_batch',
+                                        'shopify_variant_id' => $mv->shopify_variant_id,
+                                    ],
+                                ]
+                            );
+                        }
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Media batch processed.',
+                'data' => [
+                    'uploaded_count' => count($mediaInputs),
+                ],
+            ], 200);
+        } catch (\Throwable $e) {
+            Log::error('uploadMediaBatch exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),

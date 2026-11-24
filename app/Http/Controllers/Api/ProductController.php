@@ -276,6 +276,30 @@ class ProductController extends Controller
     }
 
     /**
+     * POST /api/v1/products/publish/media-batch
+     */
+    public function publishMediaBatchSigned(Request $request)
+    {
+        $shop = strtolower(trim((string) (
+            $request->header('X-Shop')
+            ?? $request->input('shop')
+            ?? $request->input('shop_domain')
+            ?? ''
+        )));
+
+        if (!$this->isValidShopDomain($shop)) {
+            return response()->json(['success' => false, 'message' => 'Invalid shop domain.'], 422);
+        }
+
+        $existingShop = Shop::where('shop_domain', $shop)->orderByDesc('id')->first();
+        if (!$existingShop) {
+            return response()->json(['success' => false, 'message' => 'Store does not exist.'], 404);
+        }
+
+        return (new CreateShopifyCustomProductService($this->ShopifyService))->uploadMediaBatch($request, $existingShop->id);
+    }
+
+    /**
      * POST /api/v1/products/publish/variants-batch
      */
     public function publishVariantsBatchSigned(Request $request)
