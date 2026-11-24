@@ -322,7 +322,22 @@
                 </div>
 
             </div>
-            <h3>Update Order Status</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:10px;">
+                <h3 style="margin:0;">Update Order Status</h3>
+                @php
+                    $targetDeleteId = $job->id ?? $order->id ?? null;
+                @endphp
+                @if($targetDeleteId)
+                    <form method="POST" action="{{ route('crm.orders.destroy', $targetDeleteId) }}" onsubmit="return confirm('Are you sure you want to delete this order/job? It will be removed from all stages.')">
+                        @csrf
+                        @method('DELETE')
+                        <button type="submit" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:12px; font-weight:600; border-radius:6px; border:1px solid #ef4444; background:rgba(239, 68, 68, 0.1); color:#ef4444; cursor:pointer; transition:all 0.2s;" onmouseenter="this.style.background='#ef4444'; this.style.color='#ffffff';" onmouseleave="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.color='#ef4444';">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                            Delete Order / Job
+                        </button>
+                    </form>
+                @endif
+            </div>
             @php
                 $billingStatusLabel = strtoupper(str_replace('_', ' ', (string) ($billingChargeStatus ?? '')));
             @endphp

@@ -857,6 +857,58 @@ class CrmController extends Controller
     }
 
     /**
+     * Delete an order and its associated job.
+     */
+    public function destroyJob(Request $request, string $id)
+    {
+        $job = Job::with('order')->find($id);
+        $order = $job ? $job->order : Order::with('jobs')->find($id);
+
+        if (!$job && !$order) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order or job not found.',
+                ], 404);
+            }
+            return redirect()->route('crm.orders')->with('error', 'Order or job not found.');
+        }
+
+        DB::transaction(function () use ($job, $order) {
+            if ($job) {
+                $job->delete();
+            }
+            if ($order) {
+                $order->jobs()->delete();
+                $order->orderItems()->delete();
+                $order->shipments()->delete();
+                $order->delete();
+            }
+
+            AdminActivityLog::logActivity(
+                auth()->id(),
+                'Deleted order/job' . ($job ? ' #' . $job->id : '') . ($order ? ' (Order #' . $order->id . ')' : ''),
+                'Job',
+                $job?->id ?? $order?->id,
+                [
+                    'job_id' => $job?->id,
+                    'order_id' => $order?->id,
+                    'shopify_order_id' => $order?->shopify_order_id,
+                ]
+            );
+        });
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Order and job deleted successfully.',
+            ]);
+        }
+
+        return redirect()->route('crm.orders')->with('success', 'Order and job deleted successfully.');
+    }
+
+    /**
      * Show shipping & fulfillment page.
      */
     public function shipping(): View

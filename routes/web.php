@@ -31,6 +31,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/crm/dashboard', [CrmController::class, 'dashboard'])->name('crm.dashboard');
     Route::get('/crm/orders', [CrmController::class, 'orders'])->name('crm.orders');
     Route::get('/crm/orders/{jobId}', [CrmController::class, 'jobDetail'])->name('crm.job-detail');
+    Route::delete('/crm/orders/{jobId}', [CrmController::class, 'destroyJob'])->name('crm.orders.destroy');
     Route::get('/crm/shipping', [CrmController::class, 'shipping'])->name('crm.shipping');
     Route::get('/crm/shipping/detail/{shipmentId}', [CrmController::class, 'shippingDetail'])->name('crm.shipping-detail');
     Route::get('/crm/stores', [CrmController::class, 'stores'])->name('crm.stores');

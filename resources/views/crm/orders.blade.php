@@ -484,7 +484,12 @@
                                         <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
-                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                                <div class="lead-time" style="display:flex; align-items:center; gap:6px;">
+                                    <span>{{ $job->created_at->diffForHumans() }}</span>
+                                    <button type="button" class="job-card-delete-btn" title="Delete Order/Job" onclick="deleteJob(event, {{ $job->id }})" style="background:none; border:none; color:#94a3b8; cursor:pointer; padding:2px; display:inline-flex; align-items:center; border-radius:4px;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#94a3b8'">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                             <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
                             <div class="lead-tags">
@@ -527,7 +532,12 @@
                                         <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
-                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                                <div class="lead-time" style="display:flex; align-items:center; gap:6px;">
+                                    <span>{{ $job->created_at->diffForHumans() }}</span>
+                                    <button type="button" class="job-card-delete-btn" title="Delete Order/Job" onclick="deleteJob(event, {{ $job->id }})" style="background:none; border:none; color:#94a3b8; cursor:pointer; padding:2px; display:inline-flex; align-items:center; border-radius:4px;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#94a3b8'">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                             <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
                             <div class="lead-tags">
@@ -570,7 +580,12 @@
                                         <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
-                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                                <div class="lead-time" style="display:flex; align-items:center; gap:6px;">
+                                    <span>{{ $job->created_at->diffForHumans() }}</span>
+                                    <button type="button" class="job-card-delete-btn" title="Delete Order/Job" onclick="deleteJob(event, {{ $job->id }})" style="background:none; border:none; color:#94a3b8; cursor:pointer; padding:2px; display:inline-flex; align-items:center; border-radius:4px;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#94a3b8'">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                             <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
                             <div class="lead-tags">
@@ -613,7 +628,12 @@
                                         <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
-                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                                <div class="lead-time" style="display:flex; align-items:center; gap:6px;">
+                                    <span>{{ $job->created_at->diffForHumans() }}</span>
+                                    <button type="button" class="job-card-delete-btn" title="Delete Order/Job" onclick="deleteJob(event, {{ $job->id }})" style="background:none; border:none; color:#94a3b8; cursor:pointer; padding:2px; display:inline-flex; align-items:center; border-radius:4px;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#94a3b8'">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                             <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
                             <div class="lead-tags">
@@ -656,7 +676,12 @@
                                         <div class="lead-shop"><span class="lead-field-label">Shop:</span> {{ $job->shop?->displayName() ?? 'Unknown shop' }}</div>
                                     </div>
                                 </div>
-                                <div class="lead-time">{{ $job->created_at->diffForHumans() }}</div>
+                                <div class="lead-time" style="display:flex; align-items:center; gap:6px;">
+                                    <span>{{ $job->created_at->diffForHumans() }}</span>
+                                    <button type="button" class="job-card-delete-btn" title="Delete Order/Job" onclick="deleteJob(event, {{ $job->id }})" style="background:none; border:none; color:#94a3b8; cursor:pointer; padding:2px; display:inline-flex; align-items:center; border-radius:4px;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#94a3b8'">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                             <div class="lead-description">Order #{{ $job->order_id }} - {{ $job->job_type }}</div>
                             <div class="lead-tags">
@@ -761,7 +786,10 @@
                             <td>#{{ $job->order_id ?? 'N/A' }}</td>
                             <td class="job-status-cell"><span class="status-badge status-{{ $jobStatusClass }}">{{ $jobStatusLabel }}</span></td>
                             <td>{{ $job->created_at->format('Y-m-d H:i') }}</td>
-                            <td><a href="{{ route('crm.order-detail', $job->order_id) }}" class="btn-link">View</a></td>
+                            <td>
+                                <a href="{{ route('crm.order-detail', $job->order_id) }}" class="btn-link" style="margin-right: 8px;">View</a>
+                                <button type="button" class="btn-link" style="color: #ef4444; background: none; border: none; cursor: pointer; padding: 0; font-size: inherit;" onclick="deleteJob(event, {{ $job->id }})">Delete</button>
+                            </td>
                         </tr>
                     @empty
                         <tr>
@@ -868,9 +896,70 @@
         }
 
         function navigateToOrder(event, orderId) {
+            if (event.target.closest('.job-card-delete-btn')) {
+                return;
+            }
             if (event.target.closest('[draggable]') === event.currentTarget) {
                 window.location.href = `/crm/order/detail/${orderId}`;
             }
+        }
+
+        function deleteJob(event, jobId) {
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            if (!confirm(`Are you sure you want to delete this order/job (#${jobId})? It will be removed from all stages.`)) {
+                return;
+            }
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+            fetch(`{{ url('/crm/orders') }}/${jobId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    const cards = document.querySelectorAll(`.job-card[data-job-id="${jobId}"]`);
+                    cards.forEach(card => card.remove());
+
+                    const tableRows = document.querySelectorAll(`#jobsTableBody tr[data-job-id="${jobId}"]`);
+                    tableRows.forEach(row => row.remove());
+
+                    refreshColumnEmptyStates();
+                    refreshColumnCounts();
+
+                    if (window.crmAlert) {
+                        window.crmAlert(data.message || 'Order/job deleted successfully.', 'success');
+                    }
+                } else {
+                    if (window.crmAlert) {
+                        window.crmAlert(data.message || 'Failed to delete order/job.', 'error');
+                    } else {
+                        alert(data.message || 'Failed to delete order/job.');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Delete error:', error);
+                if (window.crmAlert) {
+                    window.crmAlert('An error occurred while deleting the order/job.', 'error');
+                } else {
+                    alert('An error occurred while deleting the order/job.');
+                }
+            });
         }
 
         function setupDragAndDrop() {
