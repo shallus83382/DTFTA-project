@@ -15,6 +15,7 @@ use App\Models\Shipment;
 use App\Models\FulfillmentService;
 use App\Models\PartnerProfile;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\AdminActivityLog;
 use App\Models\BillingCharge;
 use Carbon\Carbon;
@@ -208,6 +209,8 @@ class CrmController extends Controller
                 ];
             case 'crm.products':
                 return [$dashboardCrumb, ['label' => 'Products', 'url' => null]];
+            case 'crm.product-categories.index':
+                return [$dashboardCrumb, ['label' => 'Product Categories', 'url' => null]];
             case 'crm.products.create':
                 return [
                     $dashboardCrumb,
@@ -1111,6 +1114,7 @@ class CrmController extends Controller
             ->get();
     
         $data['productStatusOptions'] = $this->getProductStatusOptions();
+        $data['productCategoryOptions'] = $this->getProductCategoryOptions();
         $data['colorRows'] = $this->prepareColorRowsForForm(null, old('colors'));
         $data['defaultSizes'] = config('dtfta.sizes');
     
@@ -1133,6 +1137,7 @@ class CrmController extends Controller
             ->get();
     
         $data['productStatusOptions'] = $this->getProductStatusOptions();
+        $data['productCategoryOptions'] = $this->getProductCategoryOptions();
         $data['selectedColors'] = $data['product']->variants->pluck('color')->unique()->values();
         $savedSizeOrder = collect($data['product']->size_order)
             ->filter()
@@ -1143,6 +1148,25 @@ class CrmController extends Controller
         $data['colorRows'] = $this->prepareColorRowsForForm($data['product'], old('colors'));
     
         return view('crm.products-edit', $data);
+    }
+
+    private function getProductCategoryOptions(): array
+    {
+        return ProductCategory::query()
+            ->orderBy('name')
+            ->pluck('name')
+            ->merge(Product::query()
+                ->whereNotNull('category')
+                ->where('category', '<>', '')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category'))
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->unique(fn ($name) => mb_strtolower($name))
+            ->sort()
+            ->values()
+            ->all();
     }
 
     /**

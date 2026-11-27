@@ -4,6 +4,7 @@ namespace App\Helpers;
 
 use App\Models\PrintArea;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -154,6 +155,19 @@ class PrintAreaPreviewData
                     'name' => (string) ($item['name'] ?? $key),
                 ];
             }
+        }
+
+        foreach (ProductCategory::query()->orderBy('name')->get(['id', 'name', 'image_path']) as $category) {
+            $path = (string) $category->image_path;
+            $disk = str_starts_with($path, 'product-category/') ? 's3' : 'public';
+            $url = Storage::disk($disk)->url($path);
+            $key = 'product-category-image-'.$category->id;
+
+            $result[$key] = [
+                'primary' => $url,
+                'fallback' => $url,
+                'name' => (string) $category->name,
+            ];
         }
 
         return $result;

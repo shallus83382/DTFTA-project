@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\Auth\UserManagementController;
 use App\Http\Controllers\PrintAreaController;
 use App\Http\Controllers\StaticAssetController;
+use App\Http\Controllers\ProductCategoryController;
 
 Route::get('/', [CrmController::class, 'landing']);
 
@@ -36,6 +37,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/crm/shipping/detail/{shipmentId}', [CrmController::class, 'shippingDetail'])->name('crm.shipping-detail');
     Route::get('/crm/stores', [CrmController::class, 'stores'])->name('crm.stores');
     Route::get('/crm/products', [CrmController::class, 'products'])->name('crm.products');
+    Route::get('/crm/product-categories', [ProductCategoryController::class, 'index'])->name('crm.product-categories.index');
+    Route::post('/crm/product-categories', [ProductCategoryController::class, 'store'])->name('crm.product-categories.store');
+    Route::put('/crm/product-categories/{productCategory}', [ProductCategoryController::class, 'update'])->name('crm.product-categories.update');
+    Route::delete('/crm/product-categories/{productCategory}', [ProductCategoryController::class, 'destroy'])->name('crm.product-categories.destroy');
     Route::get('/crm/products/add', [CrmController::class, 'createProduct'])->name('crm.products.create');
     Route::get('/crm/products/{productId}', [CrmController::class, 'viewProduct'])->name('crm.products.view');
     Route::get('/crm/products/{productId}/edit', [CrmController::class, 'editProduct'])->name('crm.products.edit');

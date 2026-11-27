@@ -325,7 +325,13 @@
                         class="filter-select"
                         value="{{ old('category', $product->category) }}"
                         placeholder="e.g. T-Shirt"
+                        list="product-category-options"
                     >
+                    <datalist id="product-category-options">
+                        @foreach($productCategoryOptions as $categoryOption)
+                            <option value="{{ $categoryOption }}">
+                        @endforeach
+                    </datalist>
                 </div>
 
                 <div class="filter-group">

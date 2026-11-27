@@ -976,8 +976,76 @@ select option:disabled {
     text-transform: uppercase;
 }
 
-.asset-selector-category {
+.asset-selector-category-native {
+    display: none;
+}
+
+.asset-category-picker {
+    position: relative;
     width: min(300px, 100%);
+}
+
+.asset-selector-category-trigger {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.asset-category-chevron {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg) translateY(-2px);
+}
+
+.asset-selector-category-menu {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 20;
+    width: 100%;
+    max-height: 162px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border-color);
+    border-radius: 0 0 8px 8px;
+    background: var(--bg-card);
+    box-shadow: 0 10px 24px rgba(2, 6, 23, 0.34);
+}
+
+.asset-selector-category-menu[hidden] {
+    display: none;
+}
+
+.asset-selector-category-option {
+    display: block;
+    width: 100%;
+    height: 32px;
+    padding: 6px 12px;
+    border: 0;
+    color: var(--text-primary);
+    background: transparent;
+    line-height: 20px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.asset-selector-category-option:hover,
+.asset-selector-category-option:focus-visible {
+    outline: none;
+    background: var(--accent-blue);
+    color: #fff;
+}
+
+.asset-selector-category-option[aria-selected="true"] {
+    background: rgba(59, 130, 246, 0.2);
 }
 
 .asset-selector-list {

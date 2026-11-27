@@ -2,6 +2,9 @@
 
 namespace App\Helpers;
 
+use App\Models\ProductCategory;
+use Illuminate\Support\Facades\Storage;
+
 class AssetHelper
 {
     public static function all(): array
@@ -18,11 +21,29 @@ class AssetHelper
             $result[$key] = $category['label'] ?? $key;
         }
 
+        foreach (ProductCategory::query()->orderBy('name')->get(['id', 'name']) as $category) {
+            $result[self::productCategoryKey($category->id)] = $category->name;
+        }
+
         return $result;
     }
 
     public static function itemsWithUrls(string $category): array
     {
+        if ($productCategory = self::findProductCategory($category)) {
+            $assetKey = self::productCategoryAssetKey($productCategory->id);
+            $url = self::productCategoryImageUrl($productCategory);
+
+            return [
+                $assetKey => [
+                    'key' => $assetKey,
+                    'name' => $productCategory->name,
+                    'url' => $url,
+                    'thumbnail_url' => $url,
+                ],
+            ];
+        }
+
         $items = config("assets.categories.{$category}.items", []);
 
         foreach ($items as $itemKey => &$item) {
@@ -36,11 +57,15 @@ class AssetHelper
 
     public static function hasCategory(string $category): bool
     {
-        return !empty(config("assets.categories.{$category}"));
+        return !empty(config("assets.categories.{$category}")) || self::findProductCategory($category) !== null;
     }
 
     public static function hasItem(string $category, string $itemKey): bool
     {
+        if ($productCategory = self::findProductCategory($category)) {
+            return $itemKey === self::productCategoryAssetKey($productCategory->id);
+        }
+
         return !empty(config("assets.categories.{$category}.items.{$itemKey}"));
     }
 
@@ -48,6 +73,22 @@ class AssetHelper
     {
         if (!$category || !$key) {
             return null;
+        }
+
+        if ($productCategory = self::findProductCategory($category)) {
+            if ($key !== self::productCategoryAssetKey($productCategory->id)) {
+                return null;
+            }
+
+            $url = self::productCategoryImageUrl($productCategory);
+
+            return [
+                'name' => $productCategory->name,
+                'url' => $url,
+                'thumbnail' => $url,
+                'key' => $key,
+                'category' => $category,
+            ];
         }
 
         $item = config("assets.categories.{$category}.items.{$key}");
@@ -78,5 +119,31 @@ class AssetHelper
         }
 
         return asset($path);
+    }
+
+    private static function productCategoryKey(int $id): string
+    {
+        return 'product-category-'.$id;
+    }
+
+    private static function productCategoryAssetKey(int $id): string
+    {
+        return 'product-category-image-'.$id;
+    }
+
+    private static function findProductCategory(string $key): ?ProductCategory
+    {
+        if (!preg_match('/^product-category-(\d+)$/D', $key, $matches)) {
+            return null;
+        }
+
+        return ProductCategory::query()->find((int) $matches[1]);
+    }
+
+    private static function productCategoryImageUrl(ProductCategory $category): string
+    {
+        $disk = str_starts_with($category->image_path, 'product-category/') ? 's3' : 'public';
+
+        return Storage::disk($disk)->url($category->image_path);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Helpers\AssetHelper;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Storage;
@@ -75,6 +76,12 @@ class DtftaProductResource extends JsonResource
 
         $printAreas = $this->whenLoaded('printAreas', function () {
             return $this->printAreas->map(function ($printArea) {
+                $printAreaImages = is_array($printArea->images) ? $printArea->images : [];
+                $assetCategory = (string) ($printAreaImages['category'] ?? '');
+                $assetKey = (string) ($printAreaImages['asset_key'] ?? '');
+                $dynamicAsset = str_starts_with($assetCategory, 'product-category-')
+                    ? AssetHelper::getAssetData($assetCategory, $assetKey)
+                    : null;
                 
                 // $appUrl = config('app.url');
                 // $imageUrl = null;
@@ -100,7 +107,8 @@ class DtftaProductResource extends JsonResource
                     'price' => $printArea->price,
                     'is_active' => (bool) $printArea->is_active,
                    // 'image' => $printArea->images ? url(Storage::url($printArea->images)) : null,
-                    'image' => $printArea->images['asset_key'] ?? '',
+                    'image' => $assetKey,
+                    'image_url' => $dynamicAsset['url'] ?? null,
                 ];
 
                 // Exact customizer canvas region (logical 0-500 space) set in the CRM preview.

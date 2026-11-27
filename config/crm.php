@@ -137,6 +137,13 @@ return [
             'roles' => ['admin', 'manager', 'user'],
         ],
         [
+            'label' => 'Product Categories',
+            'route' => 'crm.product-categories.index',
+            'icon' => 'nav-icon-products',
+            'visible' => true,
+            'roles' => ['admin', 'manager', 'user'],
+        ],
+        [
             'label' => 'Reports',
             'route' => 'crm.reports',
             'icon' => 'nav-icon-reports',
