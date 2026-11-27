@@ -17,6 +17,7 @@ use App\Http\Resources\CustomProductResource;
 use App\Services\ShopifyService;
 use Illuminate\Support\Facades\DB;
 use App\Services\CreateShopifyCustomProductService;
+use Throwable;
 
 class ProductController extends Controller
 {
@@ -170,14 +171,38 @@ class ProductController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
+        $productData = [];
+        $skippedCount = 0;
+
+        foreach ($products as $product) {
+            try {
+                $serializedProduct = (new DtftaProductResource($product))->resolve($request);
+                json_encode($serializedProduct, JSON_THROW_ON_ERROR);
+                $productData[] = $serializedProduct;
+            } catch (Throwable $exception) {
+                $skippedCount++;
+                Log::error('Product omitted from signed API catalog because serialization failed.', [
+                    'product_id' => $product->getKey(),
+                    'exception_class' => get_class($exception),
+                    'exception_message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
         Log::info('Products signed API response built', [
-            'count' => $products->count(),
+            'count' => count($productData),
+            'skipped_count' => $skippedCount,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Products retrieved successfully.',
-            'data' => DtftaProductResource::collection($products),
+            'message' => $skippedCount > 0
+                ? 'Products retrieved; some products could not be included.'
+                : 'Products retrieved successfully.',
+            'data' => $productData,
+            'meta' => [
+                'skipped_count' => $skippedCount,
+            ],
         ]);
     }
 

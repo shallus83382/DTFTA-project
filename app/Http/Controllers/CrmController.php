@@ -2176,7 +2176,7 @@ class CrmController extends Controller
         });
 
         $titlePart = strtoupper($product->category);
-        $brandPart = strtoupper($brandCode['code'] ?? 'GEN');
+        $brandPart = strtoupper($brandCode['code'] ?? Str::slug((string) $product->brand, '_'));
         $modelPart = strtoupper($product->model_code);
         $colorPart = strtoupper($this->resolveColorKey($color));
         $sizePart = strtoupper($size);

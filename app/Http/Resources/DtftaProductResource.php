@@ -12,18 +12,17 @@ class DtftaProductResource extends JsonResource
     public function toArray(Request $request): array
     {
         $commonColors = collect(config('dtfta.common_colors', []));
-        $brandNames = collect(config('dtfta.brand_names', []));
         $blanks = collect(config('dtfta.blanks', []));
 
         $images = is_array($this->images) ? $this->images : [];
+        $brandName = trim((string) $this->brand);
+        $brandCode = $brandName !== '' ? Str::upper(Str::slug($brandName, '_')) : '';
+        $brandKey = Str::slug($brandName);
+        $modelKey = Str::slug((string) $this->model_code);
 
         $blank = $blanks->first(function ($blank) {
             return strtolower((string) ($blank['brandCode'] ?? '')) === strtolower((string) $this->brand)
                 && strtolower((string) ($blank['model'] ?? '')) === strtolower((string) $this->model_code);
-        });
-
-        $brandCode = $brandNames->first(function ($item) {
-            return strtolower((string) ($item['name'] ?? '')) === strtolower((string) $this->brand);
         });
 
         $variants = $this->whenLoaded('variants', function () {
@@ -137,11 +136,11 @@ class DtftaProductResource extends JsonResource
 
         return [
             'id' => $this->id,
-            'productKey' => strtolower($brandCode['code'] . '-' . $this->model_code),
+            'productKey' => trim($brandKey . '-' . $modelKey, '-'),
             'name' => $blank['name'] ?? $this->title,
             'category' => $blank['category'] ?? $this->category,
-            'brandCode' => $brandCode['code'] ?? null,
-            'brand' => $brandCode['name'] ?? null,
+            'brandCode' => $brandCode,
+            'brand' => $brandName !== '' ? $brandName : null,
             'style' => $blank['style'] ?? $this->model_code,
             'model' => $blank['model'] ?? $this->model_code,
             'image' => $resolvedImage,
